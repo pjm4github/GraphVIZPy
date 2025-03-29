@@ -1,0 +1,82 @@
+@startuml
+
+' 1) Show the enclosed_node class Agobj
+class Agobj {
+  ' (Details of Agobj not shown in your snippet)
+}
+
+' 2) Main Graph class
+class Graph {
+    - name: str
+    - desc: Optional[Agdesc]
+    - disc: Optional[AgIdDisc]
+    - parent: Optional[Graph]
+    - nodes: Dict[str, Node]
+    - edges: Dict[Tuple[str, str, Optional[str]], Edge]
+    - subgraphs: Dict[str, Graph]
+    - closed: bool
+    - clos: Agclos
+    - strict: bool
+    - no_loop: bool
+    - is_main_graph: bool
+    - attr_dict_g: dict
+    - attr_dict_n: dict
+    - attr_dict_e: dict
+    - attr_record: AgAttrRecord
+    - cmp_graph_data: Agcmpgraph
+    - discipline_stack: Optional[Agcbstack]
+
+    + __init__(name: str, desc: Optional[Agdesc], disc: Optional[AgIdDisc], ...)
+    + agopen1()
+    + init_local_attr_values()
+    + add_subgraph(name: str, create: bool) : Graph
+    + add_node(nname: str, create: bool) : Node
+    + delete_node(node_name: str) : bool
+    + add_edge(tail_name: str, head_name: str, edge_name: Optional[str], create: bool) : Edge
+    + delete_edge(edge_key: Tuple[str, str, Optional[str]]) : bool
+    + close()
+    .. (other methods omitted for brevity) ..
+}
+
+' 3) Node, Edge, and other classes that appear in Graph’s attributes
+class Node {
+  ' (Details omitted)
+}
+class Edge {
+  ' (Details omitted)
+}
+class Agdesc {
+  ' (Details omitted)
+}
+class AgIdDisc {
+  ' (Details omitted)
+}
+class Agclos {
+  ' (Details omitted)
+}
+class AgAttrRecord {
+  ' (Details omitted)
+}
+class Agcmpgraph {
+  ' (Details omitted)
+}
+class Agcbstack {
+  ' (Details omitted)
+}
+
+' 4) Inheritance: Graph extends Agobj
+Graph --|> Agobj
+
+' 5) Show the "uses" or composition relationships
+Graph "1" o-- "1" Agdesc : desc
+Graph "1" o-- "1" AgIdDisc : disc
+Graph "0..1" o-- "1" Graph : parent
+Graph "1" o-- "0..*" Node : nodes
+Graph "1" o-- "0..*" Edge : edges
+Graph "1" o-- "0..*" Graph : subgraphs
+Graph "1" o-- "1" Agclos : clos
+Graph "1" o-- "1" AgAttrRecord : attr_record
+Graph "1" o-- "1" Agcmpgraph : cmp_graph_data
+Graph "1" o-- "0..1" Agcbstack : discipline_stack
+
+@enduml

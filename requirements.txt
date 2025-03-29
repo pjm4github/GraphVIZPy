@@ -1,0 +1,11 @@
+numpy~=2.2.1
+# matplotlib
+colorama
+# pysendfile
+requests
+PyQt5~=5.15.11
+PyQt5-stubs
+scikit-image
+scanf~=1.5.2
+fputs~=1.0.0
+scipy~=1.14.1

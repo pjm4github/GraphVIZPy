@@ -1,0 +1,65 @@
+@startuml
+title Object Diagram: CmpNode1 Became a Plain Node, CmpNode2 Still Compound
+
+' Main graph object, with fields .nodes, .edges, .subgraphs
+object "MainGraph" as MG {
+  .nodes = { PlainNode, CmpNode1 /* top-level*/,  /* possibly others */ }
+  .edges = { /* top-level edges, if any */ }
+  .subgraphs = { SubgraphS }
+}
+
+' A non-compound node living in the main graph
+object "PlainNode" as PN {
+  name = "PlainNode"
+  graph = MainGraph
+  /* no compound_node_data */
+}
+
+' Subgraph object, referencing the enclosed_node (MainGraph),
+' plus local .nodes = { CmpNode1 (now plain), CmpNode2 (still compound) }
+object "SubgraphS" as SG {
+  .parent = MainGraph
+  .nodes = { CmpNode2 }
+  .edges = { /* edges local to the subgraph, if any */ }
+}
+
+' CmpNode1 is now a plain node in the subgraph => no compound_node_data
+object "CmpNode1" as CN1 {
+  name = "CmpNode1"
+  graph = MainGraph
+  /* no compound_node_data */
+}
+
+' CmpNode2 remains a compound node:
+object "CmpNode2" as CN2 {
+  name = "CmpNode2"
+  graph = SubgraphS
+  compound_node_data = CND2
+}
+
+' The compound node data for CmpNode2
+object "CmpNodeData2" as CND2 {
+  subgraph = SubgraphS
+  is_compound = true
+  collapsed = false
+}
+
+' Show relationships among these objects
+MG --> SG : .subgraphs includes SubgraphS
+SG --> MG : .parent = MainGraph
+
+MG --> PN : .nodes includes PlainNode
+
+' CmpNode1 is now just a normal node inside SubgraphS
+MG --> CN1 : .nodes includes CmpNode1
+
+' CmpNode2 is a compound node in SubgraphS
+SG --> CN2 : .nodes includes CmpNode2
+
+' CmpNode2 references its compound_node_data
+CN2 --> CND2 : compound_node_data
+
+' CND2 references the subgraph
+CND2 --> SG : subgraph
+
+@enduml

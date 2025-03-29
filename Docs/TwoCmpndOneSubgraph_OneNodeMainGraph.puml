@@ -1,0 +1,74 @@
+@startuml
+title Object Diagram: Two Compound Nodes in One Subgraph + One Non-Compound Node in Main Graph
+
+' Main graph object, with fields .nodes, .edges, .subgraphs
+object "MainGraph" as MG {
+  .nodes = { PlainNode /* + possibly others */ }
+  .edges = { /* top-level edges, if any */ }
+  .subgraphs = { SubgraphS }
+}
+
+' A non-compound node living directly in the main graph
+object "PlainNode" as PN {
+  name = "PlainNode"
+  graph = MainGraph
+  /* no compound_node_data for a plain node */
+}
+
+' Subgraph object, referencing the enclosed_node (MainGraph),
+' plus local .nodes containing the compound nodes
+object "SubgraphS" as SG {
+  .parent = MainGraph
+  .nodes = { CmpNode1, CmpNode2 }
+  .edges = { /* edges local to the subgraph, if any */ }
+}
+
+' CompoundNode1
+object "CmpNode1" as CN1 {
+  name = "CmpNode1"
+  graph = SubgraphS
+  compound_node_data = CND1
+}
+
+' CompoundNode1's data
+object "CmpNodeData1" as CND1 {
+  subgraph = SubgraphS
+  is_compound = true
+  collapsed = false
+}
+
+' CompoundNode2
+object "CmpNode2" as CN2 {
+  name = "CmpNode2"
+  graph = SubgraphS
+  compound_node_data = CND2
+}
+
+' CompoundNode2's data
+object "CmpNodeData2" as CND2 {
+  subgraph = SubgraphS
+  is_compound = true
+  collapsed = false
+}
+
+' Show relationships among objects
+' 1) MainGraph references SubgraphS in .subgraphs
+MG --> SG : .subgraphs includes SubgraphS
+
+' 2) Subgraph references MainGraph as .enclosed_node
+SG --> MG : .parent = MainGraph
+
+' 3) PlainNode is in MainGraph.nodes
+MG --> PN : .nodes includes PlainNode
+
+' 4) Each compound node references subgraph in .graph
+CN1 --> SG : graph
+CN2 --> SG : graph
+
+' 5) compound_node_data references the subgraph
+CN1 --> CND1 : compound_node_data
+CN2 --> CND2 : compound_node_data
+CND1 --> SG : subgraph
+CND2 --> SG : subgraph
+
+@enduml

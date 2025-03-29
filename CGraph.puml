@@ -1,0 +1,86 @@
+@startuml
+!define RECTANGLE class
+' Define classes
+
+class AgAttrRecord {
+    - descriptor_id: str
+    - size: Optional[int]
+    - persistent: bool
+    - attributes: Dict[str, Any]
+    - validators: Dict[str, Callable[[Any], bool]]
+    - defaults: Dict[str, Any]
+    - parent_record: Optional[AgAttrRecord]
+    + set_attr(key: str, value: Any): void
+    + get_attr(key: str, default: Any = None): Any
+    + delete_attr(key: str): bool
+    + has_attr(key: str): bool
+    + serialize(): str
+    + deserialize(data: str): void
+    + copy_from(other: AgAttrRecord): void
+    + iterate_attrs(): Iterator[str]
+}
+
+class Agraph {
+    - name: str
+    - directed: bool
+    - nodes: Dict[str, Agnode]
+    - edges: Dict[Tuple[str, str, Optional[str]], Agedge]
+    - subgraphs: Dict[str, Agraph]
+    - id_to_subgraph: Dict[int, Agraph]
+    - disc: Discipline
+    - lock: threading.Lock
+    - sorted_nodes: SortedList
+    - agcmpgraph: Agcmpgraph
+    - root: Optional[Agraph]
+    - parent: Optional[Agraph]
+    + agcmpnode(name: str): Optional[Agnode]
+    + create_node_by_name(name: str, create_if_missing: bool = True, parent_attr_record: Optional[AgAttrRecord] = None): Optional[Agnode]
+    + create_subgraph_by_name(name: str, create_if_missing: bool = True): Optional[Agraph]
+    + create_edge(tail_name: str, head_name: str, key: Optional[str] = None, directed: bool = False): Optional[Agedge]
+    + add_edge_to_dict(edge: Agedge, dict_type: str): void
+    + remove_edge_from_dict(edge: Agedge, dict_type: str): void
+    + flatten(): Agraph
+    + copy_attributes_from_node(source_node: Agnode, target_node: Agnode): void
+    + copy_attributes_from_edge(source_edge: Agedge, target_edge: Agedge): void
+    + collect_all_nodes(): list
+    + collect_all_edges(): list
+    + get_hierarchical_paths(current_path: Optional[list] = None): list
+}
+
+class Agnode {
+    - name: str
+    - graph: Agraph
+    - id: int
+    - rank: int
+    - subgraph: Optional[Agraph]
+    - attr_record: AgAttrRecord
+    + copy_attributes_from(other_node: Agnode): void
+}
+
+class Agedge {
+    - tail: Agnode
+    - head: Agnode
+    - key: Optional[str]
+    - directed: bool
+    - attr_record: AgAttrRecord
+    + copy_attributes_from(other_edge: Agedge): void
+}
+
+class Discipline {
+    ' Placeholder for Discipline class
+}
+
+class Agcmpgraph {
+    ' Placeholder for Agcmpgraph class
+}
+
+' Define relationships
+
+Agraph "1" *-- "*" Agnode : contains
+Agraph "1" *-- "*" Agedge : contains
+Agraph "1" *-- "*" Agraph : subgraphs
+Agnode "1" *-- "1" AgAttrRecord : has
+Agedge "1" *-- "1" AgAttrRecord : has
+Agraph "1" --> "0..1" Agraph : parent
+
+@enduml

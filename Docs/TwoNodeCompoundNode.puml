@@ -1,0 +1,43 @@
+@startuml
+title Implementation Diagram: One Subgraph with Two Nodes
+
+skinparam componentStyle rectangle
+skinparam componentFontColor black
+skinparam componentFontSize 12
+
+'// The main enclosed_node graph as a component:
+component "Parent Graph" as PG
+
+'// The subgraph as another component:
+component "SubgraphS" as SG
+
+'// The compound node (which references SubgraphS via CompoundNodeData):
+component "CompoundNode" as CN {
+    [Node Data: adjacency, attributes, etc.] as ND_CN
+}
+
+'// The second node in the same subgraph:
+component "Node2" as N2 {
+    [Node Data: adjacency, attributes, etc.] as ND_N2
+}
+
+'// The data object linking the compound node to its subgraph
+component "CompoundNodeData" as CND {
+   [ + subgraph : Subgraph]
+   [ + is_compound : bool]
+   [ + collapsed : bool]
+}
+
+
+'// Show the relationships:
+PG -- CN : "contains CompoundNode"
+CN -- CND : "has compound_node_data"
+CND -- SG : "subgraph"
+
+'// The subgraph is nested in the enclosed_node graph:
+SG --> PG : "owned by Parent"
+
+'// Node2 also lives in SubgraphS:
+SG -- N2 : "contains Node2"
+
+@enduml

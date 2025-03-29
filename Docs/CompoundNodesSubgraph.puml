@@ -1,0 +1,29 @@
+@startuml
+title Compound Node and Subgraph Relationship
+
+' Classes for Node and Subgraph:
+
+class Node {
+    + compound_node_data : CompoundNodeData
+}
+
+class CompoundNodeData {
+    + subgraph : Subgraph
+}
+
+class Subgraph {
+    + cmp_graph_data : SubgraphData
+    ' possibly also has .nodes dict referencing Node
+}
+
+class SubgraphData {
+    + node : Node
+}
+
+' Show the links:
+Node --> CompoundNodeData : owns
+CompoundNodeData --> Subgraph : subgraph
+Subgraph --> SubgraphData : has
+SubgraphData --> Node : references
+
+@enduml
