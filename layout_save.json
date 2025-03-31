@@ -1,0 +1,222 @@
+{
+    "nodes": [
+        {
+            "id": "d1f7d8a4",
+            "pos": [
+                -273.0,
+                -118.0
+            ],
+            "size": [
+                60.0,
+                60.0
+            ],
+            "color": "#00ff00",
+            "connectors": [
+                {
+                    "id": "a10a56f1",
+                    "pos": [
+                        30.5,
+                        10.847222222222229
+                    ],
+                    "color": "#0000ff",
+                    "type": "origin"
+                },
+                {
+                    "id": "e47407b3",
+                    "pos": [
+                        30.5,
+                        28.357429718875494
+                    ],
+                    "color": "#ff0000",
+                    "type": "connector"
+                },
+                {
+                    "id": "d52eac18",
+                    "pos": [
+                        30.5,
+                        -1.6417445482865958
+                    ],
+                    "color": "#0000ff",
+                    "type": "origin"
+                },
+                {
+                    "id": "f4bfdba4",
+                    "pos": [
+                        -30.5,
+                        0.6108108108108041
+                    ],
+                    "color": "#ff0000",
+                    "type": "connector"
+                },
+                {
+                    "id": "73b53345",
+                    "pos": [
+                        30.5,
+                        -16.5
+                    ],
+                    "color": "#0000ff",
+                    "type": "origin"
+                }
+            ]
+        },
+        {
+            "id": "1eaaf0ec",
+            "pos": [
+                -69.0,
+                -101.0
+            ],
+            "size": [
+                60.0,
+                60.0
+            ],
+            "color": "#00ff00",
+            "connectors": [
+                {
+                    "id": "b66f60e2",
+                    "pos": [
+                        -30.5,
+                        -7.166666666666657
+                    ],
+                    "color": "#ff0000",
+                    "type": "connector"
+                },
+                {
+                    "id": "a271c685",
+                    "pos": [
+                        -30.5,
+                        16.389558232931734
+                    ],
+                    "color": "#0000ff",
+                    "type": "origin"
+                },
+                {
+                    "id": "a7ce5292",
+                    "pos": [
+                        30.5,
+                        4.473684210526315
+                    ],
+                    "color": "#0000ff",
+                    "type": "origin"
+                }
+            ]
+        }
+    ],
+    "io_connectors": [
+        {
+            "id": "16c58eeb",
+            "pos": [
+                58.0,
+                -179.0
+            ],
+            "color": "#ff00ff",
+            "type": "io"
+        },
+        {
+            "id": "8f953d30",
+            "pos": [
+                64.0,
+                -102.0
+            ],
+            "color": "#ff00ff",
+            "type": "io"
+        },
+        {
+            "id": "dc45895e",
+            "pos": [
+                61.0,
+                -146.0
+            ],
+            "color": "#ff00ff",
+            "type": "io"
+        },
+        {
+            "id": "7da6c474",
+            "pos": [
+                -505.0,
+                -119.0
+            ],
+            "color": "#008080",
+            "type": "io"
+        }
+    ],
+    "edges": [
+        {
+            "id": "0a9b9ac2",
+            "fallback_start": [
+                -318.97014925373134,
+                -96.0
+            ],
+            "fallback_end": [
+                -329.0,
+                -68.0
+            ],
+            "start_connector": "73b53345",
+            "end_connector": "16c58eeb"
+        },
+        {
+            "id": "0c785ecd",
+            "fallback_start": [
+                -284.0,
+                -126.15277777777777
+            ],
+            "fallback_end": [
+                -99.0,
+                -108.16666666666666
+            ],
+            "start_connector": "a10a56f1",
+            "end_connector": "b66f60e2"
+        },
+        {
+            "id": "f5c72e01",
+            "fallback_start": [
+                -99.0,
+                -84.61044176706827
+            ],
+            "fallback_end": [
+                -284.0,
+                -107.6425702811245
+            ],
+            "start_connector": "a271c685",
+            "end_connector": "e47407b3"
+        },
+        {
+            "id": "9fce890d",
+            "fallback_start": [
+                -39.0,
+                -96.52631578947368
+            ],
+            "fallback_end": [
+                84.0,
+                -103.0
+            ],
+            "start_connector": "a7ce5292",
+            "end_connector": "8f953d30"
+        },
+        {
+            "id": "736ad608",
+            "fallback_start": [
+                -284.0,
+                -129.6417445482866
+            ],
+            "fallback_end": [
+                -1.0,
+                -194.0
+            ],
+            "start_connector": "d52eac18",
+            "end_connector": "dc45895e"
+        },
+        {
+            "id": "ea4ca177",
+            "fallback_start": [
+                -511.0,
+                -129.0
+            ],
+            "fallback_end": [
+                -344.0,
+                -125.3891891891892
+            ],
+            "start_connector": "7da6c474",
+            "end_connector": "f4bfdba4"
+        }
+    ]
+}
