@@ -9,16 +9,14 @@ from PyQt5.QtWidgets import (
     QToolBar, QAction, QActionGroup, QFileDialog, QMessageBox, QColorDialog
 )
 from PyQt5.QtCore import Qt, QPointF, QRectF, QLineF
-from PyQt5.QtGui import (
-    QPen, QBrush, QCursor, QPainter, QPixmap, QIcon, QPolygonF, QColor
-)
+from PyQt5.QtGui import QPen, QBrush, QCursor, QPainter, QPixmap, QIcon, QPolygonF, QColor
 
 
 def gen_uuid():
     return uuid.uuid4().hex[:8]
 
 
-# --- Custom QGraphicsView subclass to handle mouse wheel zoom with centering ---
+# --- GraphicsView subclass for zooming and centering ---
 class GraphicsView(QGraphicsView):
     def wheelEvent(self, event):
         if event.angleDelta().y() > 0:
@@ -31,7 +29,7 @@ class GraphicsView(QGraphicsView):
             self.centerOn(selected_items[0].sceneBoundingRect().center())
 
 
-# --- ConnectorItem for connectors attached to Nodes ---
+# --- ConnectorItem: Child connectors that stick to parent's edges ---
 class ConnectorItem(QGraphicsEllipseItem):
     def __init__(self, rect, parent=None, color=Qt.red):
         super().__init__(rect, parent)
@@ -49,7 +47,7 @@ class ConnectorItem(QGraphicsEllipseItem):
 
     def itemChange(self, change, value):
         if change == QGraphicsEllipseItem.ItemPositionChange:
-            new_pos = value  # in parent's coordinates.
+            new_pos = value  # in parent's coordinates
             parent = self.parentItem()
             if parent:
                 rect = parent.boundingRect()
@@ -76,7 +74,7 @@ class ConnectorItem(QGraphicsEllipseItem):
         return super().itemChange(change, value)
 
 
-# --- IOConnectorItem draws a diamond shape ---
+# --- IOConnectorItem: Top-level connector (diamond) ---
 class IOConnectorItem(QGraphicsPolygonItem):
     def __init__(self, parent=None, color=Qt.magenta):
         polygon = QPolygonF([QPointF(0, -8), QPointF(8, 0), QPointF(0, 8), QPointF(-8, 0)])
@@ -95,19 +93,21 @@ class IOConnectorItem(QGraphicsPolygonItem):
         self.edges.append(edge)
 
     def itemChange(self, change, value):
-        if change == QGraphicsPolygonItem.ItemPositionChange:
-            return value
+        # IO connectors move freely (no snapping on their own movement)
         if change == QGraphicsPolygonItem.ItemScenePositionHasChanged:
             for edge in self.edges:
                 edge.updatePosition()
         return super().itemChange(change, value)
 
 
-# --- NodeItem represents a Node ---
+# --- NodeItem: Top-level node; snapping handled via itemChange() ---
 class NodeItem(QGraphicsRectItem):
     def __init__(self, rect, parent=None):
         super().__init__(rect, parent)
-        self.setFlags(QGraphicsRectItem.ItemIsMovable | QGraphicsRectItem.ItemIsSelectable)
+        # Enable move notifications.
+        self.setFlags(QGraphicsRectItem.ItemIsMovable |
+                      QGraphicsRectItem.ItemIsSelectable |
+                      QGraphicsRectItem.ItemSendsScenePositionChanges)
         self.connectors = []
         self.my_id = None
 
@@ -127,13 +127,22 @@ class NodeItem(QGraphicsRectItem):
         self.connectors.append(connector)
         return connector
 
+    def itemChange(self, change, value):
+        # Snap node to grid when moved if snap_enabled is True.
+        if change == QGraphicsRectItem.ItemPositionChange and self.parentItem() is None and self.scene() and self.scene().snap_enabled:
+            pos = value
+            snap = self.scene().snap_size
+            pos = QPointF(round(pos.x() / snap) * snap, round(pos.y() / snap) * snap)
+            return pos
+        return super().itemChange(change, value)
+
     def mouseDoubleClickEvent(self, event):
         self.connectorWindow = ConnectorWindow(self)
         self.connectorWindow.show()
         event.accept()
 
 
-# --- EdgeItem represents a Graph Edge ---
+# --- EdgeItem: Represents a graph edge ---
 class EdgeItem(QGraphicsLineItem):
     def __init__(self, start, end, start_connector=None, end_connector=None, parent=None):
         super().__init__(parent)
@@ -168,7 +177,7 @@ class EdgeItem(QGraphicsLineItem):
         self.setLine(start_point.x(), start_point.y(), end_point.x(), end_point.y())
 
 
-# --- PreferencesDialog allows the user to change settings and save to file ---
+# --- PreferencesDialog: Allows user to set and save preferences ---
 class PreferencesDialog(QDialog):
     def __init__(self, scene, parent=None):
         super().__init__(parent)
@@ -243,7 +252,7 @@ class PreferencesDialog(QDialog):
             QMessageBox.warning(self, "Preferences", f"Error saving preferences: {str(e)}")
 
 
-# --- ConnectorWindow shows a preview of a Node's connectors ---
+# --- ConnectorWindow: Shows a preview of a node's connectors ---
 class ConnectorWindow(QDialog):
     def __init__(self, node, parent=None):
         super().__init__(parent)
@@ -276,7 +285,7 @@ class ConnectorWindow(QDialog):
         super().mouseDoubleClickEvent(event)
 
 
-# --- GraphicsScene now holds preference attributes and save/load methods ---
+# --- GraphicsScene: Holds preferences, draws grid, snapping, key deletion, and save/load methods ---
 class GraphicsScene(QGraphicsScene):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -305,6 +314,19 @@ class GraphicsScene(QGraphicsScene):
             except Exception as e:
                 QMessageBox.warning(None, "Load Preferences", f"Error loading preferences: {str(e)}")
 
+    def drawBackground(self, painter, rect):
+        if self.snap_enabled:
+            snap = self.snap_size
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(QColor(200, 200, 200)))
+            x = int(rect.left() // snap) * snap
+            while x < rect.right():
+                y = int(rect.top() // snap) * snap
+                while y < rect.bottom():
+                    painter.drawEllipse(QPointF(x, y), 1.5, 1.5)
+                    y += snap
+                x += snap
+
     def set_mode(self, mode):
         self.mode = mode
         if mode == "draw_node":
@@ -317,6 +339,14 @@ class GraphicsScene(QGraphicsScene):
             new_cursor = QCursor(Qt.ArrowCursor)
         for view in self.views():
             view.setCursor(new_cursor)
+
+    def keyPressEvent(self, event):
+        # Delete selected items on Backspace press.
+        if event.key() == Qt.Key_Backspace:
+            for item in self.selectedItems():
+                self.removeItem(item)
+        else:
+            super().keyPressEvent(event)
 
     def mousePressEvent(self, event):
         if self.mode == "draw_node":
@@ -357,7 +387,6 @@ class GraphicsScene(QGraphicsScene):
     def mouseMoveEvent(self, event):
         if self.mode == "draw_node" and self.new_node is not None:
             pos = event.scenePos()
-            # Apply snapping only for new nodes being drawn
             if self.snap_enabled:
                 snap = self.snap_size
                 pos = QPointF(round(pos.x() / snap) * snap, round(pos.y() / snap) * snap)
@@ -371,7 +400,11 @@ class GraphicsScene(QGraphicsScene):
 
     def mouseReleaseEvent(self, event):
         if self.mode == "draw_node" and self.new_node is not None:
-            self.new_node.setPos(event.scenePos())
+            pos = event.scenePos()
+            if self.snap_enabled:
+                snap = self.snap_size
+                pos = QPointF(round(pos.x() / snap) * snap, round(pos.y() / snap) * snap)
+            self.new_node.setPos(pos)
             self.new_node = None
             return
         elif self.mode == "draw_edge" and self.temp_line is not None:
@@ -461,6 +494,14 @@ class GraphicsScene(QGraphicsScene):
     def mouseDoubleClickEvent(self, event):
         super().mouseDoubleClickEvent(event)
 
+    def keyPressEvent(self, event):
+        # Delete selected items when Backspace is pressed.
+        if event.key() == Qt.Key_Backspace:
+            for item in self.selectedItems():
+                self.removeItem(item)
+        else:
+            super().keyPressEvent(event)
+
     def saveScene(self):
         filename, _ = QFileDialog.getSaveFileName(None, "Save Scene", "", "JSON Files (*.json)")
         if not filename:
@@ -529,6 +570,8 @@ class GraphicsScene(QGraphicsScene):
         except Exception as e:
             QMessageBox.warning(None, "Load Scene", f"Error loading scene: {str(e)}")
             return
+        temp_snap = self.snap_enabled
+        self.snap_enabled = False
         self.clear()
         node_mapping = {}
         connector_mapping = {}
@@ -579,10 +622,10 @@ class GraphicsScene(QGraphicsScene):
             edge = EdgeItem(fallback_start, fallback_end, start_connector, end_connector)
             edge.my_id = edata["id"]
             self.addItem(edge)
+        self.snap_enabled = temp_snap
         QMessageBox.information(None, "Load Scene", "Scene loaded successfully.")
 
 
-# --- MainWindow with File and Settings menus and custom toolbar ---
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
