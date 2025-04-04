@@ -1,4 +1,4 @@
-# Version 1.5
+# Version 1.55
 
 import sys
 import os
@@ -23,7 +23,6 @@ def gen_uuid():
 class GraphicsView(QGraphicsView):
     def __init__(self, scene, parent=None):
         super().__init__(scene, parent)
-        # Enable antialiasing and smooth pixmap transformation for better rendering quality.
         self.setRenderHint(QPainter.Antialiasing, True)
         self.setRenderHint(QPainter.SmoothPixmapTransform, True)
 
@@ -183,7 +182,7 @@ class EdgeItem(QGraphicsLineItem):
         self.setLine(start_point.x(), start_point.y(), end_point.x(), end_point.y())
 
 
-# --- NodeAppearanceDialog: Allows setting fill, edge color, and outline width ---
+# --- NodeAppearanceDialog: Allows setting fill color, edge (outline) color, and outline width ---
 class NodeAppearanceDialog(QDialog):
     def __init__(self, scene, parent=None):
         super().__init__(parent)
@@ -450,6 +449,10 @@ class GraphicsScene(QGraphicsScene):
             new_cursor = QCursor(Qt.ArrowCursor)
         for view in self.views():
             view.setCursor(new_cursor)
+            if mode == "select":
+                view.setDragMode(QGraphicsView.RubberBandDrag)
+            else:
+                view.setDragMode(QGraphicsView.NoDrag)
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Backspace:
@@ -744,7 +747,7 @@ class MainWindow(QMainWindow):
         self.scene = GraphicsScene()
         self.view = GraphicsView(self.scene)
         self.setCentralWidget(self.view)
-        # Do not override loaded preferences; they come from the settings file.
+        # Do not override loaded preferences.
         self.create_menu()
         self.create_toolbar()
         self.updateNodeToolIcon()
@@ -819,7 +822,7 @@ class MainWindow(QMainWindow):
         self.select_action = QAction(self.buildSelectIcon(), "Select", self)
         self.select_action.setCheckable(True)
         self.select_action.triggered.connect(lambda: self.scene.set_mode("select"))
-        # Add to an exclusive action group.
+        # Add them to an exclusive action group.
         toolActionGroup = QActionGroup(self)
         toolActionGroup.setExclusive(True)
         toolActionGroup.addAction(self.node_action)
