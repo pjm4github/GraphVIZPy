@@ -1,8 +1,10 @@
 {
-    "default_node_color": "#4eedff",
+    "default_node_color": "#00ff00",
+    "default_node_outline_color": "#bc38e1",
+    "default_node_outline_width": 2,
     "default_edge_type": "Straight",
     "input_connector_color": "#ffaa00",
     "output_connector_color": "#005500",
     "snap_enabled": true,
-    "snap_size": 20
+    "snap_size": 10
 }
