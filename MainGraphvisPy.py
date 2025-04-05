@@ -1,4 +1,4 @@
-# Version 1.55
+# Version 1.7.4
 
 import sys
 import os
@@ -9,9 +9,9 @@ from PyQt5.QtWidgets import (
     QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPolygonItem, QGraphicsLineItem,
     QDialog, QVBoxLayout, QFormLayout, QPushButton, QComboBox, QCheckBox, QSpinBox,
     QToolBar, QAction, QActionGroup, QFileDialog, QMessageBox, QColorDialog, QToolButton, QWidgetAction,
-    QDialogButtonBox
+    QDialogButtonBox, QMenu, QGraphicsItemGroup
 )
-from PyQt5.QtCore import Qt, QPointF, QRectF, QLineF, QEvent, pyqtSignal
+from PyQt5.QtCore import Qt, QPointF, QRectF, QLineF, QEvent
 from PyQt5.QtGui import QPen, QBrush, QCursor, QPainter, QPixmap, QIcon, QPolygonF, QColor
 
 
@@ -43,11 +43,9 @@ class ConnectorItem(QGraphicsEllipseItem):
         super().__init__(rect, parent)
         self.setBrush(QBrush(color))
         self.edges = []
-        self.setFlags(
-            QGraphicsEllipseItem.ItemIsMovable |
-            QGraphicsEllipseItem.ItemIsSelectable |
-            QGraphicsEllipseItem.ItemSendsScenePositionChanges
-        )
+        self.setFlags(QGraphicsEllipseItem.ItemIsMovable |
+                      QGraphicsEllipseItem.ItemIsSelectable |
+                      QGraphicsEllipseItem.ItemSendsScenePositionChanges)
         self.my_id = None
 
     def add_edge(self, edge):
@@ -90,11 +88,9 @@ class IOConnectorItem(QGraphicsPolygonItem):
         self.setBrush(QBrush(color))
         self.setPen(QPen(Qt.black, 2))
         self.edges = []
-        self.setFlags(
-            QGraphicsPolygonItem.ItemIsMovable |
-            QGraphicsPolygonItem.ItemIsSelectable |
-            QGraphicsPolygonItem.ItemSendsScenePositionChanges
-        )
+        self.setFlags(QGraphicsPolygonItem.ItemIsMovable |
+                      QGraphicsPolygonItem.ItemIsSelectable |
+                      QGraphicsPolygonItem.ItemSendsScenePositionChanges)
         self.my_id = None
 
     def add_edge(self, edge):
@@ -166,23 +162,32 @@ class EdgeItem(QGraphicsLineItem):
 
     def updatePosition(self):
         if self.start_connector is not None:
-            if isinstance(self.start_connector, IOConnectorItem):
-                start_point = self.start_connector.scenePos() + QPointF(8, 0)
-            else:
-                start_point = self.start_connector.scenePos()
+            start_point = self.start_connector.scenePos()
         else:
             start_point = self.fallback_start
         if self.end_connector is not None:
-            if isinstance(self.end_connector, IOConnectorItem):
-                end_point = self.end_connector.scenePos() + QPointF(-8, 0)
-            else:
-                end_point = self.end_connector.scenePos()
+            end_point = self.end_connector.scenePos()
         else:
             end_point = self.fallback_end
         self.setLine(start_point.x(), start_point.y(), end_point.x(), end_point.y())
 
 
-# --- NodeAppearanceDialog: Allows setting fill color, edge (outline) color, and outline width ---
+# --- GroupItem: Custom group that snaps to grid when moved ---
+class GroupItem(QGraphicsItemGroup):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFlags(QGraphicsItemGroup.ItemIsMovable | QGraphicsItemGroup.ItemIsSelectable)
+
+    def itemChange(self, change, value):
+        if change == QGraphicsItemGroup.ItemPositionChange and self.scene() and self.scene().snap_enabled:
+            pos = value
+            snap = self.scene().snap_size
+            snapped_pos = QPointF(round(pos.x() / snap) * snap, round(pos.y() / snap) * snap)
+            return snapped_pos
+        return super().itemChange(change, value)
+
+
+# --- NodeAppearanceDialog: Allows setting fill, edge color, and outline width ---
 class NodeAppearanceDialog(QDialog):
     def __init__(self, scene, parent=None):
         super().__init__(parent)
@@ -226,7 +231,6 @@ class PreferencesDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Preferences")
         self.scene = scene
-        # Temporary values for the dialog.
         self.temp_node_fill_color = self.scene.default_node_fill_color
         self.temp_node_outline_color = self.scene.default_node_outline_color
         self.temp_node_outline_width = self.scene.default_node_outline_width
@@ -241,43 +245,35 @@ class PreferencesDialog(QDialog):
         self.nodeColorButton.setStyleSheet("background-color: " + self.temp_node_fill_color.name())
         self.nodeColorButton.clicked.connect(self.chooseNodeColor)
         layout.addRow("Default Node Fill Color:", self.nodeColorButton)
-
         self.nodeEdgeColorButton = QPushButton()
         self.nodeEdgeColorButton.setStyleSheet("background-color: " + self.temp_node_outline_color.name())
         self.nodeEdgeColorButton.clicked.connect(self.chooseNodeEdgeColor)
         layout.addRow("Default Node Edge Color:", self.nodeEdgeColorButton)
-
         self.outlineWidthSpin = QSpinBox()
         self.outlineWidthSpin.setMinimum(1)
         self.outlineWidthSpin.setMaximum(20)
         self.outlineWidthSpin.setValue(self.temp_node_outline_width)
         layout.addRow("Default Node Outline Width:", self.outlineWidthSpin)
-
         self.edgeTypeCombo = QComboBox()
         self.edgeTypeCombo.addItems(["Straight", "Curved", "Rectilinear"])
         self.edgeTypeCombo.setCurrentText(self.temp_edge_type)
         layout.addRow("Default Edge Type:", self.edgeTypeCombo)
-
         self.inputConnectorButton = QPushButton()
         self.inputConnectorButton.setStyleSheet("background-color: " + self.temp_input_connector_color.name())
         self.inputConnectorButton.clicked.connect(self.chooseInputConnectorColor)
         layout.addRow("Input Connector Color:", self.inputConnectorButton)
-
         self.outputConnectorButton = QPushButton()
         self.outputConnectorButton.setStyleSheet("background-color: " + self.temp_output_connector_color.name())
         self.outputConnectorButton.clicked.connect(self.chooseOutputConnectorColor)
         layout.addRow("Output Connector Color:", self.outputConnectorButton)
-
         self.snapCheckBox = QCheckBox("Enable Snap")
         self.snapCheckBox.setChecked(self.temp_snap_enabled)
         layout.addRow("Snap Setting:", self.snapCheckBox)
-
         self.snapSizeSpin = QSpinBox()
         self.snapSizeSpin.setMinimum(1)
         self.snapSizeSpin.setMaximum(100)
         self.snapSizeSpin.setValue(self.temp_snap_size)
         layout.addRow("Snap Size:", self.snapSizeSpin)
-
         self.buttonBox = QDialogButtonBox()
         saveButton = self.buttonBox.addButton("Save", QDialogButtonBox.ActionRole)
         okButton = self.buttonBox.addButton(QDialogButtonBox.Ok)
@@ -316,7 +312,6 @@ class PreferencesDialog(QDialog):
         self.temp_edge_type = self.edgeTypeCombo.currentText()
         self.temp_snap_enabled = self.snapCheckBox.isChecked()
         self.temp_snap_size = self.snapSizeSpin.value()
-        # Copy temporary values to the scene.
         self.scene.default_node_fill_color = self.temp_node_fill_color
         self.scene.default_node_outline_color = self.temp_node_outline_color
         self.scene.default_node_outline_width = self.temp_node_outline_width
@@ -391,7 +386,22 @@ class ConnectorWindow(QDialog):
         super().mouseDoubleClickEvent(event)
 
 
-# --- GraphicsScene: Holds preferences, draws grid, handles snapping, deletion, and save/load ---
+# --- GroupItem: Custom group that snaps to grid when moved ---
+class GroupItem(QGraphicsItemGroup):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFlags(QGraphicsItemGroup.ItemIsMovable | QGraphicsItemGroup.ItemIsSelectable)
+
+    def itemChange(self, change, value):
+        if change == QGraphicsItemGroup.ItemPositionChange and self.scene() and self.scene().snap_enabled:
+            pos = value
+            snap = self.scene().snap_size
+            snapped_pos = QPointF(round(pos.x() / snap) * snap, round(pos.y() / snap) * snap)
+            return snapped_pos
+        return super().itemChange(change, value)
+
+
+# --- GraphicsScene: Holds preferences, draws grid, handles snapping, deletion, grouping, and save/load ---
 class GraphicsScene(QGraphicsScene):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -738,7 +748,55 @@ class GraphicsScene(QGraphicsScene):
         self.snap_enabled = temp_snap
         QMessageBox.information(None, "Load Scene", "Scene loaded successfully.")
 
+    # --- Context Menu for Grouping/Ungrouping ---
+    def contextMenuEvent(self, event):
+        menu = QMenu()
+        selected = self.selectedItems()
+        # Group only NodeItem objects (do not group EdgeItems or IOConnectorItems).
+        group_items = [item for item in selected if isinstance(item, NodeItem)]
+        groupAction = menu.addAction("Group")
+        ungroupAction = menu.addAction("Ungroup")
+        if len(group_items) < 2:
+            groupAction.setEnabled(False)
+        else:
+            groupAction.setEnabled(True)
+        groupExists = any(isinstance(item, GroupItem) for item in selected)
+        ungroupAction.setEnabled(groupExists)
+        action = menu.exec_(event.screenPos())
+        if action == groupAction:
+            # Update fallback coordinates for all edges.
+            for item in self.items():
+                if isinstance(item, EdgeItem):
+                    line = item.line()
+                    item.fallback_start = QPointF(line.x1(), line.y1())
+                    item.fallback_end = QPointF(line.x2(), line.y2())
+            group = GroupItem()
+            for item in group_items:
+                group.addToGroup(item)
+            self.addItem(group)
+            group.setSelected(True)
+            # Force update of all edges.
+            for item in self.items():
+                if isinstance(item, EdgeItem):
+                    item.updatePosition()
+        elif action == ungroupAction:
+            for item in selected:
+                if isinstance(item, GroupItem):
+                    children = item.childItems()
+                    self.destroyItemGroup(item)
+                    for child in children:
+                        if hasattr(child, 'setFlag'):
+                            child.setFlag(child.ItemSendsScenePositionChanges, True)
+                        child.setPos(child.pos())  # trigger snapping via itemChange
+                    for child in children:
+                        if isinstance(child, EdgeItem):
+                            child.updatePosition()
+            for item in self.items():
+                if isinstance(item, EdgeItem):
+                    item.updatePosition()
 
+
+# --- MainWindow ---
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -747,7 +805,6 @@ class MainWindow(QMainWindow):
         self.scene = GraphicsScene()
         self.view = GraphicsView(self.scene)
         self.setCentralWidget(self.view)
-        # Do not override loaded preferences.
         self.create_menu()
         self.create_toolbar()
         self.updateNodeToolIcon()
@@ -812,7 +869,6 @@ class MainWindow(QMainWindow):
     def create_toolbar(self):
         toolbar = QToolBar("Tools")
         self.addToolBar(Qt.LeftToolBarArea, toolbar)
-        # Create actions for Node, Edge, and Select tools.
         self.node_action = QAction(self.buildNodeIcon(), "Draw Node", self)
         self.node_action.setCheckable(True)
         self.node_action.triggered.connect(lambda: self.scene.set_mode("draw_node"))
@@ -822,7 +878,6 @@ class MainWindow(QMainWindow):
         self.select_action = QAction(self.buildSelectIcon(), "Select", self)
         self.select_action.setCheckable(True)
         self.select_action.triggered.connect(lambda: self.scene.set_mode("select"))
-        # Add them to an exclusive action group.
         toolActionGroup = QActionGroup(self)
         toolActionGroup.setExclusive(True)
         toolActionGroup.addAction(self.node_action)
@@ -831,7 +886,6 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.node_action)
         toolbar.addAction(self.edge_action)
         toolbar.addAction(self.select_action)
-        # Install an event filter on the node action's widget for double-click.
         node_button = toolbar.widgetForAction(self.node_action)
         if node_button:
             node_button.installEventFilter(self)
