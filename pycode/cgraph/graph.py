@@ -94,60 +94,6 @@ def gather_all_edges(g) -> List['Edge']:
 
 
 
-def agattr(graph, kind, name, default_value) -> Optional[AgSym]:  # from /cgraph/attr.c
-    raise NotImplementedError("use the enclosed_node.agattr method instead")
-    # """
-    # Pythonic version of 'agattr(g, kind, name, value)':
-    # - 'enclosed_node' is presumably the root or local enclosed_node.
-    # - If attribute 'name' doesn't exist for 'kind', create it with 'default_value'.
-    # - Then ensure all existing objects of that kind have a slot for it.
-    # Returns the newly created or existing AgSym.
-    # In this pythonic version there are 3 different dictionaries maintained in the root enclosed_node.
-    # When this method is called, the key is checked for existance in one of these 3 dictionaries and if it
-    # exists, it is returned it is updated and the value is returned
-    #
-    # If the key doesn't exist, then a new key is added to that dictionary and the default_value assigned and returned.
-    #
-    # """
-    # root = get_root_graph(enclosed_node)
-    # if kind == AGTYPE_GRAPH:
-    #     adict = root.attr_dict_g
-    # elif kind == AGTYPE_NODE:
-    #     adict = root.attr_dict_n
-    # elif kind == AGTYPE_EDGE:
-    #     adict = root.attr_dict_e
-    # else:
-    #     return None
-    #
-    # # Already declared?
-    # if name in adict:
-    #     value = adict[name]
-    #     if default_value is not None:
-    #         adict[name] = default_value
-    #     return value
-    # else:
-    #     # Create new symbol
-    #     adict[name] = default_value
-    #
-    #     # Now assign the default to all existing objects of that kind
-    #     # in the root enclosed_node (and presumably subgraphs).
-    #     if kind == AGTYPE_GRAPH:
-    #         # For each enclosed_node in the hierarchy, set default if not present
-    #         for g2 in gather_all_subgraphs(root):
-    #             if g2.attr_record.get(name) is None:
-    #                 g2.attr_record.set_value(name, default_value)
-    #     elif kind == AGTYPE_NODE:
-    #         for n2 in gather_all_nodes(root):
-    #             if n2.attr_record.get_value(name) is None:
-    #                 n2.attr_record.set_value(name, default_value)
-    #     elif kind == AGTYPE_EDGE:
-    #         for e2 in gather_all_edges(root):
-    #             if e2.attr_record.get_value(name) is None:
-    #                 e2.attr_record.set_value(name, default_value)
-    #     return default_value
-
-
-
 
 # 3.6 agnextseq(g, objtype)
 # In C, it increments g->clos->seq[objtype]. In Python:
@@ -2413,14 +2359,10 @@ class Graph(Agobj):  # from cgraph/cgraph.c
     #     """
     #     return super().aggetrec(rec_name, mtf)
 
-    def agdelrec(self, rec_name: str):  # from cgraph/rec.c
-        """
-        Deletes a record by name from the enclosed_node object.
-
-        :param rec_name: The name of the record to delete.
-        :return: True if deletion was successful, False otherwise.
-        """
+    def agdelrec(self, rec_name: str) -> bool:  # from cgraph/rec.c
+        """Delete a record by name from both attr_record and base _records."""
         self.attr_record.pop(rec_name, None)
+        return super().agdelrec(rec_name)
 
     def aginit(self, kind: ObjectType, rec_name: str, rec_size: int, mtf: bool = False):  # from cgraph/rec.c
         """
@@ -3875,30 +3817,10 @@ class Graph(Agobj):  # from cgraph/cgraph.c
     # CGRAPH_API extern Agdesc_t Agstrictundirected;
     # CGRAPH_API extern Agdesc_t Agundirected;
     # CGRAPH_API extern Agdisc_t AgDefaultDisc;
-    # CGRAPH_API extern Agiddisc_t AgIdDisc;
-    # CGRAPH_API extern Agiodisc_t AgIoDisc;
-    # CGRAPH_API extern Agmemdisc_t AgMemDisc;
-    def agalloc(self,  size: 'int') -> None:
-        # This should never be used in Python
-        raise NotImplementedError
-
-
+    # ── Attribute declaration ────────────────────
 
     def agattr(self, kind: ObjectType, name: str, value: Optional[str] = None):
-        """
-        Create or update an attribute descriptor for the enclosed_node.
-
-        If a value is provided, the attribute is created or updated (like an assignment).
-        If no value is provided, it simply returns the current attribute descriptor (if any).
-
-        :param kind: The type of the attribute (AGGRAPH, AGNODE, or AGEDGE).
-        :param name: The name of the attribute.
-        :param value: The new value for the attribute; if None, perform a lookup only.
-        :return: An AgSym instance representing the attribute descriptor,
-                 or None if not found (when value is None).
-        """
-        # In C, if g is NULL the function creates a ProtoGraph; here we assume self is valid.
-
+        """Create or look up an attribute descriptor."""
         root = get_root_graph(self)
         if kind == ObjectType.AGGRAPH:
             adict = root.attr_dict_g
@@ -3912,196 +3834,319 @@ class Graph(Agobj):  # from cgraph/cgraph.c
         return adict[name]
 
     def declare_attribute_graph(self, attr_name: str, default_value: str):
-        """
-        Declare a new attribute for the GRAPH itself. Store the default in root enclosed_node's dict.
-        """
         self.agattr(kind=ObjectType.AGGRAPH, name=attr_name, value=default_value)
 
     def declare_attribute_node(self, attr_name: str, default_value: str):
-        """
-        Declare a new attribute for NODES with a default value.
-        """
         self.agattr(kind=ObjectType.AGNODE, name=attr_name, value=default_value)
 
     def declare_attribute_edge(self, attr_name: str, default_value: str):
-        """
-        Declare a new attribute for EDGES with a default value.
-        """
         self.agattr(kind=ObjectType.AGEDGE, name=attr_name, value=default_value)
 
+    # ── C API compatibility layer ────────────────
+    # These methods delegate to the Pythonic equivalents above.
+    # Methods marked TODO are not yet implemented.
 
-    def agcallbacks(self,  flag: 'int') -> 'int': #  return prev value #
-        raise NotImplementedError
-
-    def agcanon(self, c: 'str', i: int) -> 'str':
-        raise NotImplementedError
-
-    def agcanonStr(self, s: 'str') -> 'str': #  manages its own buf #
-        raise NotImplementedError
-
-    def agconcat(self,  chan: Any, disc: AgIdDisc) -> 'Graph':
-        pass
-
-    def agcopyattr(self, oldobj: Any, newobj: Any) -> 'int':
-        raise NotImplementedError
-
-    def agcountuniqedges(self,  n: 'Node',  in_: 'int', out: 'int') -> 'int':
-        raise NotImplementedError
-
-    def agdegree(self,  n: 'Node',  in_: 'int', out: 'int') -> 'int':
-        raise NotImplementedError
-
-    def agfree(self,  ptr: Any) -> None:
-        # This should never be used in Python
-        raise NotImplementedError
-
-    def agedge(self,  tail_name: str,  head_name: str, name: Optional[str], cflag: bool) -> Optional[Edge]:
-        """
-        Pythonic version of 'agedge(Agraph_t *g, Agnode_t *t, Agnode_t *h, char *name, int cflag)'.
-        - If name is given, we might do ID-based logic. We'll keep it simpler here:
-          we see if there's an existing edge with the same key. If yes, return it.
-          If not, possibly create a new edge.
-        - cflag: create edge if it doesn't exist
-        """
+    def agedge(self, tail_name: str, head_name: str, name: Optional[str] = None,
+               cflag: bool = True) -> Optional[Edge]:
+        """Find or create an edge (C API: agedge)."""
         tail = self.add_node(tail_name)
         head = self.add_node(head_name)
-
-        # In real cgraph, 'name' might map to an ID. Let's skip that and just store 'name' in the edge as a label.
         key = (tail_name, head_name, name)
         e = self.edges.get(key)
         if e:
             return e
-
-        # If strict/no_loop checks fail, return None
         if not ok_to_make_edge(self, tail, head):
-            if cflag:
-                return None
-            else:
-                return None  # same result in either case
-
-        # Otherwise, create a new edge
+            return None
         eid = self.get_next_sequence(ObjectType.AGEDGE)
-        # g._next_edge_id += 1
-        # tail: Node, head: Node, name: str, enclosed_node: Graph, id=None, seq=None, etype: str=None):
         out_e = Edge(tail=tail, head=head, name=name, graph=self, id_=eid,
                      seq=self.get_next_sequence(ObjectType.AGEDGE), etype=EdgeType.AGOUTEDGE)
-
-        # Insert adjacency
         tail.outedges.append(out_e)
-        head.inedges.append(out_e)  # We'll store the same Edge object for in-edge too
-
-        # Insert into the dictionary, Edge should store itself in the Graph already
+        head.inedges.append(out_e)
         if key not in self.edges:
             self.edges[key] = out_e
         return out_e
 
+    def agnode(self, name: str, createflag: bool = True) -> Optional['Node']:
+        return self.add_node(name, createflag)
 
-    def agfstedge(self,  n: 'Node') -> 'Edge':
+    def agfstnode(self) -> Optional['Node']:
+        return self.first_node()
+
+    def agnxtnode(self, n: 'Node') -> Optional['Node']:
+        return self.next_node(n)
+
+    def aglstnode(self) -> Optional['Node']:
+        return self.last_node()
+
+    def agprvnode(self, n: 'Node') -> Optional['Node']:
+        return self.previous_node(current=n)
+
+    def agidnode(self, id_, createflag: bool = True) -> Optional['Node']:
+        return self.create_node_by_id(id_)
+
+    # ── Edge traversal (C API) ────────────────────
+
+    def agfstedge(self, n: 'Node') -> Optional[Edge]:
         return agfstedge(self, n)
 
-    def agfstin(self,  n: 'Node') -> 'Edge':
-        return agfstin(self, n)
-
-    def agfstout(self,  n: 'Node') -> 'Edge':
-        return agfstout(self, n)
-
-    def agidedge(self, t: 'Node', h: 'Node', eid, c_flag) -> 'Edge':
-        return agidedge(self, t, h, eid, c_flag)
-
-    def agnxtedge(self, e: 'Edge', n: 'Node') -> 'Edge':
+    def agnxtedge(self, e: Edge, n: 'Node') -> Optional[Edge]:
         return agnxtedge(self, e, n)
 
-    def agnxtin(self, e: 'Edge') -> 'Edge':
+    def agfstin(self, n: 'Node') -> Optional[Edge]:
+        return agfstin(self, n)
+
+    def agnxtin(self, e: Edge) -> Optional[Edge]:
         return agnxtin(self, e)
 
-    def agnxtout(self, e: 'Edge') -> 'Edge':
+    def agfstout(self, n: 'Node') -> Optional[Edge]:
+        return agfstout(self, n)
+
+    def agnxtout(self, e: Edge) -> Optional[Edge]:
         return agnxtout(self, e)
 
-    def agsubedge(self, e: 'Edge', createflag: 'int') -> 'Edge':
-        raise NotImplementedError
+    # ── Edge traversal (Pythonic aliases) ────────
 
-    def agfstnode(self) -> 'Node':
-        raise NotImplementedError
+    def first_out_edge(self, n: 'Node') -> Optional[Edge]:
+        """Get first outgoing edge from node n."""
+        return agfstout(self, n)
 
-    def agidnode(self,  id, createflag: 'int') -> 'Node':
-        raise NotImplementedError
+    def next_out_edge(self, e: Edge) -> Optional[Edge]:
+        """Get next outgoing edge after e."""
+        return agnxtout(self, e)
+
+    def first_in_edge(self, n: 'Node') -> Optional[Edge]:
+        """Get first incoming edge to node n."""
+        return agfstin(self, n)
+
+    def next_in_edge(self, e: Edge) -> Optional[Edge]:
+        """Get next incoming edge after e."""
+        return agnxtin(self, e)
+
+    def first_edge(self, n: 'Node') -> Optional[Edge]:
+        """Get first edge (in or out) of node n."""
+        return agfstedge(self, n)
+
+    def next_edge(self, e: Edge, n: 'Node') -> Optional[Edge]:
+        """Get next edge (in or out) of node n after e."""
+        return agnxtedge(self, e, n)
+
+    # ── Other C API ──────────────────────────────
+
+    def agidedge(self, t: 'Node', h: 'Node', eid, c_flag) -> Optional[Edge]:
+        return agidedge(self, t, h, eid, c_flag)
+
+    def agsubnode(self, g: 'Graph', n: 'Node', createflag: bool = True) -> Optional['Node']:
+        return self.add_subgraph_node(g, n, createflag)
+
+    def agsubrep(self, n: 'Node') -> Optional['Node']:
+        return agsubrep(self, n)
 
     def aginternalmapclearlocalnames(self) -> None:
         self.internal_map_clear_local_names()
 
-    def aglasterr(self) -> 'str':
-        raise NotImplementedError
+    def degree(self, n: 'Node', in_: bool = True, out: bool = True) -> int:
+        """Count edges at node n."""
+        count = 0
+        if in_:
+            count += len(n.inedges)
+        if out:
+            count += len(n.outedges)
+        return count
 
-    def aglstnode(self) -> 'Node':
-        return self.last_node()
+    # C API alias
+    agdegree = degree
 
-    def agmemconcat(self,  cp: 'str') -> 'Graph':
-        raise NotImplementedError
+    def count_unique_edges(self, n: 'Node', in_: bool = True, out: bool = True) -> int:
+        """Count unique edges at node n (self-loops counted once)."""
+        edges = set()
+        if out:
+            for e in n.outedges:
+                edges.add(id(e))
+        if in_:
+            for e in n.inedges:
+                edges.add(id(e))
+        return len(edges)
 
-    def agmemread(self, cp: 'str') -> 'Graph':
-        raise NotImplementedError
+    # C API alias
+    agcountuniqedges = count_unique_edges
 
-    def agnode(self,  name: 'str', createflag: bool) -> 'Node':
-        return self.add_node(name, createflag)
+    def agnodebefore(self, u: 'Node', v: 'Node') -> bool:
+        """Check if u comes before v in node ordering."""
+        names = list(self.nodes.keys())
+        if u.name in names and v.name in names:
+            return names.index(u.name) < names.index(v.name)
+        return False
 
-    def agnodebefore(self, u: 'Node', v: 'Node') -> 'int':  #  we have no shame #
-        raise NotImplementedError
-
-    def agnxtattr(self,  kind: 'int', attr: AgSym) -> AgSym:
-        raise NotImplementedError
-
-    def agnxtnode(self,  n: 'Node') -> 'Node':
-        raise NotImplementedError
-
-    def agopen(name: 'str',  desc: Agdesc, disc: AgIdDisc) -> 'Graph':
+    @staticmethod
+    def agopen(name: str, desc: Agdesc = None, disc: AgIdDisc = None) -> 'Graph':
         return Graph(name=name, description=desc, disc=disc)
 
-    def agprvnode(self,  n: 'Node') -> 'Node':
-        return self.previous_node(current=n)
+    def agconcat(self, chan: Any, disc: AgIdDisc = None) -> Optional['Graph']:
+        pass  # TODO: implement graph concatenation from channel
 
-    def agread(self, chan: Any,  disc: AgIdDisc) -> 'Graph':
-        raise NotImplementedError
+    # TODO: I/O operations (deferred — use pycode.dot.read_dot() instead)
+    def agread(self, chan: Any, disc: AgIdDisc = None) -> Optional['Graph']:
+        raise NotImplementedError("Use pycode.dot.read_dot() or read_dot_file() instead")
 
-    def agreadline(self, int_) -> None:
-        raise NotImplementedError
+    def agwrite(self, chan: Any) -> int:
+        raise NotImplementedError("DOT serialization not yet implemented")
 
-    def agrealloc(self,  ptr: Any, oldsize: int) -> None:
-        # This should never be used in Python
-        raise NotImplementedError
+    def agmemread(self, cp: str) -> Optional['Graph']:
+        raise NotImplementedError("Use pycode.dot.read_dot() instead")
 
-    def agreseterrors(self) -> 'int':
-        raise NotImplementedError
+    def agmemconcat(self, cp: str) -> Optional['Graph']:
+        raise NotImplementedError("Use pycode.dot.read_dot() instead")
 
+    # TODO: attribute iteration
+    def agnxtattr(self, kind: int, attr: AgSym = None) -> Optional[AgSym]:
+        raise NotImplementedError("Attribute iteration not yet implemented")
+
+    def agxget(self, obj: Any, sym: AgSym) -> Optional[str]:
+        raise NotImplementedError("Use node.agget() or edge.agget() instead")
+
+    def agxset(self, obj: Any, sym: AgSym, value: str) -> int:
+        raise NotImplementedError("Use node.agset() or edge.agset() instead")
+
+    # TODO: subgraph edge access
+    def agsubedge(self, e: Edge, createflag: bool = True) -> Optional[Edge]:
+        raise NotImplementedError("Subgraph edge access not yet implemented")
+
+    # TODO: error state management
     def agseterr(self, elevel: "Agerrlevel") -> "Agerrlevel":
         raise NotImplementedError
 
-    def agseterrf(self, f: 'str'):  # -> "Agusererrf":
+    def aglasterr(self) -> str:
         raise NotImplementedError
 
-    def agsetfile(self, c: 'str') -> None:
+    def agreseterrors(self) -> int:
         raise NotImplementedError
 
-    def agstrcanon(self, a: 'str', b: 'str') -> 'str':
+    # TODO: string canonicalization
+    def agstrcanon(self, a: str, b: str) -> str:
         raise NotImplementedError
 
-    def agsubnode(self,  g: 'Graph', n: 'Node',  createflag: bool) -> 'Node':
-        return self.add_subgraph_node(g, n, createflag)
+    def agcopyattr(self, src, dst) -> bool:
+        """Copy all attributes from src object to dst object.
 
-    def agsubrep(self,  n: 'Node') -> "Node":
-        return agsubrep(self, n)
+        Both must be the same type (Node→Node, Edge→Edge, or Graph→Graph).
+        Returns True on success.
+        """
+        if hasattr(src, 'attributes') and hasattr(dst, 'attributes'):
+            for k, v in src.attributes.items():
+                dst.attributes[k] = v
+            return True
+        return False
 
-    def agwarningf(self, fmt: 'str') -> None:
-        raise NotImplementedError
+    # ── Graph algorithms ─────────────────────────
 
-    def agwrite(self,  c: Any) -> 'int':
-        raise NotImplementedError
+    def acyclic(self) -> list:
+        """Break cycles by reversing back edges (DFS-based).
 
-    def agxget(self, obj: Any, sym: AgSym) -> 'str':
-        raise NotImplementedError
+        Returns list of reversed edges. Modifies the graph in-place.
+        Equivalent to graphviz_acyclic().
+        """
+        UNVISITED, IN_PROGRESS, DONE = 0, 1, 2
+        state = {n: UNVISITED for n in self.nodes}
+        reversed_edges = []
 
-    def agxset(self, obj: Any, sym: AgSym, value: 'str') -> 'int':
-        raise NotImplementedError
+        def dfs(u):
+            state[u] = IN_PROGRESS
+            for e in list(self.nodes[u].outedges):
+                v = e.head.name
+                if v not in state:
+                    continue
+                if state[v] == IN_PROGRESS:
+                    # Back edge — reverse it
+                    e.tail, e.head = e.head, e.tail
+                    reversed_edges.append(e)
+                elif state[v] == UNVISITED:
+                    dfs(v)
+            state[u] = DONE
 
+        for n in self.nodes:
+            if state[n] == UNVISITED:
+                dfs(n)
+        return reversed_edges
+
+    def tred(self) -> list:
+        """Transitive reduction — remove edges implied by transitivity.
+
+        For each edge u→v, if there's another path u→...→v of length ≥2,
+        the direct edge is redundant and removed.
+        Returns list of removed edges. Equivalent to graphviz_tred().
+        """
+        removed = []
+        edges_to_check = list(self.edges.values())
+        for e in edges_to_check:
+            tail_name = e.tail.name
+            head_name = e.head.name
+            # BFS/DFS from tail to head, excluding the direct edge
+            visited = set()
+            queue = deque()
+            for other_e in e.tail.outedges:
+                if other_e is not e:
+                    queue.append(other_e.head.name)
+            found = False
+            while queue and not found:
+                cur = queue.popleft()
+                if cur == head_name:
+                    found = True
+                    break
+                if cur in visited:
+                    continue
+                visited.add(cur)
+                if cur in self.nodes:
+                    for out_e in self.nodes[cur].outedges:
+                        queue.append(out_e.head.name)
+            if found:
+                self.delete_edge(e)
+                removed.append((tail_name, head_name))
+        return removed
+
+    def unflatten(self, max_min_len: int = 0, chain_limit: int = 0,
+                  do_fans: bool = False) -> None:
+        """Adjust minlen to improve aspect ratio for hierarchical layouts.
+
+        Increases minlen on edges from nodes with many outgoing edges
+        (fan-out) or on chain paths. Equivalent to graphviz_unflatten().
+
+        Args:
+            max_min_len: Maximum minlen to set (0 = no limit).
+            chain_limit: Max consecutive chain nodes to adjust (0 = no limit).
+            do_fans: If True, also adjust fan-out nodes.
+        """
+        for name, node in self.nodes.items():
+            n_out = len(node.outedges)
+            if n_out <= 1 and not do_fans:
+                continue
+            # Leaf check: skip if node is a leaf
+            if n_out == 0 or len(node.inedges) == 0:
+                continue
+            for e in node.outedges:
+                cur_minlen = int(e.attributes.get("minlen", "1"))
+                new_minlen = cur_minlen + 1
+                if max_min_len > 0:
+                    new_minlen = min(new_minlen, max_min_len)
+                e.attributes["minlen"] = str(new_minlen)
+
+    def node_induce(self) -> int:
+        """Add edges from parent graph whose endpoints are both in this subgraph.
+
+        For each edge in the root graph, if both tail and head are nodes
+        in this subgraph, add the edge here too. Returns count of edges added.
+        Equivalent to graphviz_node_induce().
+        """
+        root = get_root_graph(self)
+        if root is self:
+            return 0
+        count = 0
+        for key, edge in root.edges.items():
+            tail_name, head_name, edge_name = key
+            if tail_name in self.nodes and head_name in self.nodes:
+                if key not in self.edges:
+                    self.edges[key] = edge
+                    count += 1
+        return count
 
     def agflatten_edges(self, n: Node, flag: int):
         """
@@ -4178,158 +4223,4 @@ def get_root_graph(g) -> 'Graph':
         return get_root_graph(g.parent)
 
 
-###################
-# NODE REFERENCES #
-###################
-
-def FIRSTNREF(g: "Graph"):
-    """
-    #define FIRSTNREF(g) (agflatten(g,1), AGHEADPOINTER(g))
-    :param g:
-    :return:
-    """
-    g.agflatten(1)
-    # If g.nodes is a dict, pick the “first” in insertion order
-    # (Python 3.7+ iteration is insertion-ordered)
-    if not g.nodes:
-        return None
-    first_name = next(iter(g.nodes.keys()))
-    return g.nodes[first_name]
-
-
-def NEXTNREF(g: "Graph", rep: "Node"):
-    """
-    #define NEXTNREF(g, rep) (AGRIGHTPOINTER(rep) == AGHEADPOINTER(g)? 0 : AGRIGHTPOINTER(rep))
-    :param g:
-    :param rep:
-    :return:
-    """
-    node_list = list(g.nodes.values())  # flattened iteration
-    try:
-        idx = node_list.index(rep)
-    except ValueError:
-        return None
-    if idx + 1 < len(node_list):
-        return node_list[idx + 1]
-    else:
-        return None
-
-def PREVNREF(g: "Graph", rep: "Node"):
-    """
-    #define PREVNREF(g, rep) (((rep)==AGHEADPOINTER(g))?0:(AGLEFTPOINTER(rep)))
-    :param g:
-    :param rep:
-    :return:
-    """
-    node_list = list(g.nodes.values())
-    try:
-        idx = node_list.index(rep)
-    except ValueError:
-        return None
-    if idx > 0:
-        return node_list[idx - 1]
-    else:
-        return None
-
-
-def LASTNREF(g: "Graph"):
-    """
-    #define LASTNREF(g) (agflatten(g,1), AGHEADPOINTER(g)?AGLEFTPOINTER(AGHEADPOINTER(g)):0)
-    :param g:
-    :return:
-    """
-    g.agflatten(1)
-    node_list = list(g.nodes.values())
-    if node_list:
-        return node_list[-1]
-    return None
-
-
-def NODEOF(rep: "Node"):
-    """
-    #define NODEOF(rep) ((rep)->node)
-    :param rep:
-    :return:
-    """
-    # If 'rep' is already the node object, just return rep
-    return rep
-
-
-###################
-# EDGE REFERENCES #
-###################
-def FIRSTOUTREF(g: "Graph", sn: "Node"):
-    """
-    #define FIRSTOUTREF(g, sn) (agflatten(g,1), (sn)->out_seq)
-    :param g:
-    :param sn:
-    :return:
-    """
-    g.agflatten(1)
-    return sn.outedges[0] if sn.outedges else None
-
-
-def LASTOUTREF(g: "Graph", sn: "Node"):
-    """
-    #define LASTOUTREF(g, sn) (agflatten(g,1), (Agedgeref_t*)dtlast(sn->out_seq))
-    :param g:
-    :param sn:
-    :return:
-    """
-    g.agflatten(1)
-    return sn.outedges[-1] if sn.outedges else None
-
-
-def FIRSTINREF(g: "Graph", sn: "Node"):
-    """
-    #define FIRSTINREF(g, sn) (agflatten(g,1), (sn)->in_seq)
-    :param g:
-    :param sn:
-    :return:
-    """
-    g.agflatten(1)
-    return sn.inedges[0] if sn.inedges else None
-
-
-def NEXTEREF(g: "Graph", rep: "Edge", edgelist: List["Edge"]):
-    """
-    #define NEXTEREF(g, rep) ((rep)->right)
-
-    'rep' is the current Edge. Return the next Edge in 'edgelist', or None if none.
-    You must pass the relevant edgelist (like sn.outedges) or do a search.
-    """
-    try:
-        idx = edgelist.index(rep)
-    except ValueError:
-        return None
-    if idx + 1 < len(edgelist):
-        return edgelist[idx + 1]
-    return None
-
-
-def PREVEREF(g: "Graph", rep: "Edge", edgelist: List["Edge"]):
-    """
-    #define PREVEREF(g, rep) ((rep)->hl._left)
-    :param g:
-    :param rep:
-    :param edgelist:
-    :return:
-    """
-    try:
-        idx = edgelist.index(rep)
-    except ValueError:
-        return None
-    if idx > 0:
-        return edgelist[idx - 1]
-    return None
-
-def AGSNMAIN(sn: Node) -> bool:
-    """
-    In cgraph, checks if 'sn' is the main subnode of 'sn->node->mainsub'.
-    Python: If we unify subnode with node, you might skip this check.
-    """
-    is_subgraph = False
-    if sn.compound_node_data.is_compound:
-        is_subgraph = sn.compound_node_data.subgraph is None
-    return is_subgraph  # or some trivial check
 

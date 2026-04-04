@@ -148,6 +148,137 @@ class Edge(Agobj):   # from cgraph/cgraph.c
         if other is not None and other.opp is not self:
             other._opp = self
 
+    # ── DOT attribute properties ──────────────────
+
+    @property
+    def label(self) -> str:
+        return self.attributes.get("label", "")
+
+    @label.setter
+    def label(self, value: str):
+        self.attributes["label"] = value
+
+    @property
+    def color(self) -> str:
+        return self.attributes.get("color", "black")
+
+    @color.setter
+    def color(self, value: str):
+        self.attributes["color"] = value
+
+    @property
+    def style(self) -> str:
+        return self.attributes.get("style", "")
+
+    @style.setter
+    def style(self, value: str):
+        self.attributes["style"] = value
+
+    @property
+    def penwidth(self) -> str:
+        return self.attributes.get("penwidth", "1")
+
+    @penwidth.setter
+    def penwidth(self, value: str):
+        self.attributes["penwidth"] = value
+
+    @property
+    def arrowhead(self) -> str:
+        return self.attributes.get("arrowhead", "normal")
+
+    @arrowhead.setter
+    def arrowhead(self, value: str):
+        self.attributes["arrowhead"] = value
+
+    @property
+    def arrowtail(self) -> str:
+        return self.attributes.get("arrowtail", "normal")
+
+    @arrowtail.setter
+    def arrowtail(self, value: str):
+        self.attributes["arrowtail"] = value
+
+    @property
+    def dir(self) -> str:
+        return self.attributes.get("dir", "forward")
+
+    @dir.setter
+    def dir(self, value: str):
+        self.attributes["dir"] = value
+
+    @property
+    def weight_attr(self) -> int:
+        """Edge weight (uses weight_attr to avoid conflict with any base class)."""
+        try:
+            return int(self.attributes.get("weight", "1"))
+        except ValueError:
+            return 1
+
+    @weight_attr.setter
+    def weight_attr(self, value: int):
+        self.attributes["weight"] = str(value)
+
+    @property
+    def minlen(self) -> int:
+        try:
+            return int(self.attributes.get("minlen", "1"))
+        except ValueError:
+            return 1
+
+    @minlen.setter
+    def minlen(self, value: int):
+        self.attributes["minlen"] = str(value)
+
+    @property
+    def constraint(self) -> bool:
+        return self.attributes.get("constraint", "true").lower() not in ("false", "0", "no", "none")
+
+    @constraint.setter
+    def constraint(self, value: bool):
+        self.attributes["constraint"] = "true" if value else "false"
+
+    @property
+    def headport(self) -> str:
+        return self.attributes.get("headport", "")
+
+    @headport.setter
+    def headport(self, value: str):
+        self.attributes["headport"] = value
+
+    @property
+    def tailport(self) -> str:
+        return self.attributes.get("tailport", "")
+
+    @tailport.setter
+    def tailport(self, value: str):
+        self.attributes["tailport"] = value
+
+    @property
+    def lhead(self) -> str:
+        return self.attributes.get("lhead", "")
+
+    @lhead.setter
+    def lhead(self, value: str):
+        self.attributes["lhead"] = value
+
+    @property
+    def ltail(self) -> str:
+        return self.attributes.get("ltail", "")
+
+    @ltail.setter
+    def ltail(self, value: str):
+        self.attributes["ltail"] = value
+
+    @property
+    def root_graph(self):
+        """Return the root graph of this edge."""
+        current = self.graph
+        while current.parent is not None:
+            current = current.parent
+        return current
+
+    # ── Initialization ───────────────────────────
+
     def init_local_attr_values(self):
         """
         Mimics cgraph's 'agedgeattr_init(g, e)' by ensuring that
@@ -164,10 +295,8 @@ class Edge(Agobj):   # from cgraph/cgraph.c
                     self.attributes[attr_name] = default_value
 
     def get_root_graph(self):
-        current = self.graph
-        while current.parent is not None:
-            current = current.parent  # climb the parent
-        return current
+        """Backward-compatible alias for root_graph property."""
+        return self.root_graph
 
     def agedgeattr_init(self):
         """
@@ -196,113 +325,31 @@ class Edge(Agobj):   # from cgraph/cgraph.c
             default_value = attr_dict.get(attr_name)
             return default_value  # might be None if never declared
 
-    def agget(self, name: str):  # from /cgraph/attr.c
-        """
-        Pythonic version of 'agget(obj, name)':
-        Return the string value of the attribute named 'name' for obj.
-        Return None if attribute does not exist.
-        """
+    def get_attr(self, name: str) -> Optional[str]:
+        """Get an attribute value by name, falling back to root defaults."""
         return self.get_edge_attr(name)
 
-    def set_edge_attr(self, attr_name: str, value: str):
-        self.attributes[attr_name] = value
-
-    def agset(self, name, value):  # from /cgraph/attr.c
-        """
-        Pythonic version of 'agset(obj, name, value)':
-        Set the attribute named 'name' for 'obj' to 'value'.
-        Return SUCCESS/FAILURE.
-        """
+    def set_attr(self, name: str, value: str):
+        """Set an attribute value."""
         self.set_edge_attr(name, value)
 
-    def agsafeset(self, name, value, default):  # from /cgraph/attr.c
-        """
-        Pythonic version of 'agsafeset(obj, name, value, def)':
-        If 'name' attribute doesn't exist, define it with 'default' at the root enclosed_node.
-        Then set it to 'value'.
-        """
-        if name in self.attributes:
-            self.attributes[name] = value
-        else:
-            self.attributes[name] = value
-            # Declare a new attribute with default
+    # C API aliases
+    agget = get_attr
+    agset = set_attr
+
+    def set_edge_attr(self, attr_name: str, value: str):
+        """Sets edge's local override for attr_name."""
+        self.attributes[attr_name] = value
+
+    def agsafeset(self, name, value, default):
+        """Set attribute, declaring with default if it doesn't exist."""
+        self.attributes[name] = value
+        if name not in self.attributes:
             root = get_root_graph(self.graph)
-            root.set_graph_attr(name, default)
+            if root:
+                root.set_graph_attr(name, default)
 
-    # def __repr__(self):
-    #     repr_str = f"{self.__class__.__name__}"
-    #     repr_str += '('
-    #
-    #     for key, val in self.__dict__.items():
-    #         val = f"'{val}'" if isinstance(val, str) else val
-    #         repr_str += f"{key}={val}, "
-    #     rs = repr_str.strip(", ") + ')'
-    #     label = f"<{rs}>"
-    #     return label
     def __repr__(self):
-        def safe_repr(val):
-            from .graph import Graph
-            from .node import Node
-            if isinstance(val, Graph):
-                return f"<Graph {val.name}>"
-            elif isinstance(val, Node):
-                return f"<Node {val.name}>"
-            elif isinstance(val, Edge):
-                return f"<Edge {val.name}>"
-            else:
-                return repr(val)
-
-        # Gather all attributes from __dict__
-        base_attrs = {}
-        for attr, value in self.__dict__.items():
-            base_attrs[attr] = safe_repr(value)
-
-        # Build a string with each attribute on its own indented line.
-        base_attrs_str = "\n".join(f"    {k}: {v}" for k, v in base_attrs.items())
-
-        return (
-            f"<Edge {self.name}:\n"
-            f"{base_attrs_str}\n>"
-        )
-
-        #
-        # direction = "Not Set"
-        # directed = getattr(self, 'directed', None)
-        # if directed:
-        #     direction = "->" if self.directed else "--"
-        # has_etype = getattr(self, 'etype', None)
-        # ty = "Not Set"
-        # if has_etype:
-        #     ty = self.etype.replace("AG", "")
-        # id =  getattr(self, 'id', "Not Set")
-        # head = getattr(self, 'head', None)
-        # head_name = "Not Set"
-        # if head:
-        #     head_name = getattr(self, 'head', head_name)
-        # tail = getattr(self, 'tail', None)
-        # tail_name = "Not Set"
-        # if tail:
-        #     tail_name = getattr(self, 'head', tail_name)
-        #
-        # label = (f"<Edge (tail) {tail_name} {direction} (head) {head_name}, id={id}, "
-        #          f"seq={self.seq}, type={ty}, key={self.key or ''}, attributes={self.attributes}")
-        # if self.name:
-        #     label += f" [name={self.name}]"
-        # return label + ">"
-
-
-def agedgeattr_init(g, e):
-    """
-    Mimic 'agedgeattr_init(Agraph_t * g, Agedge_t * e)'.
-    If e->attr_record is not set, allocate, fill defaults, etc.
-    """
-    raise NotImplemented("Use the edge.agedgeattr_init method")
-
-
-def EDGEOF(rep: "EdgeSeqLink") -> "Edge":
-    """
-    cgraph uses pointer arithmetic to get Agedge_t from rep->seq_link.
-    In Python, you typically store a direct reference to the Edge object.
-    So we can return 'rep' if 'rep' is already an Edge, or a field from rep.
-    """
-    return rep.edge  # If 'rep' is already the Edge
+        tail = self.tail.name if self.tail else "?"
+        head = self.head.name if self.head else "?"
+        return f"<Edge {tail}->{head}, etype={self._etype}, name={self.name}>"

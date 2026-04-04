@@ -32,51 +32,67 @@ python -m pytest tests/
 
 ```
 GraphvizPy/
-├── dot.py                    # CLI entry point (equivalent of Graphviz dot command)
-├── MainGraphvisPy.py         # Interactive PyQt6 graph editor (v1.7.12)
-├── settings.py               # PyQt6 UI settings
-├── requirements.txt          # Python dependencies
+├── dot.py                        # CLI (equivalent of Graphviz dot command)
+├── MainGraphvisPy.py             # Interactive PyQt6 graph editor
+├── settings.py                   # PyQt6 UI settings
+├── requirements.txt              # Python dependencies (PyQt6, antlr4, numpy, scipy)
+├── pytest.ini                    # Test configuration
 │
-├── pycode/                   # Core Python library (mirrors Graphviz lib/ structure)
-│   ├── cgraph/               # Core graph library (port of Graphviz cgraph)
-│   │   ├── graph.py        # Graph class: nodes, edges, subgraphs, callbacks
-│   │   ├── node.py         # Node and CompoundNode classes
-│   │   ├── edge.py         # Edge class with half-edge pairs
-│   │   ├── headers.py        # Type definitions, callback system, ID discipline
-│   │   ├── defines.py        # Constants (ObjectType, EdgeType, GraphEvent)
-│   │   ├── agobj.py          # Base class for all graph objects
-│   │   ├── error.py        # Logging and error handling
-│   │   └── graph_print.py    # ASCII tree printer for debugging
+├── pycode/                       # Core library (mirrors Graphviz lib/ structure)
 │   │
-│   ├── dot/                  # DOT parser + hierarchical layout engine
-│   │   ├── dot_reader.py     # Public API: read_dot(), read_dot_file()
-│   │   ├── dot_visitor.py    # ANTLR4 parse tree visitor → Graph objects
-│   │   ├── dot_layout.py     # 4-phase hierarchical layout algorithm
-│   │   ├── svg_renderer.py   # SVG output renderer
-│   │   ├── dot_wizard.py     # Interactive PyQt6 layout wizard
-│   │   ├── DOTLexer.g4       # ANTLR4 lexer grammar
-│   │   ├── DOTParser.g4      # ANTLR4 parser grammar
-│   │   ├── build_grammar.bat # ANTLR4 regeneration script
-│   │   └── generated/        # Auto-generated lexer, parser, visitor
+│   ├── cgraph/                   # Core graph library (port of lib/cgraph)
+│   │   ├── __init__.py           #   exports Graph, Node, Edge, Agdesc, etc.
+│   │   ├── graph.py              #   Graph class (~200 methods: CRUD, traversal,
+│   │   │                         #     subgraphs, callbacks, attributes, algorithms)
+│   │   ├── node.py               #   Node, CompoundNode, compound node functions
+│   │   ├── edge.py               #   Edge with half-edge pairs, DOT properties
+│   │   ├── headers.py            #   Agclos, Agdesc, AgIdDisc, callback system
+│   │   ├── defines.py            #   ObjectType, EdgeType, GraphEvent enums
+│   │   ├── agobj.py              #   Agobj base class, Agrec record management
+│   │   ├── error.py              #   Agerrlevel, agerr(), ColorHandler logging
+│   │   └── graph_print.py        #   ascii_print_graph() debug utility
 │   │
-│   ├── circo/                # Circular layout engine (future)
-│   ├── fdp/                  # Force-directed layout (future)
-│   ├── neato/                # Spring-model layout (future)
-│   ├── sfdp/                 # Multiscale force-directed (future)
-│   └── twopi/                # Radial layout (future)
+│   ├── dot/                      # DOT parser + hierarchical layout engine
+│   │   ├── __init__.py           #   exports read_dot, DotLayout, render_svg
+│   │   ├── dot_reader.py         #   read_dot(), read_dot_file(), read_dot_all()
+│   │   ├── dot_visitor.py        #   ANTLR4 parse tree → Graph objects
+│   │   ├── dot_layout.py         #   4-phase Sugiyama layout (~2200 lines)
+│   │   ├── svg_renderer.py       #   SVG output (shapes, arrows, colors, fonts)
+│   │   ├── dot_wizard.py         #   PyQt6 interactive 3-pane wizard
+│   │   ├── DOTLexer.g4           #   ANTLR4 lexer grammar
+│   │   ├── DOTParser.g4          #   ANTLR4 parser grammar
+│   │   ├── build_grammar.bat     #   ANTLR4 regeneration script
+│   │   └── generated/            #   Auto-generated DOTLexer.py, DOTParser.py,
+│   │       └── ...               #     DOTParserVisitor.py, tokens, interp files
+│   │
+│   ├── circo/                    # Circular layout (future)
+│   ├── fdp/                      # Force-directed placement (future)
+│   ├── neato/                    # Spring-model layout (future)
+│   ├── sfdp/                     # Multiscale force-directed (future)
+│   └── twopi/                    # Radial layout (future)
 │
-├── lib/                      # Original C-to-Python translation (reference only)
+├── test_data/                    # 130 DOT test files
+│   ├── example1.gv               #   Simple undirected graph (5 nodes)
+│   ├── world.gv                  #   Directed graph with rank constraints
+│   ├── trigraph_test.dot         #   Component diagram with labels
+│   └── *.dot                     #   127 files from Graphviz test suite
 │
-├── test_data/                # DOT test files (127 files from Graphviz test suite)
-│   ├── example1.gv           # Simple undirected graph
-│   ├── world.gv              # Complex directed graph with rank constraints
-│   └── *.dot                 # Graphviz test cases
+├── tests/                        # pytest test suite (447 tests)
+│   ├── test_cgraph_api.py        #   Node/Edge properties, Pythonic API (76 tests)
+│   ├── test_node_operations.py   #   Node CRUD, compound, splice, flatten (31 tests)
+│   ├── test_edge_operations.py   #   Edge CRUD, traversal, flatten (14 tests)
+│   ├── test_subgraph_operations.py # Subgraph CRUD, iteration, deletion (12 tests)
+│   ├── test_callbacks.py         #   Callback registration, invocation (20 tests)
+│   ├── test_graph_core.py        #   Graph init, attrs, records, algorithms (35 tests)
+│   ├── test_compound_nodes.py    #   Hide, expose, compound creation (8 tests)
+│   ├── test_dot_parser.py        #   DOT parser syntax coverage (44 tests)
+│   ├── test_dot_layout.py        #   Layout engine + all attributes (150+ tests)
+│   └── test_svg_renderer.py      #   SVG output rendering (18 tests)
 │
-└── tests/                    # Test suite (pytest)
-    ├── test_dot_parser.py    # DOT parser tests (44 tests)
-    ├── test_dot_layout.py    # Layout engine tests (150+ tests)
-    ├── test_svg_renderer.py  # SVG renderer tests (18 tests)
-    └── test_*.py             # Graph library tests (100+ tests)
+├── lib/                          # Original C-to-Python translation (reference only)
+│
+├── TODO_dot_layout.md            # Layout engine completion status
+└── TODO_main_gui.md              # MainGraphvisPy refactoring plan
 ```
 
 ## DOT Parser
@@ -260,9 +276,148 @@ The `lib/` directory contains a literal C-to-Python translation for reference. T
 | DOT parser | 44 | All pass |
 | Layout engine | 150+ | All pass |
 | SVG renderer | 18 | All pass |
-| Graph library | 100+ | 23 pre-existing failures (hide/expose) |
-| Test file validation | 122/128 | 6 parse errors (malformed content) |
+| cgraph API | 100+ | All pass |
 | Attribute coverage | 101/101 | All tested |
+| Test file validation | 122/128 | 6 parse errors (malformed content) |
+
+## C cgraph API Reference
+
+For developers migrating from the C Graphviz library, this table maps every public `cgraph` function to its Python equivalent.
+
+### Graph Creation & Properties
+
+| C Function | Python Method | Python Alias | Notes |
+|---|---|---|---|
+| `agopen(name, desc, disc)` | `Graph(name, directed, strict)` | `Graph.agopen()` | Constructor |
+| `agclose(g)` | `graph.close()` | `graph.agclose()` | |
+| `agread(chan, disc)` | — | `graph.agread()` | Use `pycode.dot.read_dot()` |
+| `agwrite(g, chan)` | — | `graph.agwrite()` | Use DOT serialization |
+| `agmemread(cp)` | — | `graph.agmemread()` | Use `pycode.dot.read_dot()` |
+| `agisdirected(g)` | `graph.directed` | `graph.agisdirected()` | Property |
+| `agisundirected(g)` | `not graph.directed` | `graph.agisundirected()` | |
+| `agisstrict(g)` | `graph.strict` | `graph.agisstrict()` | Property |
+
+### Node Operations
+
+| C Function | Python Method | Python Alias | Notes |
+|---|---|---|---|
+| `agnode(g, name, cflag)` | `graph.add_node(name)` | `graph.agnode()` | |
+| `agidnode(g, id, cflag)` | `graph.create_node_by_id(id)` | `graph.agidnode()` | |
+| `agdelnode(g, n)` | `graph.delete_node(n)` | | |
+| `agfstnode(g)` | `graph.first_node()` | `graph.agfstnode()` | |
+| `agnxtnode(g, n)` | `graph.next_node(n)` | `graph.agnxtnode()` | |
+| `aglstnode(g)` | `graph.last_node()` | `graph.aglstnode()` | |
+| `agprvnode(g, n)` | `graph.previous_node(n)` | `graph.agprvnode()` | |
+| `agrelabel_node(n, name)` | `graph.relabel_node(n, name)` | | |
+| `agsubnode(g, n, cflag)` | `graph.add_subgraph_node(...)` | `graph.agsubnode()` | |
+
+### Edge Operations
+
+| C Function | Python Method | Python Alias | Notes |
+|---|---|---|---|
+| `agedge(g, t, h, name, cflag)` | `graph.add_edge(t, h, name)` | `graph.agedge()` | |
+| `agdeledge(g, e)` | `graph.delete_edge(e)` | | |
+| `agfstout(g, n)` | `graph.first_out_edge(n)` | `graph.agfstout()` | |
+| `agnxtout(g, e)` | `graph.next_out_edge(e)` | `graph.agnxtout()` | |
+| `agfstin(g, n)` | `graph.first_in_edge(n)` | `graph.agfstin()` | |
+| `agnxtin(g, e)` | `graph.next_in_edge(e)` | `graph.agnxtin()` | |
+| `agfstedge(g, n)` | `graph.first_edge(n)` | `graph.agfstedge()` | |
+| `agnxtedge(g, e, n)` | `graph.next_edge(e, n)` | `graph.agnxtedge()` | |
+
+### Subgraph Operations
+
+| C Function | Python Method | Python Alias | Notes |
+|---|---|---|---|
+| `agsubg(g, name, cflag)` | `graph.create_subgraph(name)` | `graph.agsubg()` | |
+| `agidsubg(g, id)` | `graph.agidsubg(id)` | | |
+| `agfstsubg(g)` | `graph.agfstsubg()` | | |
+| `agnxtsubg(subg)` | `graph.agnxtsubg(subg)` | | |
+| `agparent(g)` | `graph.agparent()` | | |
+| `agdelsubg(g, sub)` | `graph.agdelsubg(sub)` | | |
+
+### Attribute Operations
+
+| C Function | Python Method | Notes |
+|---|---|---|
+| `agattr(g, kind, name, value)` | `graph.agattr(kind, name, value)` | Declare attribute |
+| `agget(obj, name)` | `obj.get_attr(name)` or `obj.agget(name)` | |
+| `agset(obj, name, value)` | `obj.set_attr(name, value)` or `obj.agset(name, value)` | |
+| `agsafeset(obj, name, val, def)` | `obj.agsafeset(name, val, def)` | Auto-declare |
+| `agcopyattr(src, dst)` | `graph.agcopyattr(src, dst)` | Copy all attrs |
+| `agattrsym(obj, name)` | `graph.agattrsym(obj, name)` | |
+
+### Record Operations
+
+| C Function | Python Method | Notes |
+|---|---|---|
+| `agbindrec(obj, name, size, mtf)` | `obj.agbindrec(name, size, mtf)` | Inherited from Agobj |
+| `aggetrec(obj, name, mtf)` | `obj.aggetrec(name, mtf)` | |
+| `agdelrec(obj, name)` | `obj.agdelrec(name)` | |
+| `aginit(g, kind, name, size, mtf)` | `graph.aginit(kind, name, size, mtf)` | Bulk bind |
+| `agclean(g, kind, name)` | `graph.agclean(kind, name)` | Bulk delete |
+
+### Cardinality & Degree
+
+| C Function | Python Method | Python Alias | Notes |
+|---|---|---|---|
+| `agnnodes(g)` | `len(graph.nodes)` | `graph.agnnodes()` | |
+| `agnedges(g)` | `len(graph.edges)` | `graph.agnedges()` | |
+| `agnsubg(g)` | `len(graph.subgraphs)` | `graph.agnsubg()` | |
+| `agdegree(g, n, in, out)` | `graph.degree(n, in_, out)` | `graph.agdegree()` | |
+| `agcountuniqedges(g, n, in, out)` | `graph.count_unique_edges(n)` | `graph.agcountuniqedges()` | |
+
+### Graph Algorithms
+
+| C Function | Python Method | Notes |
+|---|---|---|
+| `graphviz_acyclic(g)` | `graph.acyclic()` | Break cycles via DFS edge reversal |
+| `graphviz_tred(g)` | `graph.tred()` | Remove transitively implied edges |
+| `graphviz_unflatten(g)` | `graph.unflatten(max_min_len, chain_limit, do_fans)` | Improve aspect ratio |
+| `graphviz_node_induce(g)` | `graph.node_induce()` | Induce edges in subgraph |
+
+### Node Properties (Python-only convenience)
+
+| Property | Type | Default | Read/Write |
+|---|---|---|---|
+| `node.label` | str | node name | R/W |
+| `node.shape` | str | "ellipse" | R/W |
+| `node.color` | str | "black" | R/W |
+| `node.fillcolor` | str | "" | R/W |
+| `node.style` | str | "" | R/W |
+| `node.fontsize` | str | "14" | R/W |
+| `node.fontname` | str | "Times-Roman" | R/W |
+| `node.fontcolor` | str | "black" | R/W |
+| `node.group` | str | "" | R/W |
+| `node.fixedsize` | bool | False | R/W |
+| `node.pos` | str | None | R/W |
+| `node.pin` | bool | False | R/W |
+| `node.xlabel` | str | "" | R/W |
+| `node.width` | str | None | R/W |
+| `node.height` | str | None | R/W |
+| `node.degree_centrality` | float | — | Read-only |
+| `node.betweenness_centrality` | float | — | Read-only |
+| `node.closeness_centrality` | float | — | Read-only |
+| `node.root_graph` | Graph | — | Read-only |
+
+### Edge Properties (Python-only convenience)
+
+| Property | Type | Default | Read/Write |
+|---|---|---|---|
+| `edge.label` | str | "" | R/W |
+| `edge.color` | str | "black" | R/W |
+| `edge.style` | str | "" | R/W |
+| `edge.penwidth` | str | "1" | R/W |
+| `edge.arrowhead` | str | "normal" | R/W |
+| `edge.arrowtail` | str | "normal" | R/W |
+| `edge.dir` | str | "forward" | R/W |
+| `edge.weight_attr` | int | 1 | R/W |
+| `edge.minlen` | int | 1 | R/W |
+| `edge.constraint` | bool | True | R/W |
+| `edge.headport` | str | "" | R/W |
+| `edge.tailport` | str | "" | R/W |
+| `edge.lhead` | str | "" | R/W |
+| `edge.ltail` | str | "" | R/W |
+| `edge.root_graph` | Graph | — | Read-only |
 
 ## Related Projects
 

@@ -48,8 +48,7 @@ class Agobj:  # from cgraph/cgraph.c
         self._records[rec_name] = record
 
         if move_to_front:
-            # Move to front logic can be handled if needed
-            pass
+            pass  # Move-to-front: not needed in Python (dict is O(1) lookup)
 
         _logger.debug("[Agobj] Record '%s' bound to %s with mtf=%s.", rec_name, self.obj_type, move_to_front)
         return record
@@ -66,8 +65,7 @@ class Agobj:  # from cgraph/cgraph.c
 
         if record:
             if move_to_front and not self._mtflock:
-                # Implement move-to-front logic if records are ordered
-                pass
+                pass  # Move-to-front: not needed in Python (dict is O(1) lookup)
             return record
         else:
             _logger.debug("[Agobj] Record '%s' not found in %s.", rec_name, self.obj_type)

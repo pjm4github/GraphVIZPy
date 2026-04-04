@@ -391,36 +391,23 @@ class Agclos:  # from /cgraph/enclosed_node.c, /cgraph/cgraph.h
     # -------- Control Methods --------
 
     def enable_callbacks(self):
-        """
-        Enables the execution of callbacks and invokes 'initialize' callbacks.
-        """
+        """Enable callbacks and invoke any pending 'initialize' callbacks."""
         with self.lock:
             self.callbacks_enabled = True
             agerr(Agerrlevel.AGINFO, "[Agclos] Callbacks have been enabled.")
-
-        with self.lock:
-            self.callbacks_enabled = True
-            agerr(Agerrlevel.AGINFO, "[Agclos] Callbacks have been enabled.")
-            # Invoke 'initialize' callbacks upon enabling
             if GraphEvent.INITIALIZE in self.callbacks:
                 for callback in self.callbacks[GraphEvent.INITIALIZE]:
                     try:
                         callback()
                     except Exception as e:
                         agerr(Agerrlevel.AGINFO, f"[Agclos] Error in 'initialize' callback: {e}")
-                # Clear 'initialize' callbacks after invoking
                 self.callbacks[GraphEvent.INITIALIZE].clear()
 
-
     def disable_callbacks(self):
-        """
-        Disables the execution of callbacks.
-        """
+        """Disable callback execution."""
         with self.lock:
             self.callbacks_enabled = False
             agerr(Agerrlevel.AGINFO, "[Agclos] Callbacks have been disabled.")
-
-
 
     def get_next_sequence(self, ot: ObjectType) -> int:
         """

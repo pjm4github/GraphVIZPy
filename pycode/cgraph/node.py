@@ -1,6 +1,14 @@
+"""
+Node and CompoundNode classes for the cgraph package.
+
+Provides Node (graph vertex with attributes, adjacency, compound node support)
+and CompoundNode (metadata for nodes that contain subgraphs).
+"""
 import logging
 from collections import deque
+from dataclasses import dataclass, field
 from typing import List, Dict, Optional, TYPE_CHECKING, Tuple, Any
+
 if TYPE_CHECKING:
     from .headers import *
     from .error import *
@@ -9,97 +17,38 @@ if TYPE_CHECKING:
 
 from .agobj import Agobj
 from .defines import ObjectType
-
-_logger = logging.getLogger(__name__)
 from .error import agerr, Agerrlevel
 
-# Forward declarations: these imports are only for type checking.
+_logger = logging.getLogger(__name__)
 
 
-class CompoundNode:   # from /cgraph/cmpnd.c  (compound node functions)
-    """
-    Pythonic version of 'Agcmpnode_t':
-    Encapsulates comparison-related data for a node.
-      - subg: A reference to the subgraph
-      - collapsed: whether we've 'hidden' it
+@dataclass
+class CompoundNode:
+    """Metadata for a compound node (one that contains a subgraph)."""
+    is_compound: bool = False
+    subgraph: Optional['Graph'] = None
+    collapsed: bool = False
+    degree: int = 0
+    centrality: float = 0.0
+    degree_centrality: float = 0.0
+    betweenness_centrality: float = 0.0
+    closeness_centrality: float = 0.0
+    degree_centrality_normalized: float = 0.0
+    rank: int = 0
+    cluster_id: Optional[int] = None
+    x: float = 0.0
+    y: float = 0.0
 
-    provides "compound nodes" on top of base Libgraph.
-    a compound node behaves as both an ordinary node and a subgraph.
-    there are additional primitives to "hide" and "expose" its contents.
-
-    Think of these as hypergraphs, but there is an asymmetry
-    in the operations we have chosen.  i.e. nodes "own" their edges,
-    but nodes and interior edges are "owned by" the hyperedges.
-    also the subgraphs are nested, etc. the bottom line is that graphs
-    and hypergraphs are just sets, everything else here is convenience
-    and maintaining consistency.
-
-    this package adds a primitive "agsplice" to move endpoints of edges.
-    this could be useful in other situations.
-    """
-    def __init__(self):
-        # Compound Node Attributes
-        self.is_compound: bool = False
-        self.subgraph: Optional['Graph'] = None  # Reference to the internal subgraph
-        self.collapsed = False
-
-        self.degree: int = 0  # Total number of connections (incoming + outgoing).
-        self.centrality: float = 0.0  # Measure of node importance within the enclosed_node.
-        self.degree_centrality: float = 0.0  # Measure of node importance within the enclosed_node.
-        self.betweenness_centrality: float = 0.0  # Measure of node importance within the enclosed_node.
-        self.closeness_centrality: float = 0.0  # Measure of node importance within the enclosed_node.
-        self.degree_centrality_normalized = 0.0
-        self.rank: int = 0  # Position in hierarchical layouts.
-        self.cluster_id: Optional[int] = None  # Identifier for node clustering.
-        # Add additional comparison metrics as needed
-
-        # Example of positional data
-        # x and y: Coordinates for node placement (useful for layout algorithms).
-        self.x: float = 0.0
-        self.y: float = 0.0
-
-    def update_degree(self, outedges: [int, List], inedges: [int, List]):
-        """
-        Updates the degree based on outgoing and incoming edges.
-
-        :param outedges: Number of outgoing edges.
-        :param inedges: Number of incoming edges.
-        """
-        num_outedges = len(outedges) if isinstance(outedges, list) else outedges
-        num_inedges = len(inedges) if isinstance(inedges, list) else inedges
-        self.degree = num_outedges + num_inedges
-
-    # def __repr__(self):
-    #     return (f"CompoundNode(degree={self.degree}, centrality={self.centrality}, "
-    #             f"rank={self.rank}, cluster_id={self.cluster_id}, "
-    #             f"is_compound={self.is_compound}, collapsed={self.collapsed})")
-
+    def update_degree(self, outedges, inedges):
+        """Update degree from edge counts or edge lists."""
+        n_out = len(outedges) if isinstance(outedges, list) else outedges
+        n_in = len(inedges) if isinstance(inedges, list) else inedges
+        self.degree = n_out + n_in
 
     def __repr__(self):
-        def safe_repr(val):
-            from .graph import Graph
-            # For Graph or Node objects, return a short summary.
-            if isinstance(val, Graph):
-                return f"<Graph {val.name}>"
-            elif isinstance(val, Node):
-                return f"<Node {val.name}>"
-            else:
-                return repr(val)
-
-        # Gather all attributes from the instance.
-        base_attrs = {}
-        for attr, value in self.__dict__.items():
-            base_attrs[attr] = safe_repr(value)
-
-        # Build a multi-line string with each attribute on its own indented line.
-        base_attrs_str = "\n".join(f"    {k}: {v}" for k, v in base_attrs.items())
-
-        return f"<CompoundNode:\n{base_attrs_str}\n>"
-
-
-# 4. Key Compound-Graph Functions
-# Below we define minimal Python versions of the major compound-node methods from your code:
-#
+        subg = f"<Graph {self.subgraph.name}>" if self.subgraph else "None"
+        return (f"<CompoundNode compound={self.is_compound}, collapsed={self.collapsed}, "
+                f"degree={self.degree}, subgraph={subg}>")
 
 def agcmpnode(g: 'Graph', name: str) -> Optional['Node']:  # from /cgraph/cmpnd.c
     """
@@ -348,11 +297,157 @@ class Node(Agobj):   # from cgraph/cgraph.c
         self.subgraph: Optional['Graph'] = None  # Reference to the subgraph if collapsed
         self.saved_connections: List[Tuple['Node', 'Edge']] = []  # Stores (other_node, edge) tuples
 
+    # ── DOT attribute properties ──────────────────
+    # Convenience accessors for commonly-used DOT attributes.
+    # All read/write through self.attributes dict.
+
+    @property
+    def label(self) -> str:
+        return self.attributes.get("label", self.name)
+
+    @label.setter
+    def label(self, value: str):
+        self.attributes["label"] = value
+
+    @property
+    def shape(self) -> str:
+        return self.attributes.get("shape", "ellipse")
+
+    @shape.setter
+    def shape(self, value: str):
+        self.attributes["shape"] = value
+
+    @property
+    def width(self) -> Optional[str]:
+        return self.attributes.get("width")
+
+    @width.setter
+    def width(self, value: str):
+        self.attributes["width"] = value
+
+    @property
+    def height(self) -> Optional[str]:
+        return self.attributes.get("height")
+
+    @height.setter
+    def height(self, value: str):
+        self.attributes["height"] = value
+
+    @property
+    def color(self) -> str:
+        return self.attributes.get("color", "black")
+
+    @color.setter
+    def color(self, value: str):
+        self.attributes["color"] = value
+
+    @property
+    def fillcolor(self) -> str:
+        return self.attributes.get("fillcolor", "")
+
+    @fillcolor.setter
+    def fillcolor(self, value: str):
+        self.attributes["fillcolor"] = value
+
+    @property
+    def style(self) -> str:
+        return self.attributes.get("style", "")
+
+    @style.setter
+    def style(self, value: str):
+        self.attributes["style"] = value
+
+    @property
+    def fontsize(self) -> str:
+        return self.attributes.get("fontsize", "14")
+
+    @fontsize.setter
+    def fontsize(self, value: str):
+        self.attributes["fontsize"] = value
+
+    @property
+    def fontname(self) -> str:
+        return self.attributes.get("fontname", "Times-Roman")
+
+    @fontname.setter
+    def fontname(self, value: str):
+        self.attributes["fontname"] = value
+
+    @property
+    def fontcolor(self) -> str:
+        return self.attributes.get("fontcolor", "black")
+
+    @fontcolor.setter
+    def fontcolor(self, value: str):
+        self.attributes["fontcolor"] = value
+
+    @property
+    def group(self) -> str:
+        return self.attributes.get("group", "")
+
+    @group.setter
+    def group(self, value: str):
+        self.attributes["group"] = value
+
+    @property
+    def fixedsize(self) -> bool:
+        return self.attributes.get("fixedsize", "false").lower() in ("true", "1", "yes")
+
+    @fixedsize.setter
+    def fixedsize(self, value: bool):
+        self.attributes["fixedsize"] = "true" if value else "false"
+
+    @property
+    def pos(self) -> Optional[str]:
+        return self.attributes.get("pos")
+
+    @pos.setter
+    def pos(self, value: str):
+        self.attributes["pos"] = value
+
+    @property
+    def pin(self) -> bool:
+        return self.attributes.get("pin", "false").lower() in ("true", "1", "yes")
+
+    @pin.setter
+    def pin(self, value: bool):
+        self.attributes["pin"] = "true" if value else "false"
+
+    @property
+    def xlabel(self) -> str:
+        return self.attributes.get("xlabel", "")
+
+    @xlabel.setter
+    def xlabel(self, value: str):
+        self.attributes["xlabel"] = value
+
+    # ── Centrality properties ────────────────────
+
+    @property
+    def degree_centrality(self) -> float:
+        return self.compound_node_data.degree_centrality
+
+    @property
+    def betweenness_centrality(self) -> float:
+        return self.compound_node_data.betweenness_centrality
+
+    @property
+    def closeness_centrality(self) -> float:
+        return self.compound_node_data.closeness_centrality
+
+    @property
+    def root_graph(self):
+        """Return the root graph of this node."""
+        root = self.parent
+        if root:
+            while getattr(root, 'enclosed_node', None):
+                root = root.parent
+            return root
+        return None
+
+    # ── Initialization ───────────────────────────
+
     def agedgeattr_init(self):
-        """
-        Make sure we allocate space & defaults for each declared Node attribute.
-        Similar to 'agnodeattr_init'.
-        """
         self.init_local_attr_values()
 
     def init_local_attr_values(self):
@@ -371,13 +466,8 @@ class Node(Agobj):   # from cgraph/cgraph.c
                     self.attributes[attr_name] = default_value
 
     def get_root_graph(self):
-        root = self.parent
-        if root:
-            while getattr(root, 'enclosed_node', None):  # climb to root
-                root = root.parent
-            return root
-        else:
-            return None
+        """Backward-compatible alias for root_graph property."""
+        return self.root_graph
 
     def root_attr_dict(self):
         """Return the dictionary of node attributes from the *root* enclosed_node."""
@@ -400,41 +490,29 @@ class Node(Agobj):   # from cgraph/cgraph.c
             self.attributes[attr_name] = default_value
             return default_value  # might be None if never declared
 
-    def agget(self, name:str):  # from /cgraph/attr.c
-        """
-        Pythonic version of 'agget(obj, name)':
-        Return the string value of the attribute named 'name' for obj.
-        Return None if attribute does not exist.
-        """
+    def get_attr(self, name: str) -> Optional[str]:
+        """Get an attribute value by name, falling back to root defaults."""
         return self.get_node_attr(name)
 
-    def set_node_attr(self, attr_name: str, value: str):
-        """
-        Sets node's local override for attr_name. Does NOT change the root default.
-        """
-        self.attributes[attr_name] = value
-
-    def agset(self, name, value):  # from /cgraph/attr.c
-        """
-        Pythonic version of 'agset(obj, name, value)':
-        Set the attribute named 'name' for 'obj' to 'value'.
-        Return SUCCESS/FAILURE.
-        """
+    def set_attr(self, name: str, value: str):
+        """Set an attribute value."""
         self.set_node_attr(name, value)
 
-    def agsafeset(self, name, value, default):  # from /cgraph/attr.c
-        """
-        Pythonic version of 'agsafeset(obj, name, value, def)':
-        If 'name' attribute doesn't exist, define it with 'default' at the root enclosed_node.
-        Then set it to 'value'.
-        """
-        if name in self.attributes:
-            self.attributes[name] = value
-        else:
-            self.attributes[name] = value
-            # Declare a new attribute with default
+    # C API aliases
+    agget = get_attr
+    agset = set_attr
+
+    def set_node_attr(self, attr_name: str, value: str):
+        """Sets node's local override for attr_name."""
+        self.attributes[attr_name] = value
+
+    def agsafeset(self, name, value, default):
+        """Set attribute, declaring with default if it doesn't exist."""
+        self.attributes[name] = value
+        if name not in self.attributes:
             root = self.get_root_graph()
-            root.set_graph_attr(name, default)
+            if root:
+                root.set_graph_attr(name, default)
 
     def flatten_edges(self, to_list: bool):
         """
@@ -555,7 +633,7 @@ class Node(Agobj):   # from cgraph/cgraph.c
 
         return subgraph
 
-    def hide_contents(self):  # TODO This needs to be cleaned up, requires more than a just setting the collapsed flag.
+    def hide_contents(self):
         """
         Hides the contents of the compound node, effectively hiding its subgraph.
 
@@ -690,105 +768,27 @@ class Node(Agobj):   # from cgraph/cgraph.c
                 closeness = 0.0
             node.set_compound_data("closeness_centrality", closeness)
 
+    # Backward-compatible aliases for centrality (now properties above)
     def get_degree_centrality(self) -> float:
-        """
-        Retrieves the degree centrality of the node.
-
-        :return: Degree centrality value.
-        """
-        return self.compound_node_data.degree_centrality
+        return self.degree_centrality
 
     def get_betweenness_centrality(self) -> float:
-        """
-        Retrieves the betweenness centrality of the node.
-
-        :return: Betweenness centrality value.
-        """
-        return self.compound_node_data.betweenness_centrality
+        return self.betweenness_centrality
 
     def get_closeness_centrality(self) -> float:
-        """
-        Retrieves the closeness centrality of the node.
+        return self.closeness_centrality
 
-        :return: Closeness centrality value.
-        """
-        return self.compound_node_data.closeness_centrality
-
-    def expose_contents(self): # TODO needs more than just setting teh collapsed flag.
-        """
-        Exposes the contents of the compound node, making its subgraph visible.
-
-        :raises ValueError: If the node is not a compound node.
-        """
+    def expose_contents(self):
+        """Expose the contents of a compound node (set collapsed=False)."""
         if not self.compound_node_data.is_compound:
             raise ValueError(f"Node '{self.name}' is not a compound node.")
-
         self.compound_node_data.collapsed = False
-    #
-    # def __repr__(self):
-    #     degree = "Not Set"
-    #     centrality = "Not Set"
-    #
-    #     cnd = getattr(self, 'compound_node_data', None)
-    #     if cnd:
-    #         degree = getattr(cnd, 'degree', degree)
-    #         centrality = getattr(cnd, 'centrality', centrality)
-    #
-    #     return (f"Node(name={self.name}, id={self.id}, seq={self.seq}, "
-    #             f"degree={degree}, centrality={centrality}, "
-    #             f"attributes={self.attributes})")
 
     def __repr__(self):
-        def safe_repr(val):
-            from .graph import Graph
-            from .edge import Edge
-            if isinstance(val, Graph):
-                return f"<Graph {val.name}>"
-            elif isinstance(val, Node):
-                return f"<Node {val.name}>"
-            elif isinstance(val, Edge):
-                return f"<Edge {val.name}>"
-            else:
-                return repr(val)
-
-        # Collect base attributes except the ones we want to summarize separately.
-        # For example, we'll handle 'attributes', 'outedges', 'inedges', and 'saved_connections' later.
-        base_attrs = {}
-        for attr, value in self.__dict__.items():
-            if attr in ["attributes", "outedges", "inedges", "saved_connections"]:
-                continue
-            if attr == "compound_node_data":
-                # Get its safe representation and indent each line by four spaces.
-                compound_repr = safe_repr(value)
-                compound_repr_indented = "\n".join("    " + line for line in compound_repr.splitlines())
-                base_attrs[attr] = compound_repr_indented
-            else:
-                base_attrs[attr] = safe_repr(value)
-        # Build a string for the base attributes, one per line.
-        base_attrs_str = "\n".join(f"    {k}: {v}" for k, v in base_attrs.items())
-
-        # Summarize the attribute's dictionary.
-        if self.attributes:
-            attr_summary = "\n        ".join(f"{k}: {v}" for k, v in self.attributes.items())
-        else:
-            attr_summary = "None"
-
-        # Summarize outedges and inedges by listing the names of the connected edges.
-        outedges_summary = [edge.name for edge in self.outedges] if self.outedges else []
-        inedges_summary = [edge.name for edge in self.inedges] if self.inedges else []
-
-        # Summarize saved connections as tuples of (other_node_name, edge_name)
-        saved_conn_summary = [(node.name, edge.name) for node, edge in
-                              self.saved_connections] if self.saved_connections else []
-
-        return (
-            f"<Node {self.name}:\n"
-            f"  Base Attributes:\n{base_attrs_str}\n"
-            f"  Attributes dict:\n        {attr_summary}\n"
-            f"  Outedges ({len(outedges_summary)}): {outedges_summary}\n"
-            f"  Inedges ({len(inedges_summary)}): {inedges_summary}\n"
-            f"  Saved Connections ({len(saved_conn_summary)}): {saved_conn_summary}\n>"
-        )
+        n_out = len(self.outedges)
+        n_in = len(self.inedges)
+        compound = " compound" if self.compound_node_data.is_compound else ""
+        return f"<Node {self.name}, out={n_out}, in={n_in}{compound}>"
 
     def agflatten_elist(self, outedge=True, to_list=True):  # from cgraph/flatten.c
         """
