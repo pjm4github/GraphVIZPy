@@ -1,0 +1,13 @@
+
+digraph G {
+    rankdir=LR;
+    node [shape=box];
+
+    A [label="Component A"];
+    B [label="Component B"];
+    C [label="Component C"];
+
+    A -> B [label="calls"];
+    B -> C [label="publishes"];
+    A -> C [label="reads"];
+}

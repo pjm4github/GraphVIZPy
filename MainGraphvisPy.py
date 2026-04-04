@@ -1,30 +1,57 @@
-# Version 1.7.4
+# Version 1.7.12
 
 import sys
 import os
 import json
 import uuid
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene,
     QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPolygonItem, QGraphicsLineItem,
     QDialog, QVBoxLayout, QFormLayout, QPushButton, QComboBox, QCheckBox, QSpinBox,
-    QToolBar, QAction, QActionGroup, QFileDialog, QMessageBox, QColorDialog, QToolButton, QWidgetAction,
+    QToolBar, QFileDialog, QMessageBox, QColorDialog, QToolButton, QWidgetAction,
     QDialogButtonBox, QMenu, QGraphicsItemGroup
 )
-from PyQt5.QtCore import Qt, QPointF, QRectF, QLineF, QEvent
-from PyQt5.QtGui import QPen, QBrush, QCursor, QPainter, QPixmap, QIcon, QPolygonF, QColor
+from PyQt6.QtCore import Qt, QPointF, QRectF, QLineF, QEvent
+from PyQt6.QtGui import QPen, QBrush, QCursor, QPainter, QPixmap, QIcon, QPolygonF, QColor, QPaintEvent, QAction, QActionGroup
 
 
 def gen_uuid():
     return uuid.uuid4().hex[:8]
 
 
-# --- GraphicsView: Supports zooming, centering, and improved rendering ---
+# --- SnapFilter ---
+# This filter will intercept mouse release events for items and snap them to grid.
+from PyQt6.QtWidgets import QGraphicsObject
+
+
+class SnapFilter(QGraphicsObject):
+    def __init__(self, parentScene):
+        super().__init__()
+        self._scene = parentScene
+
+    def boundingRect(self):
+        return QRectF()  # Not used.
+
+    def paint(self, painter, option, widget):
+        pass  # No drawing.
+
+    def sceneEventFilter(self, watched, event):
+        if event.type() == QEvent.Type.GraphicsSceneMouseRelease:
+            # Snap the watched item if it is a NodeItem or IOConnectorItem.
+            if isinstance(watched, (NodeItem, IOConnectorItem)):
+                pos = watched.pos()
+                snap = self._scene.snap_size
+                snapped_pos = QPointF(round(pos.x() / snap) * snap, round(pos.y() / snap) * snap)
+                watched.setPos(snapped_pos)
+        return False
+
+
+# --- GraphicsView ---
 class GraphicsView(QGraphicsView):
     def __init__(self, scene, parent=None):
         super().__init__(scene, parent)
-        self.setRenderHint(QPainter.Antialiasing, True)
-        self.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        self.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
 
     def wheelEvent(self, event):
         if event.angleDelta().y() > 0:
@@ -37,105 +64,78 @@ class GraphicsView(QGraphicsView):
             self.centerOn(selected_items[0].sceneBoundingRect().center())
 
 
-# --- ConnectorItem: Child connectors that stick to parent's edges ---
+# --- ConnectorItem ---
 class ConnectorItem(QGraphicsEllipseItem):
-    def __init__(self, rect, parent=None, color=Qt.red):
+    def __init__(self, rect, parent=None, color=Qt.GlobalColor.red):
         super().__init__(rect, parent)
         self.setBrush(QBrush(color))
         self.edges = []
-        self.setFlags(QGraphicsEllipseItem.ItemIsMovable |
-                      QGraphicsEllipseItem.ItemIsSelectable |
-                      QGraphicsEllipseItem.ItemSendsScenePositionChanges)
+        # Snapping will be handled by the event filter.
+        self.setFlags(QGraphicsEllipseItem.GraphicsItemFlag.ItemIsMovable |
+                      QGraphicsEllipseItem.GraphicsItemFlag.ItemIsSelectable |
+                      QGraphicsEllipseItem.GraphicsItemFlag.ItemSendsScenePositionChanges)
         self.my_id = None
 
     def add_edge(self, edge):
         self.edges.append(edge)
 
     def itemChange(self, change, value):
-        if change == QGraphicsEllipseItem.ItemPositionChange:
-            new_pos = value  # in parent's coordinates
-            parent = self.parentItem()
-            if parent:
-                rect = parent.boundingRect()
-                x, y = new_pos.x(), new_pos.y()
-                left, right, top, bottom = rect.left(), rect.right(), rect.top(), rect.bottom()
-                d_left = abs(x - left)
-                d_right = abs(right - x)
-                d_top = abs(y - top)
-                d_bottom = abs(bottom - y)
-                d_min = min(d_left, d_right, d_top, d_bottom)
-                if d_min == d_left:
-                    x = left
-                elif d_min == d_right:
-                    x = right
-                elif d_min == d_top:
-                    y = top
-                elif d_min == d_bottom:
-                    y = bottom
-                new_pos = QPointF(x, y)
-            return new_pos
-        if change == QGraphicsEllipseItem.ItemScenePositionHasChanged:
+        if change == QGraphicsEllipseItem.GraphicsItemChange.ItemScenePositionHasChanged:
             for edge in self.edges:
                 edge.updatePosition()
         return super().itemChange(change, value)
 
 
-# --- IOConnectorItem: Top-level connector (diamond) ---
+# --- IOConnectorItem ---
 class IOConnectorItem(QGraphicsPolygonItem):
-    def __init__(self, parent=None, color=Qt.magenta):
+    def __init__(self, parent=None, color=Qt.GlobalColor.magenta):
         polygon = QPolygonF([QPointF(0, -8), QPointF(8, 0), QPointF(0, 8), QPointF(-8, 0)])
         super().__init__(polygon, parent)
         self.setBrush(QBrush(color))
-        self.setPen(QPen(Qt.black, 2))
+        self.setPen(QPen(Qt.GlobalColor.black, 2))
         self.edges = []
-        self.setFlags(QGraphicsPolygonItem.ItemIsMovable |
-                      QGraphicsPolygonItem.ItemIsSelectable |
-                      QGraphicsPolygonItem.ItemSendsScenePositionChanges)
+        self.setFlags(QGraphicsPolygonItem.GraphicsItemFlag.ItemIsMovable |
+                      QGraphicsPolygonItem.GraphicsItemFlag.ItemIsSelectable |
+                      QGraphicsPolygonItem.GraphicsItemFlag.ItemSendsScenePositionChanges)
         self.my_id = None
 
     def add_edge(self, edge):
         self.edges.append(edge)
 
     def itemChange(self, change, value):
-        if change == QGraphicsPolygonItem.ItemScenePositionHasChanged:
+        if change == QGraphicsPolygonItem.GraphicsItemChange.ItemScenePositionHasChanged:
             for edge in self.edges:
                 edge.updatePosition()
         return super().itemChange(change, value)
 
 
-# --- NodeItem: Top-level node; snapping handled via itemChange() ---
+# --- NodeItem ---
 class NodeItem(QGraphicsRectItem):
     def __init__(self, rect, parent=None):
         super().__init__(rect, parent)
-        self.setFlags(QGraphicsRectItem.ItemIsMovable |
-                      QGraphicsRectItem.ItemIsSelectable |
-                      QGraphicsRectItem.ItemSendsScenePositionChanges)
+        self.setFlags(QGraphicsRectItem.GraphicsItemFlag.ItemIsMovable |
+                      QGraphicsRectItem.GraphicsItemFlag.ItemIsSelectable)
         self.connectors = []
         self.my_id = None
 
     def add_connector(self, pos):
-        color = self.scene().input_connector_color if self.scene() else Qt.red
+        color = self.scene().input_connector_color if self.scene() else Qt.GlobalColor.red
         radius = 5
         connector = ConnectorItem(QRectF(-radius, -radius, radius * 2, radius * 2), self, color=color)
         connector.setPos(pos)
         self.connectors.append(connector)
+        # Install the snap filter on the connector.
+        self.scene().snap_filter.installSceneEventFilter(connector)
         return connector
 
     def add_origin_connector(self, pos):
-        color = self.scene().output_connector_color if self.scene() else Qt.blue
+        color = self.scene().output_connector_color if self.scene() else Qt.GlobalColor.blue
         radius = 5
         connector = ConnectorItem(QRectF(-radius, -radius, radius * 2, radius * 2), self, color=color)
         connector.setPos(pos)
         self.connectors.append(connector)
+        self.scene().snap_filter.installSceneEventFilter(connector)
         return connector
-
-    def itemChange(self, change, value):
-        if change == QGraphicsRectItem.ItemPositionChange and self.parentItem() is None and self.scene() and self.scene().snap_enabled:
-            pos = value
-            snap = self.scene().snap_size
-            pos = QPointF(round(pos.x() / snap) * snap, round(pos.y() / snap) * snap)
-            return pos
-        return super().itemChange(change, value)
 
     def mouseDoubleClickEvent(self, event):
         self.connectorWindow = ConnectorWindow(self)
@@ -143,7 +143,7 @@ class NodeItem(QGraphicsRectItem):
         event.accept()
 
 
-# --- EdgeItem: Represents an edge between connectors ---
+# --- EdgeItem ---
 class EdgeItem(QGraphicsLineItem):
     def __init__(self, start, end, start_connector=None, end_connector=None, parent=None):
         super().__init__(parent)
@@ -151,8 +151,8 @@ class EdgeItem(QGraphicsLineItem):
         self.end_connector = end_connector
         self.fallback_start = start
         self.fallback_end = end
-        self.setFlags(QGraphicsLineItem.ItemIsSelectable)
-        self.setPen(QPen(Qt.black, 2))
+        self.setFlags(QGraphicsLineItem.GraphicsItemFlag.ItemIsSelectable)
+        self.setPen(QPen(Qt.GlobalColor.black, 2))
         self.updatePosition()
         if self.start_connector is not None:
             self.start_connector.add_edge(self)
@@ -172,236 +172,7 @@ class EdgeItem(QGraphicsLineItem):
         self.setLine(start_point.x(), start_point.y(), end_point.x(), end_point.y())
 
 
-# --- GroupItem: Custom group that snaps to grid when moved ---
-class GroupItem(QGraphicsItemGroup):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFlags(QGraphicsItemGroup.ItemIsMovable | QGraphicsItemGroup.ItemIsSelectable)
-
-    def itemChange(self, change, value):
-        if change == QGraphicsItemGroup.ItemPositionChange and self.scene() and self.scene().snap_enabled:
-            pos = value
-            snap = self.scene().snap_size
-            snapped_pos = QPointF(round(pos.x() / snap) * snap, round(pos.y() / snap) * snap)
-            return snapped_pos
-        return super().itemChange(change, value)
-
-
-# --- NodeAppearanceDialog: Allows setting fill, edge color, and outline width ---
-class NodeAppearanceDialog(QDialog):
-    def __init__(self, scene, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Node Appearance")
-        self.scene = scene
-        layout = QFormLayout(self)
-        self.fillColorButton = QPushButton()
-        self.fillColorButton.setStyleSheet("background-color: " + self.scene.default_node_fill_color.name())
-        self.fillColorButton.clicked.connect(self.chooseFillColor)
-        layout.addRow("Fill Color:", self.fillColorButton)
-        self.outlineColorButton = QPushButton()
-        self.outlineColorButton.setStyleSheet("background-color: " + self.scene.default_node_outline_color.name())
-        self.outlineColorButton.clicked.connect(self.chooseOutlineColor)
-        layout.addRow("Edge Color:", self.outlineColorButton)
-        self.outlineWidthSpin = QSpinBox()
-        self.outlineWidthSpin.setMinimum(1)
-        self.outlineWidthSpin.setMaximum(20)
-        self.outlineWidthSpin.setValue(self.scene.default_node_outline_width)
-        layout.addRow("Outline Width:", self.outlineWidthSpin)
-        self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.buttonBox.accepted.connect(self.accept)
-        self.buttonBox.rejected.connect(self.reject)
-        layout.addRow(self.buttonBox)
-
-    def chooseFillColor(self):
-        color = QColorDialog.getColor(self.scene.default_node_fill_color, self, "Choose Fill Color")
-        if color.isValid():
-            self.scene.default_node_fill_color = color
-            self.fillColorButton.setStyleSheet("background-color: " + color.name())
-
-    def chooseOutlineColor(self):
-        color = QColorDialog.getColor(self.scene.default_node_outline_color, self, "Choose Edge Color")
-        if color.isValid():
-            self.scene.default_node_outline_color = color
-            self.outlineColorButton.setStyleSheet("background-color: " + color.name())
-
-
-# --- PreferencesDialog: Includes Save, OK, and Cancel buttons ---
-class PreferencesDialog(QDialog):
-    def __init__(self, scene, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Preferences")
-        self.scene = scene
-        self.temp_node_fill_color = self.scene.default_node_fill_color
-        self.temp_node_outline_color = self.scene.default_node_outline_color
-        self.temp_node_outline_width = self.scene.default_node_outline_width
-        self.temp_edge_type = self.scene.default_edge_type
-        self.temp_input_connector_color = self.scene.input_connector_color
-        self.temp_output_connector_color = self.scene.output_connector_color
-        self.temp_snap_enabled = self.scene.snap_enabled
-        self.temp_snap_size = self.scene.snap_size
-
-        layout = QFormLayout(self)
-        self.nodeColorButton = QPushButton()
-        self.nodeColorButton.setStyleSheet("background-color: " + self.temp_node_fill_color.name())
-        self.nodeColorButton.clicked.connect(self.chooseNodeColor)
-        layout.addRow("Default Node Fill Color:", self.nodeColorButton)
-        self.nodeEdgeColorButton = QPushButton()
-        self.nodeEdgeColorButton.setStyleSheet("background-color: " + self.temp_node_outline_color.name())
-        self.nodeEdgeColorButton.clicked.connect(self.chooseNodeEdgeColor)
-        layout.addRow("Default Node Edge Color:", self.nodeEdgeColorButton)
-        self.outlineWidthSpin = QSpinBox()
-        self.outlineWidthSpin.setMinimum(1)
-        self.outlineWidthSpin.setMaximum(20)
-        self.outlineWidthSpin.setValue(self.temp_node_outline_width)
-        layout.addRow("Default Node Outline Width:", self.outlineWidthSpin)
-        self.edgeTypeCombo = QComboBox()
-        self.edgeTypeCombo.addItems(["Straight", "Curved", "Rectilinear"])
-        self.edgeTypeCombo.setCurrentText(self.temp_edge_type)
-        layout.addRow("Default Edge Type:", self.edgeTypeCombo)
-        self.inputConnectorButton = QPushButton()
-        self.inputConnectorButton.setStyleSheet("background-color: " + self.temp_input_connector_color.name())
-        self.inputConnectorButton.clicked.connect(self.chooseInputConnectorColor)
-        layout.addRow("Input Connector Color:", self.inputConnectorButton)
-        self.outputConnectorButton = QPushButton()
-        self.outputConnectorButton.setStyleSheet("background-color: " + self.temp_output_connector_color.name())
-        self.outputConnectorButton.clicked.connect(self.chooseOutputConnectorColor)
-        layout.addRow("Output Connector Color:", self.outputConnectorButton)
-        self.snapCheckBox = QCheckBox("Enable Snap")
-        self.snapCheckBox.setChecked(self.temp_snap_enabled)
-        layout.addRow("Snap Setting:", self.snapCheckBox)
-        self.snapSizeSpin = QSpinBox()
-        self.snapSizeSpin.setMinimum(1)
-        self.snapSizeSpin.setMaximum(100)
-        self.snapSizeSpin.setValue(self.temp_snap_size)
-        layout.addRow("Snap Size:", self.snapSizeSpin)
-        self.buttonBox = QDialogButtonBox()
-        saveButton = self.buttonBox.addButton("Save", QDialogButtonBox.ActionRole)
-        okButton = self.buttonBox.addButton(QDialogButtonBox.Ok)
-        cancelButton = self.buttonBox.addButton(QDialogButtonBox.Cancel)
-        saveButton.clicked.connect(self.saveToFile)
-        okButton.clicked.connect(self.accept)
-        cancelButton.clicked.connect(self.reject)
-        layout.addRow(self.buttonBox)
-
-    def chooseNodeColor(self):
-        color = QColorDialog.getColor(self.temp_node_fill_color, self, "Choose Default Node Fill Color")
-        if color.isValid():
-            self.temp_node_fill_color = color
-            self.nodeColorButton.setStyleSheet("background-color: " + color.name())
-
-    def chooseNodeEdgeColor(self):
-        color = QColorDialog.getColor(self.temp_node_outline_color, self, "Choose Default Node Edge Color")
-        if color.isValid():
-            self.temp_node_outline_color = color
-            self.nodeEdgeColorButton.setStyleSheet("background-color: " + color.name())
-
-    def chooseInputConnectorColor(self):
-        color = QColorDialog.getColor(self.temp_input_connector_color, self, "Choose Input Connector Color")
-        if color.isValid():
-            self.temp_input_connector_color = color
-            self.inputConnectorButton.setStyleSheet("background-color: " + color.name())
-
-    def chooseOutputConnectorColor(self):
-        color = QColorDialog.getColor(self.temp_output_connector_color, self, "Choose Output Connector Color")
-        if color.isValid():
-            self.temp_output_connector_color = color
-            self.outputConnectorButton.setStyleSheet("background-color: " + color.name())
-
-    def accept(self):
-        self.temp_node_outline_width = self.outlineWidthSpin.value()
-        self.temp_edge_type = self.edgeTypeCombo.currentText()
-        self.temp_snap_enabled = self.snapCheckBox.isChecked()
-        self.temp_snap_size = self.snapSizeSpin.value()
-        self.scene.default_node_fill_color = self.temp_node_fill_color
-        self.scene.default_node_outline_color = self.temp_node_outline_color
-        self.scene.default_node_outline_width = self.temp_node_outline_width
-        self.scene.default_edge_type = self.temp_edge_type
-        self.scene.input_connector_color = self.temp_input_connector_color
-        self.scene.output_connector_color = self.temp_output_connector_color
-        self.scene.snap_enabled = self.temp_snap_enabled
-        self.scene.snap_size = self.temp_snap_size
-        super().accept()
-
-    def saveToFile(self):
-        self.temp_node_outline_width = self.outlineWidthSpin.value()
-        self.temp_edge_type = self.edgeTypeCombo.currentText()
-        self.temp_snap_enabled = self.snapCheckBox.isChecked()
-        self.temp_snap_size = self.snapSizeSpin.value()
-        self.scene.default_node_fill_color = self.temp_node_fill_color
-        self.scene.default_node_outline_color = self.temp_node_outline_color
-        self.scene.default_node_outline_width = self.temp_node_outline_width
-        self.scene.default_edge_type = self.temp_edge_type
-        self.scene.input_connector_color = self.temp_input_connector_color
-        self.scene.output_connector_color = self.temp_output_connector_color
-        self.scene.snap_enabled = self.temp_snap_enabled
-        self.scene.snap_size = self.temp_snap_size
-        prefs = {
-            "default_node_color": self.scene.default_node_fill_color.name(),
-            "default_node_outline_color": self.scene.default_node_outline_color.name(),
-            "default_node_outline_width": self.scene.default_node_outline_width,
-            "default_edge_type": self.scene.default_edge_type,
-            "input_connector_color": self.scene.input_connector_color.name(),
-            "output_connector_color": self.scene.output_connector_color.name(),
-            "snap_enabled": self.scene.snap_enabled,
-            "snap_size": self.scene.snap_size
-        }
-        try:
-            with open("GVP_settings.json", "w") as f:
-                json.dump(prefs, f, indent=4)
-            QMessageBox.information(self, "Preferences", "Preferences saved to GVP_settings.json")
-        except Exception as e:
-            QMessageBox.warning(self, "Preferences", f"Error saving preferences: {str(e)}")
-
-
-# --- ConnectorWindow: Shows a preview of a node's connectors ---
-class ConnectorWindow(QDialog):
-    def __init__(self, node, parent=None):
-        super().__init__(parent)
-        self.node = node
-        self.setWindowTitle("Connector Window")
-        self.resize(300, 300)
-        layout = QVBoxLayout(self)
-        self.view = QGraphicsView()
-        layout.addWidget(self.view)
-        self.scene = QGraphicsScene()
-        self.view.setScene(self.scene)
-        self.populate_scene()
-
-    def populate_scene(self):
-        node_rect = self.node.rect()
-        background = QGraphicsRectItem(node_rect)
-        background.setPen(QPen(Qt.black, 1))
-        self.scene.addItem(background)
-        for connector in self.node.connectors:
-            new_connector = QGraphicsEllipseItem(connector.rect())
-            new_connector.setBrush(connector.brush())
-            new_connector.setPos(connector.pos())
-            self.scene.addItem(new_connector)
-
-    def mouseDoubleClickEvent(self, event):
-        pos = event.pos()
-        scene_pos = self.view.mapToScene(pos)
-        if not self.scene.items(scene_pos):
-            self.close()
-        super().mouseDoubleClickEvent(event)
-
-
-# --- GroupItem: Custom group that snaps to grid when moved ---
-class GroupItem(QGraphicsItemGroup):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFlags(QGraphicsItemGroup.ItemIsMovable | QGraphicsItemGroup.ItemIsSelectable)
-
-    def itemChange(self, change, value):
-        if change == QGraphicsItemGroup.ItemPositionChange and self.scene() and self.scene().snap_enabled:
-            pos = value
-            snap = self.scene().snap_size
-            snapped_pos = QPointF(round(pos.x() / snap) * snap, round(pos.y() / snap) * snap)
-            return snapped_pos
-        return super().itemChange(change, value)
-
-
-# --- GraphicsScene: Holds preferences, draws grid, handles snapping, deletion, grouping, and save/load ---
+# --- GraphicsScene ---
 class GraphicsScene(QGraphicsScene):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -411,14 +182,16 @@ class GraphicsScene(QGraphicsScene):
         self.edge_origin_node = None
         self.new_node = None
         self.io_start_connector = None
-        self.default_node_fill_color = QColor(Qt.green)
-        self.default_node_outline_color = QColor(Qt.black)
+        self.default_node_fill_color = QColor(Qt.GlobalColor.green)
+        self.default_node_outline_color = QColor(Qt.GlobalColor.black)
         self.default_node_outline_width = 2
         self.default_edge_type = "Straight"
-        self.input_connector_color = QColor(Qt.red)
-        self.output_connector_color = QColor(Qt.blue)
+        self.input_connector_color = QColor(Qt.GlobalColor.red)
+        self.output_connector_color = QColor(Qt.GlobalColor.blue)
         self.snap_enabled = True
         self.snap_size = 10
+        # Create a SnapFilter instance.
+        self.snap_filter = SnapFilter(self)
         if os.path.exists("GVP_settings.json"):
             try:
                 with open("GVP_settings.json", "r") as f:
@@ -434,10 +207,12 @@ class GraphicsScene(QGraphicsScene):
             except Exception as e:
                 QMessageBox.warning(None, "Load Preferences", f"Error loading preferences: {str(e)}")
 
+    # We no longer override addItem; instead, we explicitly install the snap filter in NodeItem.add_connector
+
     def drawBackground(self, painter, rect):
         if self.snap_enabled:
             snap = self.snap_size
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QBrush(QColor(200, 200, 200)))
             x = int(rect.left() // snap) * snap
             while x < rect.right():
@@ -450,22 +225,22 @@ class GraphicsScene(QGraphicsScene):
     def set_mode(self, mode):
         self.mode = mode
         if mode == "draw_node":
-            new_cursor = QCursor(Qt.CrossCursor)
+            new_cursor = QCursor(Qt.CursorShape.CrossCursor)
         elif mode == "draw_edge":
-            new_cursor = QCursor(Qt.PointingHandCursor)
+            new_cursor = QCursor(Qt.CursorShape.PointingHandCursor)
         elif mode == "select":
-            new_cursor = QCursor(Qt.ArrowCursor)
+            new_cursor = QCursor(Qt.CursorShape.ArrowCursor)
         else:
-            new_cursor = QCursor(Qt.ArrowCursor)
+            new_cursor = QCursor(Qt.CursorShape.ArrowCursor)
         for view in self.views():
             view.setCursor(new_cursor)
             if mode == "select":
-                view.setDragMode(QGraphicsView.RubberBandDrag)
+                view.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
             else:
-                view.setDragMode(QGraphicsView.NoDrag)
+                view.setDragMode(QGraphicsView.DragMode.NoDrag)
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Backspace:
+        if event.key() == Qt.Key.Key_Backspace or event.key() == Qt.Key.Key_Delete:
             for item in self.selectedItems():
                 self.removeItem(item)
         else:
@@ -473,7 +248,7 @@ class GraphicsScene(QGraphicsScene):
 
     def mousePressEvent(self, event):
         if self.mode == "draw_node":
-            if event.button() == Qt.LeftButton:
+            if event.button() == Qt.MouseButton.LeftButton:
                 size = 60
                 pos = event.scenePos()
                 rect = QRectF(-size / 2, -size / 2, size, size)
@@ -486,7 +261,7 @@ class GraphicsScene(QGraphicsScene):
                 self.addItem(node)
                 self.new_node = node
         elif self.mode == "draw_edge":
-            if event.button() == Qt.LeftButton:
+            if event.button() == Qt.MouseButton.LeftButton:
                 self.edge_start = event.scenePos()
                 self.edge_origin_node = None
                 for item in self.items(self.edge_start):
@@ -494,7 +269,7 @@ class GraphicsScene(QGraphicsScene):
                         self.edge_origin_node = item
                         break
                 if self.edge_origin_node is None:
-                    self.io_start_connector = IOConnectorItem(color=QColor(Qt.darkCyan))
+                    self.io_start_connector = IOConnectorItem(color=QColor(Qt.GlobalColor.darkCyan))
                     self.io_start_connector.setPos(self.edge_start)
                     if not self.io_start_connector.my_id:
                         self.io_start_connector.my_id = gen_uuid()
@@ -503,7 +278,7 @@ class GraphicsScene(QGraphicsScene):
                     self.io_start_connector = None
                 self.temp_line = QGraphicsLineItem(self.edge_start.x(), self.edge_start.y(),
                                                    self.edge_start.x(), self.edge_start.y())
-                self.temp_line.setPen(QPen(Qt.blue, 2, Qt.DashLine))
+                self.temp_line.setPen(QPen(Qt.GlobalColor.blue, 2, Qt.PenStyle.DashLine))
                 self.addItem(self.temp_line)
         elif self.mode == "select":
             super().mousePressEvent(event)
@@ -543,9 +318,8 @@ class GraphicsScene(QGraphicsScene):
                         p1 = polygon[i]
                         p2 = polygon[(i + 1) % num_points]
                         edge_line = QLineF(p1, p2)
-                        intersect_point = QPointF()
-                        result = drawn_line.intersect(edge_line, intersect_point)
-                        if result == QLineF.BoundedIntersection:
+                        result, intersect_point = drawn_line.intersects(edge_line)
+                        if result == QLineF.IntersectionType.BoundedIntersection:
                             distance = QLineF(self.edge_start, intersect_point).length()
                             intersections.append((distance, intersect_point))
                     if intersections:
@@ -579,9 +353,8 @@ class GraphicsScene(QGraphicsScene):
                     p1 = polygon[i]
                     p2 = polygon[(i + 1) % num_points]
                     edge_line = QLineF(p1, p2)
-                    intersect_point = QPointF()
-                    result = drawn_line_end.intersect(edge_line, intersect_point)
-                    if result == QLineF.BoundedIntersection:
+                    result, intersect_point = drawn_line_end.intersects(edge_line)
+                    if result == QLineF.IntersectionType.BoundedIntersection:
                         distance = QLineF(new_start, intersect_point).length()
                         intersections.append((distance, intersect_point))
                 if intersections:
@@ -618,13 +391,6 @@ class GraphicsScene(QGraphicsScene):
     def mouseDoubleClickEvent(self, event):
         super().mouseDoubleClickEvent(event)
 
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Backspace:
-            for item in self.selectedItems():
-                self.removeItem(item)
-        else:
-            super().keyPressEvent(event)
-
     def saveScene(self):
         filename, _ = QFileDialog.getSaveFileName(None, "Save Scene", "", "JSON Files (*.json)")
         if not filename:
@@ -649,7 +415,7 @@ class GraphicsScene(QGraphicsScene):
                         "id": connector.my_id,
                         "pos": [cpos.x(), cpos.y()],
                         "color": connector.brush().color().name(),
-                        "type": "origin" if connector.brush().color() == QColor(Qt.blue) else "connector"
+                        "type": "origin" if connector.brush().color() == QColor(Qt.GlobalColor.blue) else "connector"
                     }
                     node_data["connectors"].append(conn_data)
                 data["nodes"].append(node_data)
@@ -748,52 +514,204 @@ class GraphicsScene(QGraphicsScene):
         self.snap_enabled = temp_snap
         QMessageBox.information(None, "Load Scene", "Scene loaded successfully.")
 
-    # --- Context Menu for Grouping/Ungrouping ---
-    def contextMenuEvent(self, event):
-        menu = QMenu()
-        selected = self.selectedItems()
-        # Group only NodeItem objects (do not group EdgeItems or IOConnectorItems).
-        group_items = [item for item in selected if isinstance(item, NodeItem)]
-        groupAction = menu.addAction("Group")
-        ungroupAction = menu.addAction("Ungroup")
-        if len(group_items) < 2:
-            groupAction.setEnabled(False)
-        else:
-            groupAction.setEnabled(True)
-        groupExists = any(isinstance(item, GroupItem) for item in selected)
-        ungroupAction.setEnabled(groupExists)
-        action = menu.exec_(event.screenPos())
-        if action == groupAction:
-            # Update fallback coordinates for all edges.
-            for item in self.items():
-                if isinstance(item, EdgeItem):
-                    line = item.line()
-                    item.fallback_start = QPointF(line.x1(), line.y1())
-                    item.fallback_end = QPointF(line.x2(), line.y2())
-            group = GroupItem()
-            for item in group_items:
-                group.addToGroup(item)
-            self.addItem(group)
-            group.setSelected(True)
-            # Force update of all edges.
-            for item in self.items():
-                if isinstance(item, EdgeItem):
-                    item.updatePosition()
-        elif action == ungroupAction:
-            for item in selected:
-                if isinstance(item, GroupItem):
-                    children = item.childItems()
-                    self.destroyItemGroup(item)
-                    for child in children:
-                        if hasattr(child, 'setFlag'):
-                            child.setFlag(child.ItemSendsScenePositionChanges, True)
-                        child.setPos(child.pos())  # trigger snapping via itemChange
-                    for child in children:
-                        if isinstance(child, EdgeItem):
-                            child.updatePosition()
-            for item in self.items():
-                if isinstance(item, EdgeItem):
-                    item.updatePosition()
+
+# --- NodeAppearanceDialog ---
+class NodeAppearanceDialog(QDialog):
+    def __init__(self, scene, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Node Appearance")
+        self.scene = scene
+        layout = QFormLayout(self)
+        self.fillColorButton = QPushButton()
+        self.fillColorButton.setStyleSheet("background-color: " + self.scene.default_node_fill_color.name())
+        self.fillColorButton.clicked.connect(self.chooseFillColor)
+        layout.addRow("Fill Color:", self.fillColorButton)
+        self.outlineColorButton = QPushButton()
+        self.outlineColorButton.setStyleSheet("background-color: " + self.scene.default_node_outline_color.name())
+        self.outlineColorButton.clicked.connect(self.chooseOutlineColor)
+        layout.addRow("Edge Color:", self.outlineColorButton)
+        self.outlineWidthSpin = QSpinBox()
+        self.outlineWidthSpin.setMinimum(1)
+        self.outlineWidthSpin.setMaximum(20)
+        self.outlineWidthSpin.setValue(self.scene.default_node_outline_width)
+        layout.addRow("Outline Width:", self.outlineWidthSpin)
+        self.buttonBox = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
+        layout.addRow(self.buttonBox)
+
+    def chooseFillColor(self):
+        color = QColorDialog.getColor(self.scene.default_node_fill_color, self, "Choose Fill Color")
+        if color.isValid():
+            self.scene.default_node_fill_color = color
+            self.fillColorButton.setStyleSheet("background-color: " + color.name())
+
+    def chooseOutlineColor(self):
+        color = QColorDialog.getColor(self.scene.default_node_outline_color, self, "Choose Edge Color")
+        if color.isValid():
+            self.scene.default_node_outline_color = color
+            self.outlineColorButton.setStyleSheet("background-color: " + color.name())
+
+
+# --- PreferencesDialog ---
+class PreferencesDialog(QDialog):
+    def __init__(self, scene, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Preferences")
+        self.scene = scene
+        self.temp_node_fill_color = self.scene.default_node_fill_color
+        self.temp_node_outline_color = self.scene.default_node_outline_color
+        self.temp_node_outline_width = self.scene.default_node_outline_width
+        self.temp_edge_type = self.scene.default_edge_type
+        self.temp_input_connector_color = self.scene.input_connector_color
+        self.temp_output_connector_color = self.scene.output_connector_color
+        self.temp_snap_enabled = self.scene.snap_enabled
+        self.temp_snap_size = self.scene.snap_size
+
+        layout = QFormLayout(self)
+        self.nodeColorButton = QPushButton()
+        self.nodeColorButton.setStyleSheet("background-color: " + self.temp_node_fill_color.name())
+        self.nodeColorButton.clicked.connect(self.chooseNodeColor)
+        layout.addRow("Default Node Fill Color:", self.nodeColorButton)
+        self.nodeEdgeColorButton = QPushButton()
+        self.nodeEdgeColorButton.setStyleSheet("background-color: " + self.temp_node_outline_color.name())
+        self.nodeEdgeColorButton.clicked.connect(self.chooseNodeEdgeColor)
+        layout.addRow("Default Node Edge Color:", self.nodeEdgeColorButton)
+        self.outlineWidthSpin = QSpinBox()
+        self.outlineWidthSpin.setMinimum(1)
+        self.outlineWidthSpin.setMaximum(20)
+        self.outlineWidthSpin.setValue(self.temp_node_outline_width)
+        layout.addRow("Default Node Outline Width:", self.outlineWidthSpin)
+        self.edgeTypeCombo = QComboBox()
+        self.edgeTypeCombo.addItems(["Straight", "Curved", "Rectilinear"])
+        self.edgeTypeCombo.setCurrentText(self.temp_edge_type)
+        layout.addRow("Default Edge Type:", self.edgeTypeCombo)
+        self.inputConnectorButton = QPushButton()
+        self.inputConnectorButton.setStyleSheet("background-color: " + self.temp_input_connector_color.name())
+        self.inputConnectorButton.clicked.connect(self.chooseInputConnectorColor)
+        layout.addRow("Input Connector Color:", self.inputConnectorButton)
+        self.outputConnectorButton = QPushButton()
+        self.outputConnectorButton.setStyleSheet("background-color: " + self.temp_output_connector_color.name())
+        self.outputConnectorButton.clicked.connect(self.chooseOutputConnectorColor)
+        layout.addRow("Output Connector Color:", self.outputConnectorButton)
+        self.snapCheckBox = QCheckBox("Enable Snap")
+        self.snapCheckBox.setChecked(self.temp_snap_enabled)
+        layout.addRow("Snap Setting:", self.snapCheckBox)
+        self.snapSizeSpin = QSpinBox()
+        self.snapSizeSpin.setMinimum(1)
+        self.snapSizeSpin.setMaximum(100)
+        self.snapSizeSpin.setValue(self.temp_snap_size)
+        layout.addRow("Snap Size:", self.snapSizeSpin)
+        self.buttonBox = QDialogButtonBox()
+        saveButton = self.buttonBox.addButton("Save", QDialogButtonBox.ButtonRole.ActionRole)
+        okButton = self.buttonBox.addButton(QDialogButtonBox.StandardButton.Ok)
+        cancelButton = self.buttonBox.addButton(QDialogButtonBox.StandardButton.Cancel)
+        saveButton.clicked.connect(self.saveToFile)
+        okButton.clicked.connect(self.accept)
+        cancelButton.clicked.connect(self.reject)
+        layout.addRow(self.buttonBox)
+
+    def chooseNodeColor(self):
+        color = QColorDialog.getColor(self.temp_node_fill_color, self, "Choose Default Node Fill Color")
+        if color.isValid():
+            self.temp_node_fill_color = color
+            self.nodeColorButton.setStyleSheet("background-color: " + color.name())
+
+    def chooseNodeEdgeColor(self):
+        color = QColorDialog.getColor(self.temp_node_outline_color, self, "Choose Default Node Edge Color")
+        if color.isValid():
+            self.temp_node_outline_color = color
+            self.nodeEdgeColorButton.setStyleSheet("background-color: " + color.name())
+
+    def chooseInputConnectorColor(self):
+        color = QColorDialog.getColor(self.temp_input_connector_color, self, "Choose Input Connector Color")
+        if color.isValid():
+            self.temp_input_connector_color = color
+            self.inputConnectorButton.setStyleSheet("background-color: " + color.name())
+
+    def chooseOutputConnectorColor(self):
+        color = QColorDialog.getColor(self.temp_output_connector_color, self, "Choose Output Connector Color")
+        if color.isValid():
+            self.temp_output_connector_color = color
+            self.outputConnectorButton.setStyleSheet("background-color: " + color.name())
+
+    def accept(self):
+        self.temp_node_outline_width = self.outlineWidthSpin.value()
+        self.temp_edge_type = self.edgeTypeCombo.currentText()
+        self.temp_snap_enabled = self.snapCheckBox.isChecked()
+        self.temp_snap_size = self.snapSizeSpin.value()
+        self.scene.default_node_fill_color = self.temp_node_fill_color
+        self.scene.default_node_outline_color = self.temp_node_outline_color
+        self.scene.default_node_outline_width = self.temp_node_outline_width
+        self.scene.default_edge_type = self.temp_edge_type
+        self.scene.input_connector_color = self.temp_input_connector_color
+        self.scene.output_connector_color = self.temp_output_connector_color
+        self.scene.snap_enabled = self.temp_snap_enabled
+        self.scene.snap_size = self.temp_snap_size
+        super().accept()
+
+    def saveToFile(self):
+        self.temp_node_outline_width = self.outlineWidthSpin.value()
+        self.temp_edge_type = self.edgeTypeCombo.currentText()
+        self.temp_snap_enabled = self.snapCheckBox.isChecked()
+        self.temp_snap_size = self.snapSizeSpin.value()
+        self.scene.default_node_fill_color = self.temp_node_fill_color
+        self.scene.default_node_outline_color = self.temp_node_outline_color
+        self.scene.default_node_outline_width = self.temp_node_outline_width
+        self.scene.default_edge_type = self.temp_edge_type
+        self.scene.input_connector_color = self.temp_input_connector_color
+        self.scene.output_connector_color = self.temp_output_connector_color
+        self.scene.snap_enabled = self.temp_snap_enabled
+        self.scene.snap_size = self.temp_snap_size
+        prefs = {
+            "default_node_color": self.scene.default_node_fill_color.name(),
+            "default_node_outline_color": self.scene.default_node_outline_color.name(),
+            "default_node_outline_width": self.scene.default_node_outline_width,
+            "default_edge_type": self.scene.default_edge_type,
+            "input_connector_color": self.scene.input_connector_color.name(),
+            "output_connector_color": self.scene.output_connector_color.name(),
+            "snap_enabled": self.scene.snap_enabled,
+            "snap_size": self.scene.snap_size
+        }
+        try:
+            with open("GVP_settings.json", "w") as f:
+                json.dump(prefs, f, indent=4)
+            QMessageBox.information(self, "Preferences", "Preferences saved to GVP_settings.json")
+        except Exception as e:
+            QMessageBox.warning(self, "Preferences", f"Error saving preferences: {str(e)}")
+
+
+# --- ConnectorWindow ---
+class ConnectorWindow(QDialog):
+    def __init__(self, node, parent=None):
+        super().__init__(parent)
+        self.node = node
+        self.setWindowTitle("Connector Window")
+        self.resize(300, 300)
+        layout = QVBoxLayout(self)
+        self.view = QGraphicsView()
+        layout.addWidget(self.view)
+        self.scene = QGraphicsScene()
+        self.view.setScene(self.scene)
+        self.populate_scene()
+
+    def populate_scene(self):
+        node_rect = self.node.rect()
+        background = QGraphicsRectItem(node_rect)
+        background.setPen(QPen(Qt.GlobalColor.black, 1))
+        self.scene.addItem(background)
+        for connector in self.node.connectors:
+            new_connector = QGraphicsEllipseItem(connector.rect())
+            new_connector.setBrush(connector.brush())
+            new_connector.setPos(connector.pos())
+            self.scene.addItem(new_connector)
+
+    def mouseDoubleClickEvent(self, event):
+        pos = event.pos()
+        scene_pos = self.view.mapToScene(pos)
+        if not self.scene.items(scene_pos):
+            self.close()
+        super().mouseDoubleClickEvent(event)
 
 
 # --- MainWindow ---
@@ -825,12 +743,12 @@ class MainWindow(QMainWindow):
 
     def openPreferences(self):
         dialog = PreferencesDialog(self.scene, self)
-        if dialog.exec_():
+        if dialog.exec():
             self.updateNodeToolIcon()
 
     def openNodeAppearanceDialog(self):
         dialog = NodeAppearanceDialog(self.scene, self)
-        if dialog.exec_():
+        if dialog.exec():
             self.updateNodeToolIcon()
 
     def updateNodeToolIcon(self):
@@ -839,7 +757,7 @@ class MainWindow(QMainWindow):
 
     def buildNodeIcon(self):
         node_pixmap = QPixmap(32, 32)
-        node_pixmap.fill(Qt.transparent)
+        node_pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(node_pixmap)
         painter.setPen(QPen(self.scene.default_node_outline_color, self.scene.default_node_outline_width))
         painter.setBrush(QBrush(self.scene.default_node_fill_color))
@@ -849,18 +767,18 @@ class MainWindow(QMainWindow):
 
     def buildEdgeIcon(self):
         edge_pixmap = QPixmap(32, 32)
-        edge_pixmap.fill(Qt.transparent)
+        edge_pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(edge_pixmap)
-        painter.setPen(QPen(Qt.black, 2))
+        painter.setPen(QPen(Qt.GlobalColor.black, 2))
         painter.drawLine(4, 28, 28, 4)
         painter.end()
         return QIcon(edge_pixmap)
 
     def buildSelectIcon(self):
         select_pixmap = QPixmap(32, 32)
-        select_pixmap.fill(Qt.transparent)
+        select_pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(select_pixmap)
-        painter.setPen(QPen(Qt.black, 2))
+        painter.setPen(QPen(Qt.GlobalColor.black, 2))
         arrow_points = [QPointF(8, 16), QPointF(24, 8), QPointF(24, 24)]
         painter.drawPolygon(QPolygonF(arrow_points))
         painter.end()
@@ -868,7 +786,7 @@ class MainWindow(QMainWindow):
 
     def create_toolbar(self):
         toolbar = QToolBar("Tools")
-        self.addToolBar(Qt.LeftToolBarArea, toolbar)
+        self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, toolbar)
         self.node_action = QAction(self.buildNodeIcon(), "Draw Node", self)
         self.node_action.setCheckable(True)
         self.node_action.triggered.connect(lambda: self.scene.set_mode("draw_node"))
@@ -892,7 +810,7 @@ class MainWindow(QMainWindow):
         self.scene.set_mode("draw_node")
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.MouseButtonDblClick:
+        if event.type() == QEvent.Type.MouseButtonDblClick:
             self.openNodeAppearanceDialog()
             return True
         return super().eventFilter(obj, event)
@@ -902,4 +820,4 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

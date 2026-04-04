@@ -1,5 +1,5 @@
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QImage
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QImage
 # Changes to this file may be overridden by the UI settings command
 settings = {
     "HISTORY_FILE":                             "./logs/history.log",
@@ -17,11 +17,11 @@ settings = {
     "FONT_FAMILY":                              "Courier New",
     "FONT_POINT_SIZE":                          10,
     "CHECKMARK":                                QImage("icons/tick.png"),
-    "EQUAL_COLOR":                              QColor(Qt.black),
-    "DELETE_COLOR":                             QColor(Qt.red),
-    "INSERT_COLOR":                             QColor(Qt.darkGreen),
-    "REPLACE_COLOR":                            QColor(Qt.darkBlue),
-    "EQUAL_BACKGROUND_COLOR":                   QColor(Qt.white),
-    "CHANGE_SOURCE_BACKGROUND_COLOR":           QColor(Qt.yellow),
-    "CHANGE_DESTINATION_BACKGROUND_COLOR":      QColor(Qt.green),
+    "EQUAL_COLOR":                              QColor(Qt.GlobalColor.black),
+    "DELETE_COLOR":                             QColor(Qt.GlobalColor.red),
+    "INSERT_COLOR":                             QColor(Qt.GlobalColor.darkGreen),
+    "REPLACE_COLOR":                            QColor(Qt.GlobalColor.darkBlue),
+    "EQUAL_BACKGROUND_COLOR":                   QColor(Qt.GlobalColor.white),
+    "CHANGE_SOURCE_BACKGROUND_COLOR":           QColor(Qt.GlobalColor.yellow),
+    "CHANGE_DESTINATION_BACKGROUND_COLOR":      QColor(Qt.GlobalColor.green),
 }

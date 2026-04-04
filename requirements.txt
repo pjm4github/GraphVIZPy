@@ -3,9 +3,11 @@ numpy~=2.2.1
 colorama
 # pysendfile
 requests
-PyQt5~=5.15.11
-PyQt5-stubs
+PyQt6~=6.7.0
 scikit-image
 scanf~=1.5.2
 fputs~=1.0.0
 scipy~=1.14.1
+antlr4-python3-runtime~=4.13.0
+pyqtgraph
+pytest
