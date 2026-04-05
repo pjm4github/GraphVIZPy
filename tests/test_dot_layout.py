@@ -8,15 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from pycode.dot.dot_reader import read_dot
-from pycode.dot.dot_layout import DotLayout, LayoutNode, LayoutEdge, _NetworkSimplex
+from gvpy.grammar.gv_reader import read_gv
+from gvpy.engines.dot.dot_layout import DotLayout, LayoutNode, LayoutEdge, _NetworkSimplex
 
 
 # ── Helpers ───────────────────────────────────────
 
 def layout_dot(src: str) -> dict:
     """Parse DOT source, run layout, return JSON dict."""
-    g = read_dot(src)
+    g = read_gv(src)
     return DotLayout(g).layout()
 
 
@@ -291,11 +291,11 @@ class TestIntegration:
 
     def test_example1_gv(self):
         """Layout example1.gv (undirected, 5 nodes, 6 edges)."""
-        from pycode.dot.dot_reader import read_dot_file
+        from gvpy.grammar.gv_reader import read_gv_file
         path = Path(__file__).parent.parent / "test_data" / "example1.gv"
         if not path.exists():
             pytest.skip("example1.gv not found")
-        g = read_dot_file(path)
+        g = read_gv_file(path)
         r = DotLayout(g).layout()
         assert len(r["nodes"]) == 5
         assert len(r["edges"]) == 6
@@ -305,11 +305,11 @@ class TestIntegration:
 
     def test_world_gv(self):
         """Layout world.gv (directed, rank constraints)."""
-        from pycode.dot.dot_reader import read_dot_file
+        from gvpy.grammar.gv_reader import read_gv_file
         path = Path(__file__).parent.parent / "test_data" / "world.gv"
         if not path.exists():
             pytest.skip("world.gv not found")
-        g = read_dot_file(path)
+        g = read_gv_file(path)
         r = DotLayout(g).layout()
         assert len(r["nodes"]) > 20
         assert len(r["edges"]) > 20
@@ -885,11 +885,11 @@ class TestCompoundEdges:
 
     def test_real_compound_file(self):
         """Parse and layout a real compound DOT file."""
-        from pycode.dot.dot_reader import read_dot_file
+        from gvpy.grammar.gv_reader import read_gv_file
         path = Path(__file__).parent.parent / "test_data" / "1879-2.dot"
         if not path.exists():
             pytest.skip("1879-2.dot not found")
-        g = read_dot_file(path)
+        g = read_gv_file(path)
         r = DotLayout(g).layout()
         assert len(r["nodes"]) >= 2
 
@@ -1974,3 +1974,155 @@ class TestMissingAttrCoverage:
         """labelfontsize on edge is passed to JSON."""
         r = layout_dot('digraph G { a -> b [headlabel="H", labelfontsize=18]; }')
         assert r["edges"][0].get("labelfontsize") == "18"
+
+
+class TestLabelPlacement:
+    """Tests for the collision-aware label placement algorithm."""
+
+    def test_xlabel_avoids_node(self):
+        """xlabel position is outside the node bounding box."""
+        r = layout_dot('digraph G { a [xlabel="extra info"]; }')
+        na = node_by_name(r, "a")
+        xlabel_x = float(na["_xlabel_pos_x"])
+        xlabel_y = float(na["_xlabel_pos_y"])
+        # xlabel should be outside the node's bounding box
+        node_right = na["x"] + na["width"] / 2
+        node_bottom = na["y"] + na["height"] / 2
+        # At least one coordinate should be beyond the node boundary
+        assert xlabel_x > node_right or xlabel_y > node_bottom or \
+               xlabel_x < na["x"] - na["width"] / 2 or \
+               xlabel_y < na["y"] - na["height"] / 2
+
+    def test_xlabel_collision_avoidance(self):
+        """Multiple xlabels don't overlap when there's room."""
+        r = layout_dot('''digraph G {
+            nodesep=2;
+            a [xlabel="Label A"];
+            b [xlabel="Label B"];
+            a -> b;
+        }''')
+        na = node_by_name(r, "a")
+        nb = node_by_name(r, "b")
+        ax = float(na["_xlabel_pos_x"])
+        ay = float(na["_xlabel_pos_y"])
+        bx = float(nb["_xlabel_pos_x"])
+        by = float(nb["_xlabel_pos_y"])
+        # Labels should not be at the exact same position
+        assert not (abs(ax - bx) < 1 and abs(ay - by) < 1)
+
+    def test_headlabel_has_position(self):
+        """headlabel gets a computed position near the head endpoint."""
+        r = layout_dot('digraph G { a -> b [headlabel="Head"]; }')
+        edge = r["edges"][0]
+        hx = float(edge["_headlabel_pos_x"])
+        hy = float(edge["_headlabel_pos_y"])
+        # Should be near the head endpoint (last point)
+        head_pt = edge["points"][-1]
+        dist = ((hx - head_pt[0])**2 + (hy - head_pt[1])**2)**0.5
+        assert dist < 100  # within reasonable distance
+
+    def test_taillabel_has_position(self):
+        """taillabel gets a computed position near the tail endpoint."""
+        r = layout_dot('digraph G { a -> b [taillabel="Tail"]; }')
+        edge = r["edges"][0]
+        tx = float(edge["_taillabel_pos_x"])
+        ty = float(edge["_taillabel_pos_y"])
+        # Should be near the tail endpoint (first point)
+        tail_pt = edge["points"][0]
+        dist = ((tx - tail_pt[0])**2 + (ty - tail_pt[1])**2)**0.5
+        assert dist < 100
+
+    def test_headlabel_taillabel_different_positions(self):
+        """headlabel and taillabel get different positions."""
+        r = layout_dot('digraph G { a -> b [headlabel="H", taillabel="T"]; }')
+        edge = r["edges"][0]
+        hx = float(edge["_headlabel_pos_x"])
+        hy = float(edge["_headlabel_pos_y"])
+        tx = float(edge["_taillabel_pos_x"])
+        ty = float(edge["_taillabel_pos_y"])
+        # They shouldn't be at the same position
+        assert abs(hx - tx) > 1 or abs(hy - ty) > 1
+
+    def test_graph_label_bottom(self):
+        """Graph label positioned below the graph by default (labelloc=b)."""
+        r = layout_dot('digraph G { label="My Graph"; a -> b; }')
+        graph = r["graph"]
+        assert graph.get("label") == "My Graph"
+        assert "_label_pos_x" in graph
+        assert "_label_pos_y" in graph
+        # Default labelloc=b means label is below the graph bb
+        label_y = float(graph["_label_pos_y"])
+        bb_bottom = graph["bb"][3]
+        assert label_y >= bb_bottom
+
+    def test_graph_label_top(self):
+        """Graph label positioned above the graph with labelloc=t."""
+        r = layout_dot('digraph G { label="Title"; labelloc=t; a -> b; }')
+        graph = r["graph"]
+        label_y = float(graph["_label_pos_y"])
+        bb_top = graph["bb"][1]
+        assert label_y <= bb_top
+
+    def test_graph_label_left_justified(self):
+        """Graph label left-justified with labeljust=l."""
+        r = layout_dot('digraph G { label="Left"; labeljust=l; a -> b; }')
+        graph = r["graph"]
+        label_x = float(graph["_label_pos_x"])
+        bb_center = (graph["bb"][0] + graph["bb"][2]) / 2
+        # Left-justified should be left of center
+        assert label_x < bb_center
+
+    def test_graph_label_right_justified(self):
+        """Graph label right-justified with labeljust=r."""
+        r = layout_dot('digraph G { label="Right"; labeljust=r; a -> b; }')
+        graph = r["graph"]
+        label_x = float(graph["_label_pos_x"])
+        bb_center = (graph["bb"][0] + graph["bb"][2]) / 2
+        assert label_x > bb_center
+
+    def test_xlabel_svg_rendered(self):
+        """xlabel appears in SVG output."""
+        from gvpy.render.svg_renderer import render_svg
+        r = layout_dot('digraph G { a [xlabel="ExtraLabel"]; }')
+        svg = render_svg(r)
+        assert "ExtraLabel" in svg
+        assert "italic" in svg  # xlabels are rendered in italic
+
+    def test_graph_label_svg_rendered(self):
+        """Graph label appears in SVG output."""
+        from gvpy.render.svg_renderer import render_svg
+        r = layout_dot('digraph G { label="GraphTitle"; a -> b; }')
+        svg = render_svg(r)
+        assert "GraphTitle" in svg
+
+    def test_label_size_estimation(self):
+        """Label size estimation produces reasonable values."""
+        w, h = DotLayout._estimate_label_size("Hello", 14.0)
+        assert w > 0
+        assert h > 0
+        # 5 chars at 14pt should be roughly 42x16.8
+        assert 30 < w < 80
+        assert 10 < h < 25
+
+    def test_label_size_multiline(self):
+        """Multi-line labels are taller."""
+        w1, h1 = DotLayout._estimate_label_size("Line1", 14.0)
+        w2, h2 = DotLayout._estimate_label_size("Line1\\nLine2", 14.0)
+        assert h2 > h1  # two lines should be taller
+
+    def test_overlap_detection(self):
+        """Overlap detection correctly identifies overlapping rectangles."""
+        assert DotLayout._rects_overlap(0, 0, 10, 10, 5, 5, 10, 10) is True
+        assert DotLayout._rects_overlap(0, 0, 10, 10, 20, 20, 10, 10) is False
+
+    def test_overlap_area(self):
+        """Overlap area calculation returns correct values."""
+        # Full overlap (same rect)
+        area = DotLayout._overlap_area(0, 0, 10, 10, 0, 0, 10, 10)
+        assert abs(area - 100) < 0.01
+        # No overlap
+        area = DotLayout._overlap_area(0, 0, 10, 10, 100, 100, 10, 10)
+        assert area == 0.0
+        # Partial overlap
+        area = DotLayout._overlap_area(0, 0, 10, 10, 5, 0, 10, 10)
+        assert 0 < area < 100

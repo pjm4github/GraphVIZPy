@@ -4,11 +4,11 @@ Merges tests from: test_graph_aghide*, test_graph_hide_expose*, test_graph_expos
 """
 import pytest
 
-from pycode.cgraph.graph import Graph
-from pycode.cgraph.node import Node, agcmpnode, agcmpgraph_of
-from pycode.cgraph.edge import Edge
-from pycode.cgraph.defines import ObjectType, GraphEvent
-from pycode.cgraph.headers import Agdesc
+from gvpy.core.graph import Graph
+from gvpy.core.node import Node, agcmpnode, agcmpgraph_of
+from gvpy.core.edge import Edge
+from gvpy.core.defines import ObjectType, GraphEvent
+from gvpy.core.headers import Agdesc
 
 
 @pytest.fixture

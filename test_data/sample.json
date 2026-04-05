@@ -1,0 +1,73 @@
+{
+  "name": "SampleJSON",
+  "directed": true,
+  "strict": false,
+  "_subgraph_cnt": 1,
+  "objects": [
+    {
+      "_gvid": 0,
+      "name": "cluster_0",
+      "label": "Process",
+      "nodes": [1, 2],
+      "edges": []
+    }
+  ],
+  "nodes": [
+    {
+      "_gvid": 0,
+      "name": "start",
+      "label": "Start",
+      "shape": "ellipse",
+      "color": "green"
+    },
+    {
+      "_gvid": 1,
+      "name": "process",
+      "label": "Process Data",
+      "shape": "box",
+      "fillcolor": "lightyellow",
+      "style": "filled"
+    },
+    {
+      "_gvid": 2,
+      "name": "decide",
+      "label": "OK?",
+      "shape": "diamond"
+    },
+    {
+      "_gvid": 3,
+      "name": "end",
+      "label": "End",
+      "shape": "ellipse",
+      "color": "red"
+    }
+  ],
+  "edges": [
+    {
+      "_gvid": 0,
+      "tail": 0,
+      "head": 1,
+      "label": "input"
+    },
+    {
+      "_gvid": 1,
+      "tail": 1,
+      "head": 2
+    },
+    {
+      "_gvid": 2,
+      "tail": 2,
+      "head": 3,
+      "label": "yes",
+      "color": "green"
+    },
+    {
+      "_gvid": 3,
+      "tail": 2,
+      "head": 1,
+      "label": "no",
+      "color": "red",
+      "style": "dashed"
+    }
+  ]
+}

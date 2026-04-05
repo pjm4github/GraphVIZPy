@@ -1,12 +1,12 @@
 """
-Tests for the cgraph package Pythonic API: properties, aliases, and backward compatibility.
+Tests for the core package Pythonic API: properties, aliases, and backward compatibility.
 """
 import pytest
 
-from pycode.cgraph.graph import Graph
-from pycode.cgraph.node import Node, CompoundNode
-from pycode.cgraph.edge import Edge
-from pycode.cgraph.defines import ObjectType, GraphEvent
+from gvpy.core.graph import Graph
+from gvpy.core.node import Node, CompoundNode
+from gvpy.core.edge import Edge
+from gvpy.core.defines import ObjectType, GraphEvent
 
 
 # ── Fixtures ─────────────────────────────────────

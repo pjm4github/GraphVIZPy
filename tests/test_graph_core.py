@@ -3,11 +3,11 @@ Consolidated tests for Graph core: initialization, attributes, records, close.
 """
 import pytest
 
-from pycode.cgraph.graph import Graph, gather_all_nodes, gather_all_edges
-from pycode.cgraph.node import Node
-from pycode.cgraph.edge import Edge
-from pycode.cgraph.defines import ObjectType, GraphEvent
-from pycode.cgraph.headers import Agdesc, AgIdDisc
+from gvpy.core.graph import Graph, gather_all_nodes, gather_all_edges
+from gvpy.core.node import Node
+from gvpy.core.edge import Edge
+from gvpy.core.defines import ObjectType, GraphEvent
+from gvpy.core.headers import Agdesc, AgIdDisc
 
 
 @pytest.fixture

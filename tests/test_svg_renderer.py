@@ -4,14 +4,14 @@ Pytest tests for the SVG renderer.
 import pytest
 from pathlib import Path
 
-from pycode.dot.dot_reader import read_dot
-from pycode.dot.dot_layout import DotLayout
-from pycode.dot.svg_renderer import render_svg, render_svg_file
+from gvpy.grammar.gv_reader import read_gv
+from gvpy.engines.dot import DotLayout
+from gvpy.render.svg_renderer import render_svg, render_svg_file
 
 
 def layout_and_render(src: str) -> str:
     """Parse DOT, run layout, render SVG."""
-    g = read_dot(src)
+    g = read_gv(src)
     result = DotLayout(g).layout()
     return render_svg(result)
 
@@ -121,7 +121,7 @@ class TestSvgFile:
 
     def test_render_to_file(self, tmp_path):
         """render_svg_file writes valid SVG to disk."""
-        g = read_dot("digraph G { x -> y; }")
+        g = read_gv("digraph G { x -> y; }")
         result = DotLayout(g).layout()
         out = tmp_path / "test.svg"
         render_svg_file(result, out)
@@ -134,8 +134,8 @@ class TestSvgFile:
         path = Path(__file__).parent.parent / "test_data" / "example1.gv"
         if not path.exists():
             pytest.skip("example1.gv not found")
-        from pycode.dot.dot_reader import read_dot_file
-        g = read_dot_file(path)
+        from gvpy.grammar.gv_reader import read_gv_file
+        g = read_gv_file(path)
         result = DotLayout(g).layout()
         svg = render_svg(result)
         assert "<ellipse" in svg

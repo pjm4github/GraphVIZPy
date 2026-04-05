@@ -1,6 +1,6 @@
 # GraphvizPy
 
-A pure-Python implementation of the Graphviz graph visualization toolkit, featuring an ANTLR4-based DOT language parser, a hierarchical layout engine (dot), and an interactive PyQt6 GUI.
+A pure-Python implementation of the Graphviz graph visualization toolkit, featuring an ANTLR4-based DOT language parser, multiple layout engines, and an interactive PyQt6 GUI.
 
 ## Purpose
 
@@ -11,413 +11,423 @@ A pure-Python implementation of the Graphviz graph visualization toolkit, featur
 
 ## Quick Start
 
+### Install
+
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Core library only (graph model + parser + layout engines)
+pip install .
 
-# Layout a DOT file and output JSON coordinates
-python dot.py test_data/example1.gv
+# With PyQt6 GUI (interactive wizard)
+pip install ".[gui]"
 
-# Layout and render as SVG
-python dot.py test_data/example1.gv -Tsvg -o example1.svg
+# Development (includes pytest)
+pip install -e ".[dev]"
+```
+
+### Use from another project (e.g. pictosync)
+
+```bash
+cd /path/to/pictosync
+pip install -e /path/to/GraphvizPy
+```
+
+```python
+from gvpy.core import Graph, Node, Edge
+from gvpy.engines.dot import DotLayout
+from gvpy.render import render_svg
+```
+
+### Run the CLI
+
+```bash
+# Layout a DOT file → SVG
+python gvcli.py input.gv -Tsvg -o output.svg
+
+# Use a specific layout engine
+python gvcli.py -Kcirco input.gv -Tsvg -o output.svg
 
 # Launch the interactive wizard
-python dot.py --ui
+python gvcli.py --ui
 
 # Run all tests
 python -m pytest tests/
+```
+
+## CLI Reference (`gvcli.py`)
+
+`gvcli.py` is the unified command-line interface for all layout engines. It is the equivalent of running `dot`, `neato`, `circo`, etc. from Graphviz — one binary, multiple engines selected with `-K`.
+
+`dot.py` is a thin wrapper that calls `gvcli.py` with `-Kdot` as the default engine. It exists for backward compatibility.
+
+### Usage
+
+```
+python gvcli.py [options] [FILE ...]
+```
+
+### All CLI Flags
+
+| Flag | Description |
+|------|-------------|
+| `-K ENGINE` | Layout engine: `dot`, `circo`, `neato`, `fdp`, `sfdp`, `twopi`, `osage`, `patchwork` |
+| `-T FORMAT` | Output format: `json` (default), `svg`, `dot`, `json0`, `gxl` |
+| `-o FILE` | Write output to file |
+| `-O` | Auto-name output file: `input.svg`, `input.json`, etc. |
+| `-G name=val` | Set graph attribute (e.g. `-Grankdir=LR`) |
+| `-N name=val` | Set default node attribute (e.g. `-Nshape=box`) |
+| `-E name=val` | Set default edge attribute (e.g. `-Ecolor=red`) |
+| `-n` | No layout — just convert format (use existing `pos` attributes) |
+| `-s SCALE` | Scale all output coordinates |
+| `-y` | Invert Y axis |
+| `-v` | Verbose — print summary to stderr |
+| `--ui` | Launch interactive GUI wizard |
+| `--list-engines` | List available layout engines and exit |
+
+### Examples
+
+```bash
+# Default: dot engine, JSON output
+python gvcli.py input.gv
+
+# SVG output with dot engine
+python gvcli.py input.gv -Tsvg -o output.svg
+
+# Circular layout
+python gvcli.py -Kcirco network.gv -Tsvg -o network.svg
+
+# Auto-name output (input.gv → input.svg)
+python gvcli.py input.gv -Tsvg -O
+
+# DOT output with embedded layout coordinates
+python gvcli.py input.gv -Tdot
+
+# Structural JSON (no layout)
+python gvcli.py input.gv -Tjson0
+
+# Read from stdin
+echo "digraph G { a -> b -> c; }" | python gvcli.py - -Tsvg
+
+# Convert between formats (no layout needed)
+python gvcli.py -n input.gv -Tgxl -o output.gxl
+python gvcli.py input.json -Tdot
+python gvcli.py input.gxl -Tsvg
+
+# Override attributes
+python gvcli.py input.gv -Grankdir=LR -Nshape=box -Ecolor=red -Tsvg
+
+# Scale and invert
+python gvcli.py input.gv -Tsvg -s 2.0 -y
+
+# Launch wizard with circo engine
+python gvcli.py --ui -Kcirco
+
+# List engines
+python gvcli.py --list-engines
+```
+
+**Expected output of `--list-engines`:**
+```
+Available layout engines:
+  circo        — implemented
+  dot          — implemented
+  fdp          — stub
+  mingle       — stub
+  neato        — stub
+  osage        — stub
+  patchwork    — stub
+  sfdp         — stub
+  twopi        — stub
+```
+
+### Input Format Auto-Detection
+
+Input format is detected by file extension:
+
+| Extension | Format |
+|-----------|--------|
+| `.gv`, `.dot` | DOT language |
+| `.json` | Graphviz JSON |
+| `.gxl`, `.xml` | GXL (Graph eXchange Language) |
+| `-` (stdin) | Auto-detected by content |
+
+### Pipeline
+
+```
+                        ┌─── -Tdot  ──→ DOT text
+                        ├─── -Tjson0 ─→ JSON (structural)
+Input ──> Parse ──> ─┬──┤─── -Tgxl  ──→ GXL XML
+  ↑                  │  │                              (no layout needed)
+ .gv  .json  .gxl    │  └────────────────────────────────────────────
+ stdin               │
+                     └──> Layout (-K engine) ──> Post-process ──> Render
+                              ↑                      ↑              ↑
+                           dot (impl.)           write-back      -Tsvg → SVG
+                           circo (impl.)         scale (-s)      -Tjson → JSON
+                           neato (future)        invert (-y)     -Tdot → DOT+pos
+                           ...                   pack components
+```
+
+After layout, `pos`, `width`, `height` are written back to graph attributes, and `-Tdot` produces DOT with embedded coordinates:
+
+```bash
+$ echo "digraph G { a -> b; }" | python gvcli.py - -Tdot
+digraph G {
+    bb="-27.0,-18.0,27.0,90.0";
+    a [pos="0.0,0.0", width=0.75, height=0.5];
+    b [pos="0.0,72.0", width=0.75, height=0.5];
+    a -> b [pos="s,0.0,18.0 0.0,30.0 0.0,42.0 e,0.0,54.0"];
+}
+```
+
+## Layout Engines
+
+### dot — Hierarchical Layout (`gvpy.engines.dot`)
+
+**Status:** Implemented
+
+The Sugiyama hierarchical layout algorithm in five phases:
+
+1. **Rank assignment** — Network simplex assigns nodes to layers
+2. **Crossing minimization** — Weighted-median heuristic with transposition
+3. **Coordinate assignment** — Network simplex X-positioning
+4. **Edge routing** — Polyline, Bezier, orthogonal, flat edge arcs
+5. **Label placement** — Collision-aware 9-position grid search
+
+**Dot Attributes:**
+
+| Attribute | Scope | Default | Description |
+|-----------|-------|---------|-------------|
+| `rankdir` | Graph | `TB` | Rank direction: `TB`, `BT`, `LR`, `RL` |
+| `ranksep` | Graph | `0.5` | Separation between ranks (inches) |
+| `nodesep` | Graph | `0.25` | Separation between nodes in same rank (inches) |
+| `splines` | Graph | `curved` | Edge routing: `curved`, `ortho`, `polyline`, `line` |
+| `ordering` | Graph | — | Node ordering: `out`, `in` |
+| `concentrate` | Graph | `false` | Merge parallel edges |
+| `compound` | Graph | `false` | Allow edges between clusters |
+| `newrank` | Graph | `false` | Alternative ranking algorithm |
+| `clusterrank` | Graph | `local` | Cluster ranking: `local`, `global`, `none` |
+| `rank` | Subgraph | — | Rank constraint: `same`, `min`, `max`, `source`, `sink` |
+| `ratio` | Graph | — | Aspect ratio: `compress`, `fill`, `auto`, or numeric |
+| `size` | Graph | — | Maximum drawing size (inches): `"w,h"` |
+| `normalize` | Graph | `false` | Normalize coordinates |
+| `center` | Graph | `false` | Center drawing |
+| `pack` | Graph | `true` | Pack disconnected components |
+| `label` | All | — | Label text |
+| `xlabel` | Node | — | External label (collision-aware placement) |
+| `headlabel` | Edge | — | Label at head endpoint |
+| `taillabel` | Edge | — | Label at tail endpoint |
+| `labelloc` | Graph | `b` | Graph label position: `t` (top), `b` (bottom) |
+| `labeljust` | Graph | `c` | Graph label justification: `l`, `c`, `r` |
+| `shape` | Node | `ellipse` | Node shape (15+ shapes supported) |
+| `color` | All | `black` | Outline/stroke color |
+| `fillcolor` | Node | — | Fill color |
+| `style` | All | — | Style: `filled`, `dashed`, `dotted`, `bold`, `invis` |
+| `fontname` | All | `sans-serif` | Font family |
+| `fontsize` | All | `14` | Font size (points) |
+| `fontcolor` | All | `black` | Text color |
+| `penwidth` | All | `1` | Line width |
+| `arrowhead` | Edge | `normal` | Head arrow type (12 types) |
+| `arrowtail` | Edge | `normal` | Tail arrow type |
+| `dir` | Edge | `forward` | Arrow direction: `forward`, `back`, `both`, `none` |
+| `weight` | Edge | `1` | Edge weight (affects ranking) |
+| `minlen` | Edge | `1` | Minimum edge length in ranks |
+| `constraint` | Edge | `true` | Whether edge affects ranking |
+| `group` | Node | — | Node grouping for alignment |
+| `pos` | Node | — | Fixed position: `"x,y"` or `"x,y!"` (pinned) |
+| `pin` | Node | `false` | Pin node at `pos` |
+| `fixedsize` | Node | `false` | Use exact width/height |
+| `samehead` | Edge | — | Merge head endpoints |
+| `sametail` | Edge | — | Merge tail endpoints |
+| `headport` | Edge | — | Port on head node |
+| `tailport` | Edge | — | Port on tail node |
+| `lhead` | Edge | — | Logical head cluster (compound edges) |
+| `ltail` | Edge | — | Logical tail cluster (compound edges) |
+| `tooltip` | All | — | Hover tooltip text |
+| `URL` | All | — | Clickable URL |
+
+### circo — Circular Layout (`gvpy.engines.circo`)
+
+**Status:** Implemented
+
+Biconnected component decomposition with circular node placement.
+
+**Algorithm:**
+1. Biconnected decomposition (Tarjan's algorithm)
+2. Block-cutpoint tree construction
+3. Node ordering per block (longest path + crossing reduction)
+4. Circular placement with computed radius
+5. Recursive block positioning
+6. Component packing
+
+**Circo Attributes:**
+
+| Attribute | Scope | Default | Description |
+|-----------|-------|---------|-------------|
+| `mindist` | Graph | `1.0` | Minimum distance between adjacent nodes (inches) |
+| `root` | Graph | (first node) | Root node for DFS — affects block tree orientation |
+| `oneblock` | Graph | `false` | Skip biconnected decomposition |
+
+### Stub Engines (not yet implemented)
+
+| Engine | Description | C Reference |
+|--------|-------------|-------------|
+| `neato` | Spring-model force-directed (stress majorization) | `lib/neatogen/` |
+| `fdp` | Force-directed placement (Fruchterman-Reingold) | `lib/fdpgen/` |
+| `sfdp` | Scalable force-directed (multi-level + Barnes-Hut) | `lib/sfdpgen/` |
+| `twopi` | Radial layout (BFS concentric rings) | `lib/twopigen/` |
+| `osage` | Recursive cluster packing | `lib/osage/` |
+| `patchwork` | Treemap visualization | `lib/patchwork/` |
+| `mingle` | Edge bundling (post-processor) | `lib/mingle/` |
+
+## Supported Formats
+
+| Format | Read | Write | Extension | Description |
+|--------|------|-------|-----------|-------------|
+| **DOT** | Yes | Yes | `.gv`, `.dot` | Graphviz DOT language (ANTLR4 parser) |
+| **JSON** | Yes | Yes | `.json` | Graphviz-compatible JSON with layout coords |
+| **JSON0** | Yes | Yes | `.json` | Graphviz-compatible JSON (structural only) |
+| **GXL** | Yes | Yes | `.gxl` | Graph eXchange Language (XML-based) |
+| **SVG** | — | Yes | `.svg` | Scalable Vector Graphics (rendered output) |
+
+### Python API
+
+```python
+# DOT read/write (gvpy.grammar)
+from gvpy.grammar import read_gv, read_gv_file, write_gv, write_gv_file
+
+# SVG, JSON, GXL (gvpy.render)
+from gvpy.render import render_svg, read_json, write_json0, read_gxl, write_gxl
+
+# Layout engines (gvpy.engines)
+from gvpy.engines.dot import DotLayout
+from gvpy.engines.circo import CircoLayout
+from gvpy.engines import get_engine
+
+# Full pipeline
+graph = read_gv('digraph G { a -> b -> c; }')
+result = DotLayout(graph).layout()
+svg = render_svg(result)
 ```
 
 ## Project Structure
 
 ```
 GraphvizPy/
-├── dot.py                        # CLI (equivalent of Graphviz dot command)
-├── MainGraphvisPy.py             # Interactive PyQt6 graph editor
-├── settings.py                   # PyQt6 UI settings
-├── requirements.txt              # Python dependencies (PyQt6, antlr4, numpy, scipy)
-├── pytest.ini                    # Test configuration
+├── gvcli.py                      # Unified CLI (all engines, all formats)
+├── dot.py                        # Wrapper: calls gvcli.py with -Kdot default
+├── pyproject.toml                # Package definition (pip install -e .)
 │
-├── pycode/                       # Core library (mirrors Graphviz lib/ structure)
+├── gvpy/                         # Main Python package
 │   │
-│   ├── cgraph/                   # Core graph library (port of lib/cgraph)
-│   │   ├── __init__.py           #   exports Graph, Node, Edge, Agdesc, etc.
-│   │   ├── graph.py              #   Graph class (~200 methods: CRUD, traversal,
-│   │   │                         #     subgraphs, callbacks, attributes, algorithms)
-│   │   ├── node.py               #   Node, CompoundNode, compound node functions
-│   │   ├── edge.py               #   Edge with half-edge pairs, DOT properties
-│   │   ├── headers.py            #   Agclos, Agdesc, AgIdDisc, callback system
+│   ├── core/                     # Graph data structures (port of Graphviz cgraph)
+│   │   ├── graph.py              #   Graph class with mixin architecture
+│   │   ├── node.py               #   Node and CompoundNode
+│   │   ├── edge.py               #   Edge with half-edge pairs
+│   │   ├── headers.py            #   Agclos, Agdesc, AgIdDisc, callbacks
 │   │   ├── defines.py            #   ObjectType, EdgeType, GraphEvent enums
-│   │   ├── agobj.py              #   Agobj base class, Agrec record management
-│   │   ├── error.py              #   Agerrlevel, agerr(), ColorHandler logging
-│   │   └── graph_print.py        #   ascii_print_graph() debug utility
+│   │   ├── agobj.py              #   Base class for graph objects
+│   │   ├── error.py              #   Logging and error handling
+│   │   └── _graph_*.py           #   Mixin modules (nodes, edges, subgraphs, etc.)
 │   │
-│   ├── dot/                      # DOT parser + hierarchical layout engine
-│   │   ├── __init__.py           #   exports read_dot, DotLayout, render_svg
-│   │   ├── dot_reader.py         #   read_dot(), read_dot_file(), read_dot_all()
-│   │   ├── dot_visitor.py        #   ANTLR4 parse tree → Graph objects
-│   │   ├── dot_layout.py         #   4-phase Sugiyama layout (~2200 lines)
-│   │   ├── svg_renderer.py       #   SVG output (shapes, arrows, colors, fonts)
-│   │   ├── dot_wizard.py         #   PyQt6 interactive 3-pane wizard
-│   │   ├── DOTLexer.g4           #   ANTLR4 lexer grammar
-│   │   ├── DOTParser.g4          #   ANTLR4 parser grammar
+│   ├── grammar/                  # ANTLR4 grammar and DOT language I/O
+│   │   ├── GVLexer.g4            #   Lexer grammar
+│   │   ├── GVParser.g4           #   Parser grammar
+│   │   ├── gv_reader.py          #   read_gv(), read_gv_file()
+│   │   ├── gv_writer.py          #   write_gv(), write_gv_file()
+│   │   ├── gv_visitor.py         #   ANTLR4 parse tree → Graph objects
 │   │   ├── build_grammar.bat     #   ANTLR4 regeneration script
-│   │   └── generated/            #   Auto-generated DOTLexer.py, DOTParser.py,
-│   │       └── ...               #     DOTParserVisitor.py, tokens, interp files
+│   │   └── generated/            #   Auto-generated GVLexer.py, GVParser.py
 │   │
-│   ├── circo/                    # Circular layout (future)
-│   ├── fdp/                      # Force-directed placement (future)
-│   ├── neato/                    # Spring-model layout (future)
-│   ├── sfdp/                     # Multiscale force-directed (future)
-│   └── twopi/                    # Radial layout (future)
+│   ├── engines/                  # Layout engines
+│   │   ├── __init__.py           #   Engine registry: get_engine(), list_engines()
+│   │   ├── base.py               #   Abstract LayoutEngine base class
+│   │   ├── wizard.py             #   Interactive PyQt6 layout wizard (any engine)
+│   │   ├── dot/                  #   Hierarchical layout (Sugiyama)
+│   │   │   └── dot_layout.py
+│   │   ├── circo/                #   Circular layout (biconnected decomposition)
+│   │   │   └── circo_layout.py
+│   │   ├── neato/                #   Spring-model (stub)
+│   │   ├── fdp/                  #   Force-directed (stub)
+│   │   ├── sfdp/                 #   Scalable force-directed (stub)
+│   │   ├── twopi/                #   Radial (stub)
+│   │   ├── osage/                #   Cluster packing (stub)
+│   │   ├── patchwork/            #   Treemap (stub)
+│   │   └── mingle/               #   Edge bundling (stub)
+│   │
+│   └── render/                   # Output rendering and format I/O
+│       ├── svg_renderer.py       #   Layout dict → SVG
+│       ├── json_io.py            #   Graphviz JSON/JSON0 read/write
+│       └── gxl_io.py             #   GXL (XML) read/write
 │
-├── test_data/                    # 130 DOT test files
-│   ├── example1.gv               #   Simple undirected graph (5 nodes)
-│   ├── world.gv                  #   Directed graph with rank constraints
-│   ├── trigraph_test.dot         #   Component diagram with labels
-│   └── *.dot                     #   127 files from Graphviz test suite
+├── test_data/                    # Test files (.gv, .dot, .json, .gxl)
 │
-├── tests/                        # pytest test suite (447 tests)
-│   ├── test_cgraph_api.py        #   Node/Edge properties, Pythonic API (76 tests)
-│   ├── test_node_operations.py   #   Node CRUD, compound, splice, flatten (31 tests)
-│   ├── test_edge_operations.py   #   Edge CRUD, traversal, flatten (14 tests)
-│   ├── test_subgraph_operations.py # Subgraph CRUD, iteration, deletion (12 tests)
-│   ├── test_callbacks.py         #   Callback registration, invocation (20 tests)
-│   ├── test_graph_core.py        #   Graph init, attrs, records, algorithms (35 tests)
-│   ├── test_compound_nodes.py    #   Hide, expose, compound creation (8 tests)
-│   ├── test_dot_parser.py        #   DOT parser syntax coverage (44 tests)
-│   ├── test_dot_layout.py        #   Layout engine + all attributes (150+ tests)
-│   └── test_svg_renderer.py      #   SVG output rendering (18 tests)
+├── tests/                        # pytest test suite (558 tests)
+│   ├── test_cgraph_api.py        #   Core API (76 tests)
+│   ├── test_node_operations.py   #   Node CRUD (31 tests)
+│   ├── test_edge_operations.py   #   Edge CRUD (14 tests)
+│   ├── test_subgraph_operations.py #  Subgraph CRUD (12 tests)
+│   ├── test_callbacks.py         #   Callback system (20 tests)
+│   ├── test_graph_core.py        #   Graph init, attrs, algorithms (35 tests)
+│   ├── test_compound_nodes.py    #   Compound nodes (8 tests)
+│   ├── test_dot_parser.py        #   DOT parser (44 tests)
+│   ├── test_dot_layout.py        #   Dot layout + attributes (165+ tests)
+│   ├── test_svg_renderer.py      #   SVG rendering (18 tests)
+│   ├── test_formats.py           #   Format roundtrip (71 tests)
+│   └── test_circo_layout.py      #   Circo layout (25 tests)
 │
-├── lib/                          # Original C-to-Python translation (reference only)
-│
-├── TODO_dot_layout.md            # Layout engine completion status
-└── TODO_main_gui.md              # MainGraphvisPy refactoring plan
-```
-
-## DOT Parser
-
-The DOT parser uses ANTLR4 to parse the [DOT language](https://graphviz.org/doc/info/lang.html) into Graph objects. It supports the full DOT syntax:
-
-- Directed (`digraph`) and undirected (`graph`) graphs
-- Strict mode (no duplicate edges)
-- Node and edge attribute lists (`[key=value, ...]`)
-- Default attribute statements (`node [shape=box]; edge [style=dashed]`)
-- Subgraphs and clusters (`subgraph cluster_0 { ... }`)
-- Edge chains (`A -> B -> C`)
-- Ports (`a:port:compass`)
-- All identifier types: bare, numeric, quoted strings, HTML labels (`<...>`)
-- Comments: `//`, `/* */`, `#` preprocessor
-- Multi-graph files (multiple graph blocks in one file)
-- UTF-8 and latin-1 encoding
-
-### Parser Usage
-
-```python
-from pycode.dot import read_dot, read_dot_file
-
-# Parse from string
-graph = read_dot('digraph G { a -> b -> c; }')
-
-# Parse from file
-graph = read_dot_file("input.gv")
-
-# Parse file with multiple graphs
-graphs = read_dot_all("digraph A { x; } digraph B { y; }")
-```
-
-## Dot Layout Engine
-
-The layout engine (`pycode/dot_layout.py`) implements the Sugiyama hierarchical layout algorithm in four phases:
-
-1. **Rank assignment** — Network simplex assigns nodes to hierarchical layers. Cycle breaking via DFS. Supports `rank=same/min/max`, `newrank`, cluster-aware ranking.
-
-2. **Crossing minimization** — Iterative weighted-median heuristic with transposition. Configurable via `mclimit` and `remincross`.
-
-3. **Coordinate assignment** — Y from rank spacing, X via network simplex balancing. Supports `rankdir` (TB/BT/LR/RL), `size`, `ratio`, `quantum`, `normalize`.
-
-4. **Edge routing** — Polyline through virtual nodes, Catmull-Rom → Bézier conversion, orthogonal routing. Supports ports, compound edges (`lhead`/`ltail`), `samehead`/`sametail`.
-
-### Layout Usage
-
-```python
-from pycode.dot import read_dot_file
-from pycode.dot.dot_layout import DotLayout
-from pycode.dot.svg_renderer import render_svg
-
-# Parse and layout
-graph = read_dot_file("input.gv")
-result = DotLayout(graph).layout()  # Returns JSON-serializable dict
-
-# Render to SVG
-svg_text = render_svg(result)
-```
-
-### Layout JSON Output
-
-```json
-{
-  "graph": {"name": "G", "directed": true, "bb": [0, 0, 200, 150]},
-  "nodes": [{"name": "a", "x": 100, "y": 50, "width": 54, "height": 36}],
-  "edges": [{"tail": "a", "head": "b", "points": [[100, 68], [100, 114]]}],
-  "clusters": [{"name": "cluster_0", "bb": [10, 10, 190, 140], "nodes": ["a"]}]
-}
-```
-
-### Supported Attributes
-
-The layout engine recognizes 100+ Graphviz attributes including:
-`rankdir`, `ranksep`, `nodesep`, `splines`, `shape`, `label`, `color`, `fillcolor`, `fontname`, `fontsize`, `style`, `penwidth`, `arrowhead`, `arrowtail`, `dir`, `constraint`, `minlen`, `weight`, `group`, `compound`, `concentrate`, `ordering`, `clusterrank`, `newrank`, `pos`, `pin`, `fixedsize`, `headport`, `tailport`, `headclip`, `tailclip`, `samehead`, `sametail`, `xlabel`, `headlabel`, `taillabel`, `tooltip`, `URL`, and more.
-
-See `dot_layout.py` module docstring for the complete attribute reference.
-
-## Graph, Node, and Edge Classes
-
-### Graph (`pycode/cgraph/graph.py`)
-
-The `Graph` class is the central data structure, representing a directed or undirected graph with support for subgraphs, compound nodes, and an event callback system.
-
-```python
-from pycode.cgraph.graph import Graph
-
-g = Graph(name="MyGraph", directed=True, strict=False)
-g.method_init()
-
-# Add nodes and edges
-node_a = g.add_node("A")
-node_b = g.add_node("B")
-edge = g.add_edge("A", "B", edge_name="e1")
-
-# Subgraphs
-sub = g.add_subgraph("cluster_0")
-sub.add_node("C")
-
-# Attributes
-g.set_graph_attr("rankdir", "LR")
-node_a.agset("shape", "box")
-edge.agset("label", "connects")
-```
-
-### Node (`pycode/cgraph/node.py`)
-
-Nodes support compound node operations (containing subgraphs), centrality metrics, and edge splicing.
-
-```python
-node = g.add_node("A")
-node.agset("label", "Component A")
-node.agset("shape", "box")
-
-# Access edges
-for edge in node.outedges:
-    print(f"{node.name} -> {edge.head.name}")
-
-# Compound nodes
-node.make_compound("sub_cluster")
-```
-
-### Edge (`pycode/cgraph/edge.py`)
-
-Edges use a half-edge model (each logical edge has an out-edge and an in-edge) for efficient traversal.
-
-```python
-edge = g.add_edge("A", "B")
-edge.agset("label", "calls")
-edge.agset("color", "red")
-
-print(edge.tail.name)  # "A"
-print(edge.head.name)  # "B"
-```
-
-## CLI Reference
-
-```
-python dot.py --help
-
-Usage: dot.py [--ui] [-T FORMAT] [-o FILE] [-G name=value]
-              [-N name=value] [-E name=value] [-v] [FILE ...]
-
-Options:
-  --ui           Launch interactive GUI wizard
-  -T FORMAT      Output format: json (default) or svg
-  -o FILE        Write output to file
-  -G name=value  Set graph attribute (e.g. -Grankdir=LR)
-  -N name=value  Set default node attribute (e.g. -Nshape=box)
-  -E name=value  Set default edge attribute (e.g. -Ecolor=red)
-  -v, --verbose  Print layout summary to stderr
+└── lib/                          # Original C-to-Python translation (reference)
 ```
 
 ## Interactive Wizard
 
-Launch with `python dot.py --ui` for a three-pane GUI:
-- **Left**: DOT source editor with syntax highlighting
+Launch with `python gvcli.py --ui` for a three-pane GUI:
+
+- **Left**: DOT source editor
 - **Center**: Live SVG preview (aspect-preserving)
-- **Right**: Parameter controls for graph, node, and edge attributes
+- **Right**: Parameter controls with engine selector, graph/node/edge attributes
 - **Bottom**: Command line display with Run button (Ctrl+Enter)
+
+The engine selector dropdown lets you switch between layout engines at runtime.
+
+```bash
+python gvcli.py --ui                  # default: dot engine
+python gvcli.py --ui -Kcirco         # start with circo engine
+python gvcli.py --ui input.gv        # load a file
+```
 
 ## Dependencies
 
 - Python 3.13+
-- PyQt6 ~6.7.0
+
+Core (installed with `pip install .`):
 - antlr4-python3-runtime ~4.13.0
-- numpy, scipy, scikit-image, scanf, fputs
+- numpy ~2.2.1
+- scipy ~1.14.1
 
-## Original Code
+GUI extra (installed with `pip install ".[gui]"`):
+- PyQt6 ~6.7.0
+- pyqtgraph
 
-The original Graphviz C source is from https://gitlab.com/graphviz/graphviz/
-
-Local clone: `C:\Users\pmora\OneDrive\Documents\Git\GitHub\graphviz`
-
-The `lib/` directory contains a literal C-to-Python translation for reference. The `pycode/` directory is the active, refactored implementation.
+See `pyproject.toml` for the full dependency specification.
 
 ## Test Coverage
 
 | Component | Tests | Status |
 |---|---|---|
 | DOT parser | 44 | All pass |
-| Layout engine | 150+ | All pass |
+| Dot layout + labels | 165+ | All pass |
+| Circo layout | 25 | All pass |
 | SVG renderer | 18 | All pass |
-| cgraph API | 100+ | All pass |
+| Core API | 100+ | All pass |
+| Format I/O (DOT/JSON/GXL) | 71 | All pass |
 | Attribute coverage | 101/101 | All tested |
-| Test file validation | 122/128 | 6 parse errors (malformed content) |
+| **Total** | **558** | **All pass** |
 
-## C cgraph API Reference
+## Original Code
 
-For developers migrating from the C Graphviz library, this table maps every public `cgraph` function to its Python equivalent.
+The original Graphviz C source is from https://gitlab.com/graphviz/graphviz/
 
-### Graph Creation & Properties
-
-| C Function | Python Method | Python Alias | Notes |
-|---|---|---|---|
-| `agopen(name, desc, disc)` | `Graph(name, directed, strict)` | `Graph.agopen()` | Constructor |
-| `agclose(g)` | `graph.close()` | `graph.agclose()` | |
-| `agread(chan, disc)` | — | `graph.agread()` | Use `pycode.dot.read_dot()` |
-| `agwrite(g, chan)` | — | `graph.agwrite()` | Use DOT serialization |
-| `agmemread(cp)` | — | `graph.agmemread()` | Use `pycode.dot.read_dot()` |
-| `agisdirected(g)` | `graph.directed` | `graph.agisdirected()` | Property |
-| `agisundirected(g)` | `not graph.directed` | `graph.agisundirected()` | |
-| `agisstrict(g)` | `graph.strict` | `graph.agisstrict()` | Property |
-
-### Node Operations
-
-| C Function | Python Method | Python Alias | Notes |
-|---|---|---|---|
-| `agnode(g, name, cflag)` | `graph.add_node(name)` | `graph.agnode()` | |
-| `agidnode(g, id, cflag)` | `graph.create_node_by_id(id)` | `graph.agidnode()` | |
-| `agdelnode(g, n)` | `graph.delete_node(n)` | | |
-| `agfstnode(g)` | `graph.first_node()` | `graph.agfstnode()` | |
-| `agnxtnode(g, n)` | `graph.next_node(n)` | `graph.agnxtnode()` | |
-| `aglstnode(g)` | `graph.last_node()` | `graph.aglstnode()` | |
-| `agprvnode(g, n)` | `graph.previous_node(n)` | `graph.agprvnode()` | |
-| `agrelabel_node(n, name)` | `graph.relabel_node(n, name)` | | |
-| `agsubnode(g, n, cflag)` | `graph.add_subgraph_node(...)` | `graph.agsubnode()` | |
-
-### Edge Operations
-
-| C Function | Python Method | Python Alias | Notes |
-|---|---|---|---|
-| `agedge(g, t, h, name, cflag)` | `graph.add_edge(t, h, name)` | `graph.agedge()` | |
-| `agdeledge(g, e)` | `graph.delete_edge(e)` | | |
-| `agfstout(g, n)` | `graph.first_out_edge(n)` | `graph.agfstout()` | |
-| `agnxtout(g, e)` | `graph.next_out_edge(e)` | `graph.agnxtout()` | |
-| `agfstin(g, n)` | `graph.first_in_edge(n)` | `graph.agfstin()` | |
-| `agnxtin(g, e)` | `graph.next_in_edge(e)` | `graph.agnxtin()` | |
-| `agfstedge(g, n)` | `graph.first_edge(n)` | `graph.agfstedge()` | |
-| `agnxtedge(g, e, n)` | `graph.next_edge(e, n)` | `graph.agnxtedge()` | |
-
-### Subgraph Operations
-
-| C Function | Python Method | Python Alias | Notes |
-|---|---|---|---|
-| `agsubg(g, name, cflag)` | `graph.create_subgraph(name)` | `graph.agsubg()` | |
-| `agidsubg(g, id)` | `graph.agidsubg(id)` | | |
-| `agfstsubg(g)` | `graph.agfstsubg()` | | |
-| `agnxtsubg(subg)` | `graph.agnxtsubg(subg)` | | |
-| `agparent(g)` | `graph.agparent()` | | |
-| `agdelsubg(g, sub)` | `graph.agdelsubg(sub)` | | |
-
-### Attribute Operations
-
-| C Function | Python Method | Notes |
-|---|---|---|
-| `agattr(g, kind, name, value)` | `graph.agattr(kind, name, value)` | Declare attribute |
-| `agget(obj, name)` | `obj.get_attr(name)` or `obj.agget(name)` | |
-| `agset(obj, name, value)` | `obj.set_attr(name, value)` or `obj.agset(name, value)` | |
-| `agsafeset(obj, name, val, def)` | `obj.agsafeset(name, val, def)` | Auto-declare |
-| `agcopyattr(src, dst)` | `graph.agcopyattr(src, dst)` | Copy all attrs |
-| `agattrsym(obj, name)` | `graph.agattrsym(obj, name)` | |
-
-### Record Operations
-
-| C Function | Python Method | Notes |
-|---|---|---|
-| `agbindrec(obj, name, size, mtf)` | `obj.agbindrec(name, size, mtf)` | Inherited from Agobj |
-| `aggetrec(obj, name, mtf)` | `obj.aggetrec(name, mtf)` | |
-| `agdelrec(obj, name)` | `obj.agdelrec(name)` | |
-| `aginit(g, kind, name, size, mtf)` | `graph.aginit(kind, name, size, mtf)` | Bulk bind |
-| `agclean(g, kind, name)` | `graph.agclean(kind, name)` | Bulk delete |
-
-### Cardinality & Degree
-
-| C Function | Python Method | Python Alias | Notes |
-|---|---|---|---|
-| `agnnodes(g)` | `len(graph.nodes)` | `graph.agnnodes()` | |
-| `agnedges(g)` | `len(graph.edges)` | `graph.agnedges()` | |
-| `agnsubg(g)` | `len(graph.subgraphs)` | `graph.agnsubg()` | |
-| `agdegree(g, n, in, out)` | `graph.degree(n, in_, out)` | `graph.agdegree()` | |
-| `agcountuniqedges(g, n, in, out)` | `graph.count_unique_edges(n)` | `graph.agcountuniqedges()` | |
-
-### Graph Algorithms
-
-| C Function | Python Method | Notes |
-|---|---|---|
-| `graphviz_acyclic(g)` | `graph.acyclic()` | Break cycles via DFS edge reversal |
-| `graphviz_tred(g)` | `graph.tred()` | Remove transitively implied edges |
-| `graphviz_unflatten(g)` | `graph.unflatten(max_min_len, chain_limit, do_fans)` | Improve aspect ratio |
-| `graphviz_node_induce(g)` | `graph.node_induce()` | Induce edges in subgraph |
-
-### Node Properties (Python-only convenience)
-
-| Property | Type | Default | Read/Write |
-|---|---|---|---|
-| `node.label` | str | node name | R/W |
-| `node.shape` | str | "ellipse" | R/W |
-| `node.color` | str | "black" | R/W |
-| `node.fillcolor` | str | "" | R/W |
-| `node.style` | str | "" | R/W |
-| `node.fontsize` | str | "14" | R/W |
-| `node.fontname` | str | "Times-Roman" | R/W |
-| `node.fontcolor` | str | "black" | R/W |
-| `node.group` | str | "" | R/W |
-| `node.fixedsize` | bool | False | R/W |
-| `node.pos` | str | None | R/W |
-| `node.pin` | bool | False | R/W |
-| `node.xlabel` | str | "" | R/W |
-| `node.width` | str | None | R/W |
-| `node.height` | str | None | R/W |
-| `node.degree_centrality` | float | — | Read-only |
-| `node.betweenness_centrality` | float | — | Read-only |
-| `node.closeness_centrality` | float | — | Read-only |
-| `node.root_graph` | Graph | — | Read-only |
-
-### Edge Properties (Python-only convenience)
-
-| Property | Type | Default | Read/Write |
-|---|---|---|---|
-| `edge.label` | str | "" | R/W |
-| `edge.color` | str | "black" | R/W |
-| `edge.style` | str | "" | R/W |
-| `edge.penwidth` | str | "1" | R/W |
-| `edge.arrowhead` | str | "normal" | R/W |
-| `edge.arrowtail` | str | "normal" | R/W |
-| `edge.dir` | str | "forward" | R/W |
-| `edge.weight_attr` | int | 1 | R/W |
-| `edge.minlen` | int | 1 | R/W |
-| `edge.constraint` | bool | True | R/W |
-| `edge.headport` | str | "" | R/W |
-| `edge.tailport` | str | "" | R/W |
-| `edge.lhead` | str | "" | R/W |
-| `edge.ltail` | str | "" | R/W |
-| `edge.root_graph` | Graph | — | Read-only |
+The `lib/` directory contains a literal C-to-Python translation for reference. The `gvpy/` package is the active, refactored implementation.
 
 ## Related Projects
 

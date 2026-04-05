@@ -3,10 +3,10 @@ Consolidated tests for Node operations: creation, deletion, compound nodes, metr
 """
 import pytest
 
-from pycode.cgraph.graph import Graph
-from pycode.cgraph.node import Node, CompoundNode, agcmpnode, agcmpgraph_of
-from pycode.cgraph.edge import Edge
-from pycode.cgraph.defines import ObjectType, GraphEvent
+from gvpy.core.graph import Graph
+from gvpy.core.node import Node, CompoundNode, agcmpnode, agcmpgraph_of
+from gvpy.core.edge import Edge
+from gvpy.core.defines import ObjectType, GraphEvent
 
 
 @pytest.fixture
@@ -126,7 +126,7 @@ class TestNodeEdgeManagement:
 
     def test_add_outedge(self, graph):
         """add_outedge adds to outedges list."""
-        from pycode.cgraph.edge import Edge
+        from gvpy.core.edge import Edge
         n = graph.nodes["A"]
         initial = len(n.outedges)
         e = Edge(tail=n, head=graph.nodes["C"], name="test", graph=graph)
@@ -142,7 +142,7 @@ class TestNodeEdgeManagement:
 
     def test_add_inedge(self, graph):
         """add_inedge adds to inedges list."""
-        from pycode.cgraph.edge import Edge
+        from gvpy.core.edge import Edge
         n = graph.nodes["C"]
         initial = len(n.inedges)
         e = Edge(tail=graph.nodes["A"], head=n, name="test", graph=graph)

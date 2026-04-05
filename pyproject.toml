@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "graphvizpy"
+version = "0.1.0"
+description = "Pure Python port of the Graphviz cgraph library with hierarchical layout engine"
+requires-python = ">=3.13"
+license = "MIT"
+authors = [
+    { name = "PJMoran" },
+]
+
+dependencies = [
+    "antlr4-python3-runtime~=4.13.0",
+    "numpy~=2.2.1",
+    "scipy~=1.14.1",
+]
+
+[project.optional-dependencies]
+gui = [
+    "PyQt6~=6.7.0",
+    "pyqtgraph",
+]
+dev = [
+    "pytest",
+    "graphvizpy[gui]",
+]
+all = [
+    "graphvizpy[gui]",
+    "graphvizpy[dev]",
+]
+
+[project.scripts]
+graphvizpy = "dot:main"
+
+[tool.setuptools.packages.find]
+include = ["gvpy*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

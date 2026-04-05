@@ -3,9 +3,9 @@ Consolidated tests for Subgraph operations: creation, iteration, deletion.
 """
 import pytest
 
-from pycode.cgraph.graph import Graph
-from pycode.cgraph.node import Node
-from pycode.cgraph.defines import ObjectType, GraphEvent
+from gvpy.core.graph import Graph
+from gvpy.core.node import Node
+from gvpy.core.defines import ObjectType, GraphEvent
 
 
 @pytest.fixture

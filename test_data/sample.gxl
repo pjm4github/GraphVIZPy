@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gxl xmlns:xlink="http://www.w3.org/1999/xlink">
+  <graph id="SampleGXL" edgemode="directed">
+    <attr name="rankdir"><string>LR</string></attr>
+
+    <graph id="cluster_io" edgemode="directed">
+      <attr name="label"><string>I/O Layer</string></attr>
+      <node id="input">
+        <attr name="label"><string>Read Input</string></attr>
+        <attr name="shape"><string>box</string></attr>
+      </node>
+      <node id="output">
+        <attr name="label"><string>Write Output</string></attr>
+        <attr name="shape"><string>box</string></attr>
+      </node>
+    </graph>
+
+    <node id="parse">
+      <attr name="label"><string>Parse</string></attr>
+      <attr name="shape"><string>ellipse</string></attr>
+      <attr name="color"><string>blue</string></attr>
+    </node>
+
+    <node id="transform">
+      <attr name="label"><string>Transform</string></attr>
+      <attr name="shape"><string>diamond</string></attr>
+    </node>
+
+    <node id="validate">
+      <attr name="label"><string>Validate</string></attr>
+      <attr name="shape"><string>box</string></attr>
+      <attr name="style"><string>filled</string></attr>
+      <attr name="fillcolor"><string>lightyellow</string></attr>
+    </node>
+
+    <edge from="input" to="parse">
+      <attr name="label"><string>raw data</string></attr>
+    </edge>
+    <edge from="parse" to="transform"/>
+    <edge from="transform" to="validate"/>
+    <edge from="validate" to="output">
+      <attr name="label"><string>result</string></attr>
+      <attr name="color"><string>green</string></attr>
+    </edge>
+    <edge from="validate" to="parse">
+      <attr name="label"><string>retry</string></attr>
+      <attr name="style"><string>dashed</string></attr>
+      <attr name="color"><string>red</string></attr>
+    </edge>
+  </graph>
+</gxl>

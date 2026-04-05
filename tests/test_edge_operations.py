@@ -3,10 +3,10 @@ Consolidated tests for Edge operations: creation, deletion, traversal, attribute
 """
 import pytest
 
-from pycode.cgraph.graph import Graph
-from pycode.cgraph.node import Node
-from pycode.cgraph.edge import Edge
-from pycode.cgraph.defines import ObjectType, GraphEvent
+from gvpy.core.graph import Graph
+from gvpy.core.node import Node
+from gvpy.core.edge import Edge
+from gvpy.core.defines import ObjectType, GraphEvent
 
 
 @pytest.fixture
