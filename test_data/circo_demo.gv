@@ -1,0 +1,49 @@
+// Circo circular layout demo — state machine with biconnected components
+// Usage: python gvcli.py -Kcirco test_data/circo_demo.gv -Tsvg -o circo_demo.svg
+//
+// Circo excels at cyclic structures and ring topologies.
+// Biconnected components are placed on separate circles
+// connected through articulation points.
+digraph state_machine {
+    mindist=1.2;
+
+    // Main processing cycle (biconnected component 1)
+    idle -> parse [label="input"];
+    parse -> validate [label="ok"];
+    validate -> transform [label="valid"];
+    transform -> output [label="done"];
+    output -> idle [label="reset"];
+    // Back-edges creating the cycle
+    validate -> parse [label="retry", style=dashed, color=red];
+    transform -> validate [label="recheck", style=dashed, color=red];
+
+    // Error handling cycle (biconnected component 2)
+    // Connected to main cycle through "validate" (articulation point)
+    validate -> error_log [label="fail"];
+    error_log -> error_notify;
+    error_notify -> error_recover;
+    error_recover -> error_log [label="retry", style=dashed, color=orange];
+    error_recover -> validate [label="fixed"];
+
+    // Monitoring branch (tree off main cycle)
+    output -> log_result;
+    log_result -> archive;
+    log_result -> metrics;
+    metrics -> dashboard;
+
+    // Styling
+    idle       [shape=doublecircle, style=filled, fillcolor=lightgreen, label="Idle"];
+    parse      [shape=box, label="Parse"];
+    validate   [shape=diamond, style=filled, fillcolor=lightyellow, label="Validate"];
+    transform  [shape=box, label="Transform"];
+    output     [shape=box, style=filled, fillcolor=lightblue, label="Output"];
+
+    error_log     [shape=box, color=red, label="Log Error"];
+    error_notify  [shape=box, color=red, label="Notify"];
+    error_recover [shape=box, color=red, label="Recover"];
+
+    log_result [shape=note, label="Log"];
+    archive    [shape=folder, label="Archive"];
+    metrics    [shape=box, label="Metrics"];
+    dashboard  [shape=tab, label="Dashboard"];
+}

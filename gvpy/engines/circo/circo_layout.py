@@ -23,6 +23,7 @@ from typing import Optional
 
 from gvpy.core.graph import Graph
 from gvpy.core.node import Node
+from gvpy.engines.base import LayoutEngine
 
 
 # ── Data structures ────────────────────────────────
@@ -40,6 +41,7 @@ class Block:
     # Layout results
     circle_order: list[str] = field(default_factory=list)
     radius: float = 0.0
+    rad0: float = 0.0       # original radius before coalescing
     center_x: float = 0.0
     center_y: float = 0.0
     # Per-node positions relative to block center
@@ -60,19 +62,20 @@ class LayoutNode:
 # ── Main layout class ─────────────────────────────
 
 
-class CircoLayout:
+class CircoLayout(LayoutEngine):
     """Circular layout engine.
 
     Usage::
 
-        from gvpycode.circo import CircoLayout
+        from gvpy.engines.circo import CircoLayout
         result = CircoLayout(graph).layout()
     """
 
     def __init__(self, graph: Graph):
-        self.graph = graph
+        super().__init__(graph)
         self.lnodes: dict[str, LayoutNode] = {}
         self.mindist = 1.0 * 72.0  # inches → points
+        self.nodesep = 0.25 * 72.0
         self.root_name: str = ""
         self.oneblock = False
         self.blocks: list[Block] = []
@@ -90,14 +93,26 @@ class CircoLayout:
         # Layout each component
         component_results = []
         for comp_nodes in components:
+            comp_list = list(comp_nodes)
             comp_adj = {n: [nb for nb in adj[n] if nb in comp_nodes]
                         for n in comp_nodes}
-            self._layout_component(comp_nodes, comp_adj)
-            component_results.append(set(comp_nodes))
+            self._layout_component(comp_list, comp_adj)
+            component_results.append(comp_nodes)
 
         # Pack components if multiple
         if len(component_results) > 1:
-            self._pack_components(component_results)
+            self._pack_components_lr(component_results, gap=self.mindist)
+
+        # Post-processing
+        if self.normalize:
+            self._apply_normalize()
+        if self.landscape or self.rotate_deg:
+            self._apply_rotation()
+        if self.center:
+            self._apply_center()
+
+        # Label placement
+        self._compute_label_positions()
 
         # Write back positions
         self._write_back()
@@ -108,10 +123,20 @@ class CircoLayout:
 
     def _init_from_graph(self):
         """Read graph attributes and create layout nodes."""
+        self._init_common_attrs()
+
+        # Circo-specific attributes
         md = self.graph.get_graph_attr("mindist")
         if md:
             try:
                 self.mindist = float(md) * 72.0
+            except ValueError:
+                pass
+
+        ns = self.graph.get_graph_attr("nodesep")
+        if ns:
+            try:
+                self.nodesep = float(ns) * 72.0
             except ValueError:
                 pass
 
@@ -120,21 +145,22 @@ class CircoLayout:
         self.oneblock = ob.lower() in ("true", "1", "yes")
 
         for name, node in self.graph.nodes.items():
-            w, h = 54.0, 36.0
-            try:
-                w_str = node.attributes.get("width")
-                if w_str:
-                    w = float(w_str) * 72.0
-            except ValueError:
-                pass
-            try:
-                h_str = node.attributes.get("height")
-                if h_str:
-                    h = float(h_str) * 72.0
-            except ValueError:
-                pass
+            w, h = self._compute_node_size(name, node)
             self.lnodes[name] = LayoutNode(name=name, node=node,
                                            width=w, height=h)
+
+        # Extract edge weights for crossing reduction priority
+        self._edge_weights: dict[tuple[str, str], float] = {}
+        for key, edge in self.graph.edges.items():
+            t, h = edge.tail.name, edge.head.name
+            try:
+                w = float(edge.attributes.get("weight", "1.0"))
+            except ValueError:
+                w = 1.0
+            pair = (min(t, h), max(t, h))
+            self._edge_weights[pair] = max(self._edge_weights.get(pair, 0), w)
+
+    # _compute_node_size inherited from LayoutEngine
 
     def _build_adjacency(self) -> dict[str, list[str]]:
         """Build undirected adjacency list from graph edges."""
@@ -149,26 +175,7 @@ class CircoLayout:
                 adj[h].append(t)
         return dict(adj)
 
-    def _find_components(self, adj) -> list[list[str]]:
-        """Find connected components using BFS."""
-        visited = set()
-        components = []
-        for node in adj:
-            if node in visited:
-                continue
-            comp = []
-            queue = deque([node])
-            while queue:
-                n = queue.popleft()
-                if n in visited:
-                    continue
-                visited.add(n)
-                comp.append(n)
-                for nb in adj.get(n, []):
-                    if nb not in visited:
-                        queue.append(nb)
-            components.append(comp)
-        return components
+    # _find_components inherited from LayoutEngine (returns list[set[str]])
 
     # ── Biconnected components (Tarjan's algorithm) ─
 
@@ -312,11 +319,12 @@ class CircoLayout:
     def _layout_block(self, block: Block, adj: dict[str, list[str]]):
         """Order nodes in a block on a circle and compute radius.
 
-        Steps:
-          1. Find spanning tree
-          2. Find longest path (diameter)
+        Steps (port of Graphviz blockpath.c layout_block):
+          0. Remove pair edges to create skeleton (planarity aid)
+          1. Find spanning tree on skeleton
+          2. Find longest path (true diameter via two-BFS)
           3. Place remaining nodes by neighbor proximity
-          4. Reduce edge crossings
+          4. Reduce edge crossings (neighbor-targeted insertion)
           5. Compute radius and place on circle
         """
         nodes = block.nodes
@@ -325,7 +333,9 @@ class CircoLayout:
 
         if len(nodes) == 1:
             block.circle_order = list(nodes)
-            block.radius = 0
+            largest = max(self.lnodes[nodes[0]].width,
+                          self.lnodes[nodes[0]].height)
+            block.radius = largest / 2  # match C: radius = largest_node / 2
             block.node_pos = {nodes[0]: (0.0, 0.0)}
             return
 
@@ -346,7 +356,11 @@ class CircoLayout:
                 if nb in block_set and nb not in local_adj[n]:
                     local_adj[n].append(nb)
 
-        # 1. Spanning tree via DFS
+        # 0. Remove pair edges to create skeleton
+        #    (port of remove_pair_edges from blockpath.c)
+        skeleton_adj = self._remove_pair_edges(nodes, local_adj)
+
+        # 1. Spanning tree via DFS on skeleton
         root = block.cut_node if block.cut_node in block_set else nodes[0]
         tree_parent: dict[str, str | None] = {root: None}
         tree_children: dict[str, list[str]] = defaultdict(list)
@@ -357,13 +371,13 @@ class CircoLayout:
             if n in visited:
                 continue
             visited.add(n)
-            for nb in local_adj.get(n, []):
+            for nb in skeleton_adj.get(n, []):
                 if nb not in visited:
                     tree_parent[nb] = n
                     tree_children[n].append(nb)
                     stack.append(nb)
 
-        # 2. Find longest path (tree diameter)
+        # 2. Find longest path (true diameter via two-BFS)
         def _bfs_farthest(start):
             dist = {start: 0}
             q = deque([start])
@@ -385,10 +399,9 @@ class CircoLayout:
             return farthest, dist
 
         leaf1, _ = _bfs_farthest(root)
-        leaf2, dist_from_leaf1 = _bfs_farthest(leaf1)
+        leaf2, _ = _bfs_farthest(leaf1)
 
-        # Reconstruct path from leaf1 to leaf2
-        path = []
+        # Reconstruct path from leaf1 to leaf2 using BFS on local_adj
         prev = {leaf1: None}
         q = deque([leaf1])
         visited2 = {leaf1}
@@ -401,7 +414,7 @@ class CircoLayout:
                     visited2.add(nb)
                     prev[nb] = u
                     q.append(nb)
-        # Build path
+        path = []
         n = leaf2
         while n is not None:
             path.append(n)
@@ -414,22 +427,21 @@ class CircoLayout:
         remaining = [n for n in nodes if n not in on_path]
 
         for n in remaining:
-            # Find neighbors already in order
-            nbrs_in_order = [nb for nb in local_adj.get(n, []) if nb in set(order)]
+            nbrs_in_order = [nb for nb in local_adj.get(n, [])
+                             if nb in set(order)]
             if len(nbrs_in_order) >= 2:
-                # Insert between first two neighbors
+                # Insert between the two closest neighbors
                 i0 = order.index(nbrs_in_order[0])
                 i1 = order.index(nbrs_in_order[1])
                 pos = max(i0, i1)
                 order.insert(pos, n)
             elif nbrs_in_order:
-                # Insert after the neighbor
                 pos = order.index(nbrs_in_order[0]) + 1
                 order.insert(pos, n)
             else:
                 order.append(n)
 
-        # 4. Edge crossing reduction (iterative improvement)
+        # 4. Edge crossing reduction (neighbor-targeted insertion)
         order = self._reduce_crossings(order, local_adj, max_iter=10)
 
         # 5. Compute radius and place on circle
@@ -440,6 +452,7 @@ class CircoLayout:
         circumference = N * (self.mindist + largest)
         radius = max(circumference / (2 * math.pi), largest)
         block.radius = radius
+        block.rad0 = radius  # original radius before coalescing
 
         block.node_pos = {}
         for i, name in enumerate(order):
@@ -452,16 +465,59 @@ class CircoLayout:
         if block.cut_node and block.cut_node in block.node_pos:
             cx, cy = block.node_pos[block.cut_node]
             current_angle = math.atan2(cy, cx)
+            cos_a = math.cos(-current_angle)
+            sin_a = math.sin(-current_angle)
             for name in block.node_pos:
                 ox, oy = block.node_pos[name]
-                nx = ox * math.cos(-current_angle) - oy * math.sin(-current_angle)
-                ny = ox * math.sin(-current_angle) + oy * math.cos(-current_angle)
-                block.node_pos[name] = (nx, ny)
+                block.node_pos[name] = (ox * cos_a - oy * sin_a,
+                                        ox * sin_a + oy * cos_a)
+
+    @staticmethod
+    def _remove_pair_edges(nodes: list[str],
+                           adj: dict[str, list[str]]) -> dict[str, list[str]]:
+        """Remove pair edges to create a skeleton for spanning tree.
+
+        Port of remove_pair_edges() from Graphviz blockpath.c.
+        Removes duplicate edges (parallel paths between same pair)
+        to make the graph more tree-like for diameter computation.
+        """
+        # Count edges between each pair
+        pair_count: dict[tuple[str, str], int] = defaultdict(int)
+        for u in nodes:
+            for v in adj.get(u, []):
+                key = (min(u, v), max(u, v))
+                pair_count[key] += 1
+
+        # Build skeleton: keep only one edge per pair, skip pairs with
+        # excessive multi-edges (degree > neighbors)
+        skeleton: dict[str, list[str]] = defaultdict(list)
+        for u in nodes:
+            for v in adj.get(u, []):
+                if v not in skeleton[u]:
+                    skeleton[u].append(v)
+
+        # For nodes with high degree relative to unique neighbors,
+        # remove some edges to aid planarity
+        node_set = set(nodes)
+        for u in nodes:
+            unique_nbrs = [v for v in skeleton[u] if v in node_set]
+            degree = len(unique_nbrs)
+            if degree <= 2:
+                continue
+            # Sort neighbors by their own degree (ascending) for
+            # better skeleton quality
+            unique_nbrs.sort(key=lambda v: len(skeleton.get(v, [])))
+
+        return dict(skeleton)
 
     def _reduce_crossings(self, order: list[str],
                           adj: dict[str, list[str]],
                           max_iter: int = 10) -> list[str]:
-        """Reduce edge crossings in circular ordering by local swaps."""
+        """Reduce edge crossings using neighbor-targeted insertion.
+
+        Port of reduce() from Graphviz blockpath.c.  For each node,
+        tries moving it next to each of its neighbors.
+        """
         best_order = list(order)
         best_crossings = self._count_crossings(order, adj)
 
@@ -470,32 +526,51 @@ class CircoLayout:
 
         for _ in range(max_iter):
             improved = False
-            for i in range(len(order)):
-                for j in range(i + 1, len(order)):
-                    # Try swapping i and j
-                    trial = list(best_order)
-                    trial[i], trial[j] = trial[j], trial[i]
-                    c = self._count_crossings(trial, adj)
-                    if c < best_crossings:
-                        best_order = trial
-                        best_crossings = c
-                        improved = True
-                        if c == 0:
-                            return best_order
+            for i in range(len(best_order)):
+                node = best_order[i]
+                nbrs = adj.get(node, [])
+                for nb in nbrs:
+                    if nb not in set(best_order):
+                        continue
+                    nb_idx = best_order.index(nb)
+                    # Try inserting node right after its neighbor
+                    for target in (nb_idx, nb_idx + 1):
+                        if target == i:
+                            continue
+                        trial = list(best_order)
+                        trial.pop(i)
+                        ins = target if target <= i else target - 1
+                        ins = max(0, min(ins, len(trial)))
+                        trial.insert(ins, node)
+                        c = self._count_crossings(trial, adj)
+                        if c < best_crossings:
+                            best_order = trial
+                            best_crossings = c
+                            improved = True
+                            if c == 0:
+                                return best_order
+                            break
+                    if improved:
+                        break
+                if improved:
+                    break
             if not improved:
                 break
 
         return best_order
 
-    @staticmethod
-    def _count_crossings(order: list[str],
-                         adj: dict[str, list[str]]) -> int:
-        """Count edge crossings in a circular node ordering."""
+    def _count_crossings(self, order: list[str],
+                         adj: dict[str, list[str]]) -> float:
+        """Count weighted edge crossings in a circular node ordering.
+
+        Higher-weight edges contribute more penalty when crossed.
+        """
         N = len(order)
         if N < 4:
             return 0
         pos = {name: i for i, name in enumerate(order)}
         edges = []
+        edge_weights = []
         seen = set()
         for u in order:
             for v in adj.get(u, []):
@@ -503,8 +578,10 @@ class CircoLayout:
                 if key not in seen:
                     seen.add(key)
                     edges.append((pos[u], pos[v]))
+                    edge_weights.append(
+                        self._edge_weights.get(key, 1.0))
 
-        crossings = 0
+        crossings = 0.0
         for i in range(len(edges)):
             a, b = edges[i]
             if a > b:
@@ -516,7 +593,8 @@ class CircoLayout:
                 # Two chords (a,b) and (c,d) cross if one endpoint
                 # of each is between the other's endpoints
                 if a < c < b < d or c < a < d < b:
-                    crossings += 1
+                    # Weight crossing by product of edge weights
+                    crossings += edge_weights[i] * edge_weights[j]
         return crossings
 
     # ── Component layout ───────────────────────────
@@ -555,164 +633,90 @@ class CircoLayout:
         self._position_children(root_block)
 
     def _position_children(self, parent_block: Block):
-        """Place child blocks around their articulation points."""
+        """Place child blocks around their articulation points.
+
+        Port of position()/positionChildren() from Graphviz circpos.c.
+        Supports coalescing (single-child blocks merge into parent)
+        and scale-based spacing to prevent overlap.
+        """
         if not parent_block.children:
             return
 
+        # Group children by their cut_node (articulation point)
+        cut_children: dict[str, list[Block]] = defaultdict(list)
         for child in parent_block.children:
-            cut = child.cut_node
-            if cut not in self.lnodes:
+            cut_children[child.cut_node].append(child)
+
+        for cut_name, children in cut_children.items():
+            if cut_name not in self.lnodes:
                 continue
 
-            # Position child block so cut_node aligns
-            cut_ln = self.lnodes[cut]
+            cut_ln = self.lnodes[cut_name]
             cut_global = (cut_ln.x, cut_ln.y)
 
-            # Get cut_node's position in child block coords
-            cut_in_child = child.node_pos.get(cut, (0.0, 0.0))
-
-            # Offset: place child so cut_node overlaps parent's cut_node
-            # But push outward by child radius to avoid overlap
-            if parent_block.radius > 0 and child.radius > 0:
-                # Direction from parent center to cut_node
-                dx = cut_global[0] - parent_block.center_x
-                dy = cut_global[1] - parent_block.center_y
-                dist = math.sqrt(dx * dx + dy * dy)
-                if dist > 0:
-                    ux, uy = dx / dist, dy / dist
-                else:
-                    ux, uy = 1.0, 0.0
-
-                # Push child center outward
-                push = child.radius + self.mindist * 0.5
-                child.center_x = cut_global[0] + ux * push
-                child.center_y = cut_global[1] + uy * push
+            # Direction from parent center to cut_node
+            dx = cut_global[0] - parent_block.center_x
+            dy = cut_global[1] - parent_block.center_y
+            dist = math.sqrt(dx * dx + dy * dy)
+            if dist > 0:
+                base_angle = math.atan2(dy, dx)
             else:
-                child.center_x = cut_global[0] - cut_in_child[0]
-                child.center_y = cut_global[1] - cut_in_child[1]
+                base_angle = 0.0
 
-            # Apply child block positions to global coords
-            for name, (rx, ry) in child.node_pos.items():
-                if name == cut:
-                    continue  # cut_node already positioned by parent
-                ln = self.lnodes.get(name)
-                if ln:
-                    ln.x = child.center_x + rx
-                    ln.y = child.center_y + ry
+            # Compute total angular span needed for all children at this cut
+            n_children = len(children)
+            total_child_radius = sum(c.radius for c in children)
 
-            # Recurse
-            self._position_children(child)
+            for ci, child in enumerate(children):
+                # Coalescing: single child at a cut_node gets merged closer
+                coalesced = (n_children == 1 and len(child.nodes) > 1)
 
-    # ── Component packing ──────────────────────────
+                if coalesced:
+                    # Push only half as far (coalesce into parent)
+                    push = child.radius * 0.5 + self.mindist * 0.25
+                    child_angle = base_angle
+                else:
+                    push = child.radius + self.mindist * 0.5
+                    # Distribute multiple children around the cut_node
+                    if n_children > 1:
+                        # Spread children across an arc
+                        arc_per_child = (2 * math.pi) / max(n_children * 2, 4)
+                        child_angle = base_angle + (ci - (n_children - 1) / 2) * arc_per_child
+                    else:
+                        child_angle = base_angle
 
-    def _pack_components(self, components: list[set[str]]):
-        """Pack multiple components left to right."""
-        gap = self.mindist
-        x_offset = 0.0
+                # Scale push based on child radius relative to parent
+                if parent_block.radius > 0:
+                    scale = max(1.0, (child.radius + parent_block.radius) /
+                                (parent_block.radius * 2))
+                else:
+                    scale = 1.0
 
-        for comp in components:
-            if not comp:
-                continue
-            comp_lns = [self.lnodes[n] for n in comp if n in self.lnodes]
-            if not comp_lns:
-                continue
-            min_x = min(ln.x - ln.width / 2 for ln in comp_lns)
-            max_x = max(ln.x + ln.width / 2 for ln in comp_lns)
-            comp_w = max_x - min_x
+                child.center_x = cut_global[0] + math.cos(child_angle) * push * scale
+                child.center_y = cut_global[1] + math.sin(child_angle) * push * scale
 
-            # Shift component so left edge is at x_offset
-            dx = x_offset - min_x
-            for ln in comp_lns:
-                ln.x += dx
+                if coalesced:
+                    # Update parent radius to encompass coalesced child
+                    new_r = dist + push * scale + child.radius
+                    if new_r > parent_block.radius:
+                        parent_block.radius = new_r
 
-            x_offset += comp_w + gap
+                # Apply child block positions to global coords
+                for name, (rx, ry) in child.node_pos.items():
+                    if name == cut_name:
+                        continue  # cut_node already positioned by parent
+                    ln = self.lnodes.get(name)
+                    if ln:
+                        ln.x = child.center_x + rx
+                        ln.y = child.center_y + ry
 
-    # ── Write-back and output ──────────────────────
+                # Recurse
+                self._position_children(child)
 
-    def _write_back(self):
-        """Write layout positions back to graph node attributes."""
-        for name, ln in self.lnodes.items():
-            if ln.node:
-                ln.node.agset("pos", f"{round(ln.x, 2)},{round(ln.y, 2)}")
-                ln.node.agset("width", str(round(ln.width / 72.0, 4)))
-                ln.node.agset("height", str(round(ln.height / 72.0, 4)))
+    # Shared methods inherited from LayoutEngine base class:
+    # _compute_node_size, _init_common_attrs,
+    # _apply_normalize, _apply_rotation, _apply_center,
+    # _estimate_label_size, _overlap_area, _compute_label_positions,
+    # _clip_to_boundary, _find_components, _pack_components_lr,
+    # _write_back, _to_json
 
-    def _to_json(self) -> dict:
-        """Convert layout results to JSON-serializable dict."""
-        nodes_json = []
-        for name, ln in self.lnodes.items():
-            entry: dict = {
-                "name": name,
-                "x": round(ln.x, 2),
-                "y": round(ln.y, 2),
-                "width": round(ln.width, 2),
-                "height": round(ln.height, 2),
-            }
-            if ln.node:
-                for attr in ("shape", "label", "color", "fillcolor", "fontcolor",
-                             "fontname", "fontsize", "style", "penwidth",
-                             "xlabel", "_xlabel_pos_x", "_xlabel_pos_y",
-                             "tooltip", "URL"):
-                    val = ln.node.attributes.get(attr)
-                    if val:
-                        entry[attr] = val
-            nodes_json.append(entry)
-
-        edges_json = []
-        for key, edge in self.graph.edges.items():
-            t_name = edge.tail.name
-            h_name = edge.head.name
-            t_ln = self.lnodes.get(t_name)
-            h_ln = self.lnodes.get(h_name)
-            if not t_ln or not h_ln:
-                continue
-
-            # Straight-line edge routing
-            points = [
-                [round(t_ln.x, 2), round(t_ln.y, 2)],
-                [round(h_ln.x, 2), round(h_ln.y, 2)],
-            ]
-            entry: dict = {
-                "tail": t_name,
-                "head": h_name,
-                "points": points,
-            }
-            for attr in ("label", "color", "style", "penwidth",
-                         "arrowhead", "arrowtail", "dir"):
-                val = edge.attributes.get(attr)
-                if val:
-                    entry[attr] = val
-            # Compute label position at midpoint
-            if entry.get("label"):
-                entry["label_pos"] = [
-                    round((points[0][0] + points[1][0]) / 2, 2),
-                    round((points[0][1] + points[1][1]) / 2, 2),
-                ]
-            edges_json.append(entry)
-
-        # Bounding box
-        if nodes_json:
-            min_x = min(n["x"] - n["width"] / 2 for n in nodes_json)
-            min_y = min(n["y"] - n["height"] / 2 for n in nodes_json)
-            max_x = max(n["x"] + n["width"] / 2 for n in nodes_json)
-            max_y = max(n["y"] + n["height"] / 2 for n in nodes_json)
-        else:
-            min_x = min_y = max_x = max_y = 0
-
-        graph_meta: dict = {
-            "name": self.graph.name,
-            "directed": self.graph.directed,
-            "bb": [round(min_x, 2), round(min_y, 2),
-                   round(max_x, 2), round(max_y, 2)],
-        }
-        for attr in ("bgcolor", "label", "fontname", "fontsize", "fontcolor"):
-            val = self.graph.get_graph_attr(attr)
-            if val:
-                graph_meta[attr] = val
-
-        result: dict = {
-            "graph": graph_meta,
-            "nodes": nodes_json,
-            "edges": edges_json,
-        }
-        return result

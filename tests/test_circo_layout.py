@@ -165,28 +165,44 @@ class TestCircoBiconnected:
 
 class TestCircoCrossings:
 
+    def _make_layout_with_weights(self, adj):
+        """Create a CircoLayout instance with edge weights for testing."""
+        g = Graph("test", directed=True)
+        g.method_init()
+        for n in adj:
+            g.add_node(n)
+        layout = CircoLayout(g)
+        layout._edge_weights = {}
+        for u, nbrs in adj.items():
+            for v in nbrs:
+                pair = (min(u, v), max(u, v))
+                layout._edge_weights[pair] = 1.0
+        return layout
+
     def test_crossing_count_no_crossings(self):
         """Simple cycle has no crossings."""
         order = ["a", "b", "c", "d"]
         adj = {"a": ["b", "d"], "b": ["a", "c"],
                "c": ["b", "d"], "d": ["c", "a"]}
-        assert CircoLayout._count_crossings(order, adj) == 0
+        layout = self._make_layout_with_weights(adj)
+        assert layout._count_crossings(order, adj) == 0
 
     def test_crossing_count_with_crossings(self):
         """K4 on a circle has crossings."""
         order = ["a", "b", "c", "d"]
         adj = {"a": ["b", "c", "d"], "b": ["a", "c", "d"],
                "c": ["a", "b", "d"], "d": ["a", "b", "c"]}
-        assert CircoLayout._count_crossings(order, adj) > 0
+        layout = self._make_layout_with_weights(adj)
+        assert layout._count_crossings(order, adj) > 0
 
     def test_crossing_reduction_improves(self):
         """Crossing reduction should not increase crossings."""
         order = ["a", "c", "b", "d"]  # deliberately bad
         adj = {"a": ["b"], "b": ["a", "c"], "c": ["b", "d"], "d": ["c"]}
-        c_before = CircoLayout._count_crossings(order, adj)
-        layout = CircoLayout.__new__(CircoLayout)
+        layout = self._make_layout_with_weights(adj)
+        c_before = layout._count_crossings(order, adj)
         improved = layout._reduce_crossings(order, adj)
-        c_after = CircoLayout._count_crossings(improved, adj)
+        c_after = layout._count_crossings(improved, adj)
         assert c_after <= c_before
 
 

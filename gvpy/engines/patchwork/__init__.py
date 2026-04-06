@@ -1,19 +1,11 @@
 """
-Patchwork layout engine — treemap visualization (not yet implemented).
+Patchwork layout engine — squarified treemap visualization.
 
-Patchwork visualizes hierarchical data as nested rectangles (treemaps).
-Each cluster becomes a proportionally-sized rectangle based on the
-number or weight of nodes it contains.
+Visualizes hierarchical data as nested rectangles where each node's
+area is proportional to its ``area`` attribute.
 
 Reference: Graphviz lib/patchwork/
 """
+from .patchwork_layout import PatchworkLayout
 
-
-class PatchworkLayout:
-    """Treemap layout engine (not yet implemented)."""
-
-    def __init__(self, graph):
-        self.graph = graph
-
-    def layout(self) -> dict:
-        raise NotImplementedError("Patchwork layout engine not yet implemented")
+__all__ = ["PatchworkLayout"]

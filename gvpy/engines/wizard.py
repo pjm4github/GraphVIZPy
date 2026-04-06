@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QSplitter, QPlainTextEdit,
     QVBoxLayout, QHBoxLayout, QFormLayout, QScrollArea, QLabel,
     QPushButton, QLineEdit, QComboBox, QCheckBox, QDoubleSpinBox,
-    QFileDialog, QMessageBox, QStatusBar, QGroupBox, QSpinBox,
+    QFileDialog, QStatusBar, QGroupBox, QSpinBox, QTabWidget,
 )
 from PyQt6.QtCore import Qt, QByteArray
 from PyQt6.QtGui import QAction, QFont, QKeySequence
@@ -22,6 +22,9 @@ from PyQt6.QtSvgWidgets import QSvgWidget
 
 from gvpy.grammar.gv_reader import read_gv, GVParseError
 from gvpy.engines import get_engine, list_engines
+from gvpy.engines.layout_features import (
+    _ATTR_TABLE, get_description, is_supported,
+)
 from gvpy.render.svg_renderer import render_svg
 
 logging.disable(logging.WARNING)
@@ -34,66 +37,277 @@ digraph G {
 }
 """
 
+# Attributes with known combo-box values
+_COMBO_VALUES: dict[str, list[str]] = {
+    "rankdir":      ["(default)", "TB", "BT", "LR", "RL"],
+    "splines":      ["(default)", "true", "curved", "ortho", "polyline", "line", "none"],
+    "ordering":     ["(default)", "out", "in"],
+    "ratio":        ["(default)", "compress", "fill", "auto"],
+    "clusterrank":  ["(default)", "local", "global", "none"],
+    "outputorder":  ["(default)", "breadthfirst", "nodesfirst", "edgesfirst"],
+    "mode":         ["(default)", "major", "KK", "sgd", "hier", "ipsep"],
+    "model":        ["(default)", "shortpath", "circuit", "subset", "mds"],
+    "overlap":      ["(default)", "true", "false", "scale", "compress", "prism", "voronoi"],
+    "smoothing":    ["(default)", "none", "avg_dist", "graph_dist", "power_dist", "rng", "spring", "triangle"],
+    "quadtree":     ["(default)", "normal", "fast", "none"],
+    "packmode":     ["(default)", "node", "clust", "graph", "array"],
+    "pagedir":      ["(default)", "BL", "BR", "TL", "TR", "LB", "LT", "RB", "RT"],
+    "dir":          ["(default)", "forward", "back", "both", "none"],
+    "shape":        ["(default)", "ellipse", "box", "circle", "diamond",
+                     "plaintext", "point", "record", "Mrecord",
+                     "triangle", "pentagon", "hexagon", "octagon",
+                     "doublecircle", "doubleoctagon", "house", "invhouse",
+                     "cylinder", "note", "tab", "folder", "component"],
+    "style":        ["(default)", "solid", "filled", "rounded", "dashed", "dotted",
+                     "bold", "invis", "striped", "wedged"],
+    "arrowhead":    ["(default)", "normal", "inv", "dot", "odot",
+                     "none", "vee", "crow", "tee",
+                     "diamond", "odiamond", "box", "obox"],
+    "arrowtail":    ["(default)", "normal", "inv", "dot", "odot",
+                     "none", "vee", "crow", "tee",
+                     "diamond", "odiamond", "box", "obox"],
+    "labelloc":     ["(default)", "t", "c", "b"],
+    "labeljust":    ["(default)", "l", "c", "r"],
+    "imagepos":     ["(default)", "mc", "tl", "tc", "tr", "ml", "mr", "bl", "bc", "br"],
+    "TBbalance":    ["(default)", "min", "max", "none"],
+    "fontname":     ["(default)", "Times-Roman", "Helvetica", "Courier",
+                     "Arial", "sans-serif", "serif", "monospace"],
+}
+
+# Attributes to skip in the wizard (write-only or internal)
+_SKIP_ATTRS = {
+    "bb", "lp", "xlp", "head_lp", "tail_lp", "lheight", "lwidth",
+    "rects", "vertices", "pos", "xdotversion", "_background",
+    "fontpath", "imagepath", "fontnames", "charset", "linelength",
+    "truecolor", "page", "viewport", "layerlistsep", "layers",
+    "layerselect", "layersep", "layout", "samplepoints", "shapefile",
+    "sortv", "layer",
+}
+
+# Order within each scope — common attrs first
+_GRAPH_ORDER = [
+    "rankdir", "splines", "nodesep", "ranksep", "mindist", "K",
+    "mode", "model", "overlap", "ordering", "ratio", "size",
+    "label", "labelloc", "labeljust", "bgcolor", "fontname", "fontsize", "fontcolor",
+    "concentrate", "compound", "newrank", "clusterrank", "normalize", "center",
+    "pack", "packmode", "pad", "dpi", "rotate", "landscape", "outputorder",
+    "maxiter", "epsilon", "start", "Damping", "defaultdist", "dim",
+    "forcelabels", "sep", "esep", "quantum", "mclimit", "remincross",
+    "nslimit", "nslimit1", "searchsize", "TBbalance", "notranslate",
+    "beautify", "smoothing", "quadtree", "repulsiveforce", "label_scheme",
+    "levels", "levelsgap", "oneblock", "rotation", "inputscale",
+    "diredgeconstraints", "overlap_scaling", "overlap_shrink", "voro_margin",
+    "showboxes", "scale",
+]
+
+_NODE_ORDER = [
+    "shape", "label", "xlabel", "fontname", "fontsize", "fontcolor",
+    "color", "fillcolor", "style", "penwidth", "width", "height",
+    "fixedsize", "group", "pin", "labelloc", "image", "imagepos", "imagescale",
+    "orientation", "sides", "distortion", "skew", "regular", "peripheries",
+    "margin", "nojustify", "gradientangle", "colorscheme",
+    "K", "area", "root", "ordering", "showboxes", "z",
+    "tooltip", "URL", "href", "target", "id", "class", "comment",
+]
+
+_EDGE_ORDER = [
+    "label", "xlabel", "headlabel", "taillabel",
+    "color", "fontcolor", "fontname", "fontsize", "style", "penwidth",
+    "arrowhead", "arrowtail", "arrowsize", "dir",
+    "weight", "len", "minlen", "constraint",
+    "headport", "tailport", "headclip", "tailclip",
+    "samehead", "sametail", "lhead", "ltail",
+    "labelfontname", "labelfontsize", "labelfontcolor",
+    "labelangle", "labeldistance", "labelfloat",
+    "decorate", "nojustify", "fillcolor", "colorscheme",
+    "showboxes",
+    "tooltip", "URL", "href", "target", "id", "class", "comment",
+    "edgeURL", "edgehref", "edgetarget", "edgetooltip",
+    "headURL", "headhref", "headtarget", "headtooltip",
+    "labelURL", "labelhref", "labeltarget", "labeltooltip",
+    "tailURL", "tailhref", "tailtarget", "tailtooltip",
+]
+
 
 class _AspectSvgWidget(QSvgWidget):
-    """QSvgWidget that preserves aspect ratio when rendering."""
+    """QSvgWidget that scales SVG to fit the widget while preserving aspect ratio."""
+
+    def sizeHint(self):
+        """Return parent size so the widget fills available space."""
+        from PyQt6.QtCore import QSize
+        parent = self.parentWidget()
+        if parent:
+            return parent.size()
+        return QSize(400, 400)
 
     def paintEvent(self, event):
         from PyQt6.QtSvg import QSvgRenderer
         from PyQt6.QtGui import QPainter
+        from PyQt6.QtCore import QRectF
         renderer = self.renderer()
         if renderer is None or not renderer.isValid():
             return
         painter = QPainter(self)
+        # Fill background
+        painter.fillRect(self.rect(), painter.background())
+
         vbox = renderer.viewBox()
         if vbox.isEmpty():
             renderer.render(painter)
         else:
-            svg_w, svg_h = vbox.width(), vbox.height()
-            wid_w, wid_h = self.width(), self.height()
+            svg_w, svg_h = float(vbox.width()), float(vbox.height())
+            wid_w, wid_h = float(self.width()), float(self.height())
             if svg_w <= 0 or svg_h <= 0:
                 renderer.render(painter)
+                painter.end()
                 return
+            # Scale to fit widget, centered
             scale = min(wid_w / svg_w, wid_h / svg_h)
             rw, rh = svg_w * scale, svg_h * scale
-            rx = (wid_w - rw) / 2
-            ry = (wid_h - rh) / 2
-            from PyQt6.QtCore import QRectF
+            rx = (wid_w - rw) / 2.0
+            ry = (wid_h - rh) / 2.0
             renderer.render(painter, QRectF(rx, ry, rw, rh))
         painter.end()
 
 
-class LayoutWizard(QMainWindow):
-    """Interactive layout wizard with editor, preview, and controls.
+def _make_widget(attr_name: str, attr_type: str, default: str) -> QWidget:
+    """Create the appropriate widget for an attribute based on its type."""
+    # Check for combo values first
+    if attr_name in _COMBO_VALUES:
+        w = QComboBox()
+        w.setEditable(attr_name == "fontname")
+        w.addItems(_COMBO_VALUES[attr_name])
+        w.setMaximumHeight(24)
+        return w
 
-    Supports any registered layout engine via the engine selector.
+    if attr_type == "bool":
+        w = QCheckBox()
+        if default.lower() in ("true", "1"):
+            w.setChecked(True)
+        return w
+
+    if attr_type in ("double", "addDouble"):
+        w = QDoubleSpinBox()
+        w.setRange(-1000, 10000)
+        w.setSingleStep(0.1)
+        w.setDecimals(3)
+        w.setSpecialValueText("(default)")
+        w.setMaximumHeight(22)
+        try:
+            v = float(default) if default and default not in ("", "0") else 0
+            w.setValue(v if v != 0 else w.minimum())
+        except ValueError:
+            pass
+        return w
+
+    if attr_type == "int":
+        w = QSpinBox()
+        w.setRange(-1000, 100000)
+        w.setSpecialValueText("(default)")
+        w.setMaximumHeight(22)
+        try:
+            w.setValue(int(default) if default else 0)
+        except ValueError:
+            pass
+        return w
+
+    # Default: line edit
+    w = QLineEdit()
+    if default:
+        w.setPlaceholderText(default)
+    w.setMaximumHeight(22)
+    return w
+
+
+def _get_widget_value(widget: QWidget, default: str = "") -> str | None:
+    """Get the current value from a widget, or None if at default.
+
+    Returns None when the widget value matches the attribute's default,
+    so the command line only shows non-default overrides.
     """
+    if isinstance(widget, QComboBox):
+        text = widget.currentText()
+        if text == "(default)":
+            return None
+        # Check if the selected value matches the actual default
+        if text.lower() == default.lower():
+            return None
+        return text
+    elif isinstance(widget, QCheckBox):
+        checked = widget.isChecked()
+        default_checked = default.lower() in ("true", "1")
+        if checked == default_checked:
+            return None
+        return "true" if checked else "false"
+    elif isinstance(widget, QDoubleSpinBox):
+        if widget.value() == widget.minimum():
+            return None
+        # Compare to default
+        try:
+            if default and abs(widget.value() - float(default)) < 0.001:
+                return None
+        except ValueError:
+            pass
+        return str(widget.value())
+    elif isinstance(widget, QSpinBox):
+        if widget.value() == widget.minimum():
+            return None
+        try:
+            if default and widget.value() == int(default):
+                return None
+        except ValueError:
+            pass
+        return str(widget.value())
+    elif isinstance(widget, QLineEdit):
+        text = widget.text().strip()
+        if not text or text == default:
+            return None
+        return text
+    return None
+
+
+class LayoutWizard(QMainWindow):
+    """Interactive layout wizard with editor, preview, and controls."""
 
     def __init__(self, initial_file: str | None = None,
                  engine: str = "dot"):
         super().__init__()
         self._engine_name = engine
         self.setWindowTitle(f"GraphvizPy — Layout Wizard [{engine}]")
-        self.resize(1300, 750)
+        self.resize(1400, 800)
         self._current_file: str | None = None
         self._last_svg: str = ""
 
+        # Build attribute lookup: {(scope, name): (type, default, engines, desc)}
+        self._attr_info: dict[tuple[str, str], tuple[str, str, set, str]] = {}
+        for scope, name, atype, default, engines, desc in _ATTR_TABLE:
+            self._attr_info[(scope, name)] = (atype, default, engines, desc)
+
+        # Widget registry: [(scope, attr_name, widget, default_value)]
+        self._feature_widgets: list[tuple[str, str, QWidget, str]] = []
+
         self._build_menu()
         self._build_ui()
+        self._update_feature_visibility()
         self._update_command()
 
         if initial_file:
-            self._load_file(Path(initial_file))
+            self._editor.setPlainText(
+                Path(initial_file).read_text(encoding="utf-8"))
+            self._current_file = initial_file
+            self.setWindowTitle(
+                f"GraphvizPy — Layout Wizard [{engine}] — {Path(initial_file).name}")
         else:
             self._editor.setPlainText(_DEFAULT_DOT)
-            self._run_layout()
 
-    # ── Menu bar ─────────────────────────────────
+        # Defer initial layout to after the window is shown
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, self._run_layout)
 
     def _build_menu(self):
         menu = self.menuBar()
-
         file_menu = menu.addMenu("File")
+
         open_act = QAction("Open...", self)
         open_act.setShortcut(QKeySequence.StandardKey.Open)
         open_act.triggered.connect(self._on_open)
@@ -121,15 +335,12 @@ class LayoutWizard(QMainWindow):
         run_act.triggered.connect(self._run_layout)
         view_menu.addAction(run_act)
 
-    # ── UI construction ──────────────────────────
-
     def _build_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QVBoxLayout(central)
         main_layout.setContentsMargins(4, 4, 4, 4)
 
-        # Three-pane splitter
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # Left: DOT source editor
@@ -139,354 +350,197 @@ class LayoutWizard(QMainWindow):
         self._editor.setTabStopDistance(28)
         splitter.addWidget(self._editor)
 
-        # Center: SVG preview (aspect-preserving)
+        # Center: SVG preview
         self._svg_widget = _AspectSvgWidget()
         self._svg_widget.setMinimumWidth(200)
         self._svg_widget.setStyleSheet("background-color: white;")
         splitter.addWidget(self._svg_widget)
 
-        # Right: parameter panel
+        # Right: parameter tabs
         param_scroll = QScrollArea()
         param_scroll.setWidgetResizable(True)
-        param_scroll.setMinimumWidth(220)
-        param_scroll.setMaximumWidth(320)
-        param_widget = QWidget()
-        param_outer = QVBoxLayout(param_widget)
-        param_outer.setContentsMargins(4, 4, 4, 4)
+        param_scroll.setMinimumWidth(250)
+        param_scroll.setMaximumWidth(360)
 
-        # -- Engine selector --
-        engine_group = QGroupBox("Layout Engine")
-        engine_layout = QFormLayout()
-        engine_layout.setContentsMargins(4, 8, 4, 4)
+        param_container = QWidget()
+        param_vlayout = QVBoxLayout(param_container)
+        param_vlayout.setContentsMargins(2, 2, 2, 2)
+        param_vlayout.setSpacing(2)
 
+        # Engine selector at top
+        engine_row = QHBoxLayout()
+        engine_row.addWidget(QLabel("Engine:"))
         self._engine_combo = QComboBox()
-        engines = list_engines()
-        for name, info in sorted(engines.items()):
-            label = name if info["status"] == "implemented" else f"{name} (stub)"
-            self._engine_combo.addItem(label, name)
-        # Set current engine
+        engines_info = list_engines()
+        for name, info in sorted(engines_info.items()):
+            lbl = name if info["status"] == "implemented" else f"{name} (stub)"
+            self._engine_combo.addItem(lbl, name)
         for i in range(self._engine_combo.count()):
             if self._engine_combo.itemData(i) == self._engine_name:
                 self._engine_combo.setCurrentIndex(i)
                 break
         self._engine_combo.currentIndexChanged.connect(self._on_engine_changed)
-        engine_layout.addRow("Engine:", self._engine_combo)
-        engine_group.setLayout(engine_layout)
-        param_outer.addWidget(engine_group)
+        engine_row.addWidget(self._engine_combo, stretch=1)
+        param_vlayout.addLayout(engine_row)
 
-        # -- Graph parameters --
-        graph_group = QGroupBox("Graph")
-        graph_layout = QFormLayout()
-        graph_layout.setContentsMargins(4, 8, 4, 4)
+        # Tabbed attribute panels
+        tabs = QTabWidget()
+        tabs.setTabPosition(QTabWidget.TabPosition.North)
+        tabs.setStyleSheet("""
+            QTabBar::tab {
+                padding: 6px 16px;
+                margin-right: 2px;
+                border: 1px solid #999;
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                background: #e0e0e0;
+                color: #555;
+            }
+            QTabBar::tab:selected {
+                background: #ffffff;
+                color: #000;
+                font-weight: bold;
+                border-bottom: 2px solid #3374b8;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #d0d8e0;
+            }
+            QTabWidget::pane {
+                border: 1px solid #999;
+                border-top: none;
+            }
+        """)
 
-        self._rankdir = QComboBox()
-        self._rankdir.addItems(["TB", "BT", "LR", "RL"])
-        graph_layout.addRow("rankdir:", self._rankdir)
+        tabs.addTab(self._build_attr_panel("graph", _GRAPH_ORDER), "Graph")
+        tabs.addTab(self._build_attr_panel("node", _NODE_ORDER), "Node")
+        tabs.addTab(self._build_attr_panel("edge", _EDGE_ORDER), "Edge")
+        param_vlayout.addWidget(tabs, stretch=1)
 
-        self._splines = QComboBox()
-        self._splines.addItems(["curved", "ortho", "polyline", "line"])
-        graph_layout.addRow("splines:", self._splines)
-
-        self._ordering = QComboBox()
-        self._ordering.addItems(["(none)", "out", "in"])
-        graph_layout.addRow("ordering:", self._ordering)
-
-        self._ratio = QComboBox()
-        self._ratio.addItems(["(none)", "compress", "fill", "auto"])
-        graph_layout.addRow("ratio:", self._ratio)
-
-        self._ranksep = QDoubleSpinBox()
-        self._ranksep.setRange(0.1, 5.0)
-        self._ranksep.setSingleStep(0.1)
-        self._ranksep.setValue(0.5)
-        graph_layout.addRow("ranksep:", self._ranksep)
-
-        self._nodesep = QDoubleSpinBox()
-        self._nodesep.setRange(0.1, 5.0)
-        self._nodesep.setSingleStep(0.05)
-        self._nodesep.setValue(0.25)
-        graph_layout.addRow("nodesep:", self._nodesep)
-
-        self._size = QLineEdit()
-        self._size.setPlaceholderText("e.g. 8,10")
-        graph_layout.addRow("size:", self._size)
-
-        self._concentrate = QCheckBox()
-        graph_layout.addRow("concentrate:", self._concentrate)
-
-        self._compound = QCheckBox()
-        graph_layout.addRow("compound:", self._compound)
-
-        self._normalize = QCheckBox()
-        graph_layout.addRow("normalize:", self._normalize)
-
-        self._newrank = QCheckBox()
-        graph_layout.addRow("newrank:", self._newrank)
-
-        graph_group.setLayout(graph_layout)
-        param_outer.addWidget(graph_group)
-
-        # -- Node defaults --
-        node_group = QGroupBox("Node Defaults")
-        node_layout = QFormLayout()
-        node_layout.setContentsMargins(4, 8, 4, 4)
-
-        self._node_shape = QComboBox()
-        self._node_shape.addItems([
-            "(default)", "ellipse", "box", "circle", "diamond",
-            "plaintext", "point", "record", "Mrecord",
-            "triangle", "pentagon", "hexagon", "octagon",
-            "doublecircle", "doubleoctagon", "house", "invhouse",
-        ])
-        node_layout.addRow("shape:", self._node_shape)
-
-        self._node_fontsize = QSpinBox()
-        self._node_fontsize.setRange(6, 72)
-        self._node_fontsize.setValue(14)
-        node_layout.addRow("fontsize:", self._node_fontsize)
-
-        self._node_fontname = QComboBox()
-        self._node_fontname.setEditable(True)
-        self._node_fontname.addItems([
-            "(default)", "Times-Roman", "Helvetica", "Courier",
-            "Arial", "sans-serif", "serif", "monospace",
-        ])
-        node_layout.addRow("fontname:", self._node_fontname)
-
-        self._node_style = QComboBox()
-        self._node_style.addItems([
-            "(none)", "filled", "rounded", "dashed", "dotted", "bold", "invis",
-        ])
-        node_layout.addRow("style:", self._node_style)
-
-        self._node_color = QLineEdit()
-        self._node_color.setPlaceholderText("e.g. red, #FF0000")
-        node_layout.addRow("color:", self._node_color)
-
-        self._node_fillcolor = QLineEdit()
-        self._node_fillcolor.setPlaceholderText("e.g. lightblue")
-        node_layout.addRow("fillcolor:", self._node_fillcolor)
-
-        self._node_width = QDoubleSpinBox()
-        self._node_width.setRange(0, 10.0)
-        self._node_width.setSingleStep(0.25)
-        self._node_width.setValue(0)
-        self._node_width.setSpecialValueText("(auto)")
-        node_layout.addRow("width:", self._node_width)
-
-        self._node_height = QDoubleSpinBox()
-        self._node_height.setRange(0, 10.0)
-        self._node_height.setSingleStep(0.25)
-        self._node_height.setValue(0)
-        self._node_height.setSpecialValueText("(auto)")
-        node_layout.addRow("height:", self._node_height)
-
-        node_group.setLayout(node_layout)
-        param_outer.addWidget(node_group)
-
-        # -- Edge defaults --
-        edge_group = QGroupBox("Edge Defaults")
-        edge_layout = QFormLayout()
-        edge_layout.setContentsMargins(4, 8, 4, 4)
-
-        self._edge_style = QComboBox()
-        self._edge_style.addItems([
-            "(none)", "solid", "dashed", "dotted", "bold", "invis",
-        ])
-        edge_layout.addRow("style:", self._edge_style)
-
-        self._edge_color = QLineEdit()
-        self._edge_color.setPlaceholderText("e.g. blue, #0000FF")
-        edge_layout.addRow("color:", self._edge_color)
-
-        self._edge_arrowhead = QComboBox()
-        self._edge_arrowhead.addItems([
-            "(default)", "normal", "inv", "dot", "odot",
-            "none", "vee", "crow", "tee",
-            "diamond", "odiamond", "box", "obox",
-        ])
-        edge_layout.addRow("arrowhead:", self._edge_arrowhead)
-
-        self._edge_arrowtail = QComboBox()
-        self._edge_arrowtail.addItems([
-            "(default)", "normal", "inv", "dot", "odot",
-            "none", "vee", "crow", "tee",
-            "diamond", "odiamond", "box", "obox",
-        ])
-        edge_layout.addRow("arrowtail:", self._edge_arrowtail)
-
-        self._edge_dir = QComboBox()
-        self._edge_dir.addItems(["(default)", "forward", "back", "both", "none"])
-        edge_layout.addRow("dir:", self._edge_dir)
-
-        self._edge_penwidth = QDoubleSpinBox()
-        self._edge_penwidth.setRange(0, 10.0)
-        self._edge_penwidth.setSingleStep(0.5)
-        self._edge_penwidth.setValue(0)
-        self._edge_penwidth.setSpecialValueText("(default)")
-        edge_layout.addRow("penwidth:", self._edge_penwidth)
-
-        self._edge_fontsize = QSpinBox()
-        self._edge_fontsize.setRange(0, 72)
-        self._edge_fontsize.setValue(0)
-        self._edge_fontsize.setSpecialValueText("(default)")
-        edge_layout.addRow("fontsize:", self._edge_fontsize)
-
-        self._edge_minlen = QSpinBox()
-        self._edge_minlen.setRange(0, 10)
-        self._edge_minlen.setValue(0)
-        self._edge_minlen.setSpecialValueText("(default)")
-        edge_layout.addRow("minlen:", self._edge_minlen)
-
-        self._edge_weight = QSpinBox()
-        self._edge_weight.setRange(0, 100)
-        self._edge_weight.setValue(0)
-        self._edge_weight.setSpecialValueText("(default)")
-        edge_layout.addRow("weight:", self._edge_weight)
-
-        edge_group.setLayout(edge_layout)
-        param_outer.addWidget(edge_group)
-
-        param_outer.addStretch(1)
-        param_scroll.setWidget(param_widget)
+        param_scroll.setWidget(param_container)
         splitter.addWidget(param_scroll)
 
-        # Set initial splitter proportions (35/40/25)
-        splitter.setSizes([420, 480, 300])
+        splitter.setSizes([380, 500, 320])
         main_layout.addWidget(splitter, stretch=1)
 
-        # Bottom bar: command line + Run button
+        # Bottom bar
         bottom = QHBoxLayout()
-        bottom.addWidget(QLabel("Command:"))
+        bottom.addWidget(QLabel("Cmd:"))
         self._cmd_line = QLineEdit()
         self._cmd_line.setReadOnly(True)
-        self._cmd_line.setFont(QFont("Consolas", 10))
+        self._cmd_line.setFont(QFont("Consolas", 9))
         bottom.addWidget(self._cmd_line, stretch=1)
-
         run_btn = QPushButton("Run")
         run_btn.setDefault(True)
         run_btn.clicked.connect(self._run_layout)
         bottom.addWidget(run_btn)
-
         main_layout.addLayout(bottom)
 
-        # Status bar
         self.setStatusBar(QStatusBar())
 
-        # Connect all parameter changes to command update
-        for w in (self._rankdir, self._splines, self._ordering, self._ratio,
-                  self._node_shape, self._node_fontname, self._node_style,
-                  self._edge_style, self._edge_arrowhead, self._edge_arrowtail,
-                  self._edge_dir):
-            w.currentTextChanged.connect(self._update_command)
-        for w in (self._ranksep, self._nodesep, self._node_width, self._node_height,
-                  self._edge_penwidth):
-            w.valueChanged.connect(self._update_command)
-        for w in (self._node_fontsize, self._edge_fontsize, self._edge_minlen,
-                  self._edge_weight):
-            w.valueChanged.connect(self._update_command)
-        for w in (self._size, self._node_color, self._node_fillcolor, self._edge_color):
-            w.textChanged.connect(self._update_command)
-        for w in (self._concentrate, self._compound, self._normalize, self._newrank):
-            w.stateChanged.connect(self._update_command)
+    def _build_attr_panel(self, scope: str, order: list[str]) -> QScrollArea:
+        """Build a scrollable form panel for attributes of a given scope."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        widget = QWidget()
+        form = QFormLayout(widget)
+        form.setContentsMargins(6, 6, 6, 6)
+        form.setSpacing(4)
+        form.setVerticalSpacing(4)
+        form.setHorizontalSpacing(8)
+
+        # Collect all attrs for this scope from the table
+        scope_attrs: dict[str, tuple[str, str, set, str]] = {}
+        for (s, name), (atype, default, engines, desc) in self._attr_info.items():
+            if s == scope and name not in _SKIP_ATTRS:
+                scope_attrs[name] = (atype, default, engines, desc)
+
+        # Alphabetical order
+        all_names = sorted(scope_attrs.keys(), key=str.lower)
+
+        for attr_name in all_names:
+            atype, default, engines, desc = scope_attrs[attr_name]
+            w = _make_widget(attr_name, atype, default)
+
+            # Connect change signal
+            if isinstance(w, QComboBox):
+                w.currentTextChanged.connect(self._update_command)
+            elif isinstance(w, QCheckBox):
+                w.stateChanged.connect(self._update_command)
+            elif isinstance(w, (QDoubleSpinBox, QSpinBox)):
+                w.valueChanged.connect(self._update_command)
+            elif isinstance(w, QLineEdit):
+                w.textChanged.connect(self._update_command)
+
+            form.addRow(f"{attr_name}:", w)
+            self._feature_widgets.append((scope, attr_name, w, default))
+
+        scroll.setWidget(widget)
+        return scroll
 
     # ── Engine selector ─────────────────────────
 
     def _on_engine_changed(self, index):
         self._engine_name = self._engine_combo.itemData(index)
         self.setWindowTitle(f"GraphvizPy — Layout Wizard [{self._engine_name}]")
+        self._update_feature_visibility()
         self._update_command()
+
+    def _update_feature_visibility(self):
+        """Enable/disable controls and set tooltips per engine.
+
+        Disabled attributes are dimmed but still show their tooltip
+        so the user knows what the attribute does and why it's unavailable.
+        """
+        for scope, attr_name, widget, _default in self._feature_widgets:
+            supported = is_supported(self._engine_name, scope, attr_name)
+            widget.setEnabled(supported)
+
+            desc = get_description(self._engine_name, scope, attr_name)
+            if supported:
+                tooltip = desc or attr_name
+            else:
+                # Show description + reason even when disabled
+                base = desc or attr_name
+                tooltip = f"{base}\n(not available for {self._engine_name} engine)"
+
+            widget.setToolTip(tooltip)
+
+            # Dim the label text for unsupported attributes
+            parent = widget.parentWidget()
+            if parent:
+                layout = parent.layout()
+                if layout and hasattr(layout, 'labelForField'):
+                    label = layout.labelForField(widget)
+                    if label:
+                        label.setToolTip(tooltip)
+                        if supported:
+                            label.setEnabled(True)
+                            label.setStyleSheet("")
+                        else:
+                            label.setEnabled(False)
+                            label.setStyleSheet("color: #aaaaaa;")
 
     # ── Command line builder ─────────────────────
 
     def _build_overrides(self) -> tuple[list[str], list[str], list[str]]:
-        """Build -G, -N, -E flags from parameter controls."""
-        g_flags: list[str] = []
-        n_flags: list[str] = []
-        e_flags: list[str] = []
+        """Build -G, -N, -E flags from all parameter controls."""
+        g_flags, n_flags, e_flags = [], [], []
 
-        rd = self._rankdir.currentText()
-        if rd != "TB":
-            g_flags.append(f"-Grankdir={rd}")
-        sp = self._splines.currentText()
-        if sp != "curved":
-            g_flags.append(f"-Gsplines={sp}")
-        od = self._ordering.currentText()
-        if od != "(none)":
-            g_flags.append(f"-Gordering={od}")
-        rt = self._ratio.currentText()
-        if rt != "(none)":
-            g_flags.append(f"-Gratio={rt}")
-        rs = self._ranksep.value()
-        if abs(rs - 0.5) > 0.01:
-            g_flags.append(f"-Granksep={rs}")
-        ns = self._nodesep.value()
-        if abs(ns - 0.25) > 0.01:
-            g_flags.append(f"-Gnodesep={ns}")
-        sz = self._size.text().strip()
-        if sz:
-            g_flags.append(f"-Gsize={sz}")
-        if self._concentrate.isChecked():
-            g_flags.append("-Gconcentrate=true")
-        if self._compound.isChecked():
-            g_flags.append("-Gcompound=true")
-        if self._normalize.isChecked():
-            g_flags.append("-Gnormalize=true")
-        if self._newrank.isChecked():
-            g_flags.append("-Gnewrank=true")
+        for scope, attr_name, widget, default in self._feature_widgets:
+            if not widget.isEnabled():
+                continue
+            val = _get_widget_value(widget, default)
+            if val is None:
+                continue
 
-        ns_val = self._node_shape.currentText()
-        if ns_val != "(default)":
-            n_flags.append(f"-Nshape={ns_val}")
-        nfs = self._node_fontsize.value()
-        if nfs != 14:
-            n_flags.append(f"-Nfontsize={nfs}")
-        nfn = self._node_fontname.currentText()
-        if nfn != "(default)":
-            n_flags.append(f"-Nfontname={nfn}")
-        nst = self._node_style.currentText()
-        if nst != "(none)":
-            n_flags.append(f"-Nstyle={nst}")
-        nc = self._node_color.text().strip()
-        if nc:
-            n_flags.append(f"-Ncolor={nc}")
-        nfc = self._node_fillcolor.text().strip()
-        if nfc:
-            n_flags.append(f"-Nfillcolor={nfc}")
-        nw = self._node_width.value()
-        if nw > 0:
-            n_flags.append(f"-Nwidth={nw}")
-        nh = self._node_height.value()
-        if nh > 0:
-            n_flags.append(f"-Nheight={nh}")
-
-        est = self._edge_style.currentText()
-        if est != "(none)":
-            e_flags.append(f"-Estyle={est}")
-        ec = self._edge_color.text().strip()
-        if ec:
-            e_flags.append(f"-Ecolor={ec}")
-        eah = self._edge_arrowhead.currentText()
-        if eah != "(default)":
-            e_flags.append(f"-Earrowhead={eah}")
-        eat = self._edge_arrowtail.currentText()
-        if eat != "(default)":
-            e_flags.append(f"-Earrowtail={eat}")
-        ed = self._edge_dir.currentText()
-        if ed != "(default)":
-            e_flags.append(f"-Edir={ed}")
-        epw = self._edge_penwidth.value()
-        if epw > 0:
-            e_flags.append(f"-Epenwidth={epw}")
-        efs = self._edge_fontsize.value()
-        if efs > 0:
-            e_flags.append(f"-Efontsize={efs}")
-        eml = self._edge_minlen.value()
-        if eml > 0:
-            e_flags.append(f"-Eminlen={eml}")
-        ewt = self._edge_weight.value()
-        if ewt > 0:
-            e_flags.append(f"-Eweight={ewt}")
+            # Map scope to flag prefix
+            if scope == "graph":
+                g_flags.append(f"-G{attr_name}={val}")
+            elif scope == "node":
+                n_flags.append(f"-N{attr_name}={val}")
+            elif scope == "edge":
+                e_flags.append(f"-E{attr_name}={val}")
 
         return g_flags, n_flags, e_flags
 
@@ -556,7 +610,9 @@ class LayoutWizard(QMainWindow):
 
         svg_bytes = QByteArray(svg_text.encode("utf-8"))
         self._svg_widget.load(svg_bytes)
-        self._svg_widget.update()
+        # Force the widget to resize to fill available space and repaint
+        self._svg_widget.updateGeometry()
+        self._svg_widget.repaint()
 
         n = len(result["nodes"])
         e = len(result["edges"])
@@ -613,10 +669,7 @@ class LayoutWizard(QMainWindow):
 
 
 def launch_wizard(initial_file: str | None = None, engine: str = "dot"):
-    """Launch the layout wizard GUI.
-
-    Called from ``dot.py --ui`` or ``gvcli.py --ui``.
-    """
+    """Launch the layout wizard GUI."""
     app = QApplication.instance() or QApplication(sys.argv)
     wizard = LayoutWizard(initial_file, engine=engine)
     wizard.show()

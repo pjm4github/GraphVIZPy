@@ -1,0 +1,54 @@
+// Patchwork treemap demo — disk usage visualization
+// Usage: python gvcli.py -Kpatchwork test_data/patchwork_demo.gv -Tsvg -o patchwork_demo.svg
+digraph disk_usage {
+    // Areas represent relative file sizes
+
+    subgraph cluster_src {
+        label="src/ (source code)";
+        style=filled; fillcolor="#e8f4fd";
+
+        subgraph cluster_frontend {
+            label="frontend/";
+            style=filled; fillcolor="#d1ecf1";
+            app_js    [label="app.js"      area=8  style=filled fillcolor="#ffeeba"];
+            index_html[label="index.html"  area=2  style=filled fillcolor="#c3e6cb"];
+            styles_css[label="styles.css"  area=5  style=filled fillcolor="#bee5eb"];
+            bundle_js [label="bundle.js"   area=15 style=filled fillcolor="#f5c6cb"];
+        }
+
+        subgraph cluster_backend {
+            label="backend/";
+            style=filled; fillcolor="#d4edda";
+            server_py [label="server.py"   area=12 style=filled fillcolor="#ffeeba"];
+            models_py [label="models.py"   area=6  style=filled fillcolor="#ffeeba"];
+            routes_py [label="routes.py"   area=4  style=filled fillcolor="#ffeeba"];
+            db_py     [label="db.py"       area=3  style=filled fillcolor="#ffeeba"];
+        }
+    }
+
+    subgraph cluster_tests {
+        label="tests/";
+        style=filled; fillcolor="#fff3cd";
+        test_api  [label="test_api.py"     area=7  style=filled fillcolor="#ffeeba"];
+        test_ui   [label="test_ui.py"      area=5  style=filled fillcolor="#ffeeba"];
+        test_db   [label="test_db.py"      area=3  style=filled fillcolor="#ffeeba"];
+        fixtures  [label="fixtures.json"   area=2  style=filled fillcolor="#d6d8db"];
+    }
+
+    subgraph cluster_docs {
+        label="docs/";
+        style=filled; fillcolor="#f8d7da";
+        readme    [label="README.md"       area=4  style=filled fillcolor="#c3e6cb"];
+        api_docs  [label="api.md"          area=6  style=filled fillcolor="#c3e6cb"];
+        changelog [label="CHANGELOG.md"    area=2  style=filled fillcolor="#c3e6cb"];
+    }
+
+    subgraph cluster_config {
+        label="config/";
+        style=filled; fillcolor="#e2e3e5";
+        docker    [label="Dockerfile"      area=1  style=filled fillcolor="#d6d8db"];
+        compose   [label="docker-compose"  area=1  style=filled fillcolor="#d6d8db"];
+        env       [label=".env"            area=1  style=filled fillcolor="#d6d8db"];
+        package   [label="package.json"    area=2  style=filled fillcolor="#d6d8db"];
+    }
+}

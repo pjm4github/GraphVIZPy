@@ -108,7 +108,8 @@ def read_graph(source, suffix=".gv"):
 
 
 def layout_and_render(graph, fmt, engine_name="dot",
-                      no_layout=False, scale=None, invert_y=False):
+                      no_layout=False, scale=None, invert_y=False,
+                      bundle=False):
     """Run layout (if needed) and produce output in the requested format.
 
     Parameters
@@ -154,6 +155,11 @@ def layout_and_render(graph, fmt, engine_name="dot",
             sys.exit(1)
     else:
         result = _result_from_attrs(graph)
+
+    # Edge bundling (mingle post-processor)
+    if bundle:
+        from gvpy.tools.mingle import MingleBundler
+        result = MingleBundler.bundle_result(result)
 
     # Post-process
     if scale is not None and scale != 1.0:
@@ -293,10 +299,11 @@ GraphvizPy — pure-Python graph layout and rendering.
 Unified CLI for all layout engines.  Select with -K:
   {engine_list}
 
-Currently implemented: dot, circo.
+Currently implemented: dot, neato, fdp, circo.
+Post-processors: mingle (edge bundling via --bundle).
 Others are stubbed and will raise NotImplementedError.
 
-Pipeline:  input → parse → layout (-K engine) → render (-T format) → output
+Pipeline:  input → parse → layout (-K) → [bundle] → render (-T) → output
 
 Input formats (auto-detected by extension):
   .gv, .dot     DOT language
@@ -390,6 +397,26 @@ DOT file examples:
         "--list-engines", action="store_true",
         help="List available layout engines and exit",
     )
+    p.add_argument(
+        "--bundle", action="store_true",
+        help="Apply mingle edge bundling after layout (reduces clutter)",
+    )
+    p.add_argument(
+        "-V", "--version", action="store_true",
+        help="Print version info and exit",
+    )
+    p.add_argument(
+        "-q", dest="quiet", action="store_true",
+        help="Suppress warning messages",
+    )
+    p.add_argument(
+        "-A", action="append", default=[], metavar="name=value",
+        help="Set attribute on graph, nodes, AND edges (shorthand for -G -N -E)",
+    )
+    p.add_argument(
+        "-x", dest="remove_isolated", action="store_true",
+        help="Remove isolated nodes (nodes with no edges)",
+    )
     return p
 
 
@@ -399,6 +426,17 @@ DOT file examples:
 def main():
     parser = _build_parser()
     args = parser.parse_args()
+
+    # Version
+    if args.version:
+        print("gvpy (GraphvizPy) version 0.1.0")
+        print("Python port of Graphviz — https://github.com/PJMoran/GraphvizPy")
+        sys.exit(0)
+
+    # Quiet mode — suppress warnings
+    if args.quiet:
+        import logging
+        logging.disable(logging.WARNING)
 
     # List engines
     if args.list_engines:
@@ -453,6 +491,27 @@ def main():
             for edge in graph.edges.values():
                 if k not in edge.attributes:
                     edge.agset(k, v)
+        # -A: apply to graph + all nodes + all edges
+        for spec in args.A:
+            k, v = _parse_attr(spec)
+            graph.set_graph_attr(k, v)
+            for node in graph.nodes.values():
+                if k not in node.attributes:
+                    node.agset(k, v)
+            for edge in graph.edges.values():
+                if k not in edge.attributes:
+                    edge.agset(k, v)
+
+        # -x: remove isolated nodes (no edges)
+        if args.remove_isolated:
+            connected = set()
+            for key, edge in graph.edges.items():
+                connected.add(edge.tail.name)
+                connected.add(edge.head.name)
+            isolated = [n for n in list(graph.nodes.keys())
+                        if n not in connected]
+            for name in isolated:
+                graph.delete_node(graph.nodes[name])
 
         # Layout + render
         output = layout_and_render(
@@ -461,6 +520,7 @@ def main():
             no_layout=args.no_layout,
             scale=args.scale,
             invert_y=args.invert_y,
+            bundle=args.bundle,
         )
 
         if args.verbose:

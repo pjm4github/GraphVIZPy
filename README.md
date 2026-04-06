@@ -130,13 +130,12 @@ python gvcli.py --list-engines
 Available layout engines:
   circo        — implemented
   dot          — implemented
-  fdp          — stub
-  mingle       — stub
-  neato        — stub
-  osage        — stub
-  patchwork    — stub
-  sfdp         — stub
-  twopi        — stub
+  fdp          — implemented
+  neato        — implemented
+  osage        — implemented
+  patchwork    — implemented
+  sfdp         — implemented
+  twopi        — implemented
 ```
 
 ### Input Format Auto-Detection
@@ -267,17 +266,316 @@ Biconnected component decomposition with circular node placement.
 | `root` | Graph | (first node) | Root node for DFS — affects block tree orientation |
 | `oneblock` | Graph | `false` | Skip biconnected decomposition |
 
-### Stub Engines (not yet implemented)
+### neato — Spring-Model Layout (`gvpy.engines.neato`)
 
-| Engine | Description | C Reference |
-|--------|-------------|-------------|
-| `neato` | Spring-model force-directed (stress majorization) | `lib/neatogen/` |
-| `fdp` | Force-directed placement (Fruchterman-Reingold) | `lib/fdpgen/` |
-| `sfdp` | Scalable force-directed (multi-level + Barnes-Hut) | `lib/sfdpgen/` |
-| `twopi` | Radial layout (BFS concentric rings) | `lib/twopigen/` |
-| `osage` | Recursive cluster packing | `lib/osage/` |
-| `patchwork` | Treemap visualization | `lib/patchwork/` |
-| `mingle` | Edge bundling (post-processor) | `lib/mingle/` |
+Stress majorization, Kamada-Kawai, or SGD to minimize stress energy from graph-theoretic distances. Best for undirected graphs up to ~1000 nodes.
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `mode` | `major` | Algorithm: `major` (stress majorization), `KK`, `sgd` |
+| `model` | `shortpath` | Distance model: `shortpath`, `circuit`, `subset` |
+| `Damping` | `0.99` | KK velocity damping |
+| `epsilon` | `0.0001*\|V\|` | Convergence threshold |
+| `len` (edge) | `1.0` | Desired edge length (inches) |
+
+### fdp — Force-Directed Placement (`gvpy.engines.fdp`)
+
+Fruchterman-Reingold spring-electrical model with grid-accelerated repulsive forces and linear cooling. Two-phase: layout + overlap removal.
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `K` | `0.3` | Spring constant / ideal edge length |
+| `maxiter` | `600` | Maximum iterations |
+| `len` (edge) | K | Desired edge length |
+| `weight` (edge) | `1` | Spring strength multiplier |
+
+### sfdp — Scalable Force-Directed (`gvpy.engines.sfdp`)
+
+Extends fdp with multilevel coarsening and Barnes-Hut quadtree for O(n log n) repulsive forces. Handles 10K+ nodes.
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `K` | auto | Spring constant |
+| `repulsiveforce` | `1` | Repulsive exponent |
+| `levels` | unlimited | Max coarsening levels |
+| `smoothing` | `none` | Post-process: `spring`, `avg_dist`, etc. |
+| `quadtree` | `normal` | Barnes-Hut mode: `normal`, `fast`, `none` |
+| `beautify` | `false` | Arrange leaves in circle around root |
+| `rotation` | `0` | Rotate final layout (degrees) |
+
+### twopi — Radial Layout (`gvpy.engines.twopi`)
+
+BFS from root, concentric rings with angular span proportional to subtree size.
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `root` | (auto) | Center node (graph or node attribute) |
+| `ranksep` | `1.0` | Ring gap in inches (colon-separated for variable) |
+
+### osage — Cluster Packing (`gvpy.engines.osage`)
+
+Recursive rectangular array packing within nested clusters. No hierarchical ranking.
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `pack` / `packmode` | array | Packing algorithm |
+| `sortv` | `0` | Sort value for array ordering |
+| `margin` / `pad` | `18pt` | Cluster margin |
+
+### patchwork — Treemap (`gvpy.engines.patchwork`)
+
+Squarified treemap where node area is proportional to the `area` attribute.
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `area` (node) | `1` | Node area weight |
+
+## Graph Attributes Reference
+
+Complete list of graph-level attributes. All attributes are available in the wizard's Graph tab unless marked "write-only".
+
+| Attribute | Example CLI | Wizard | Description |
+|-----------|-------------|:------:|-------------|
+| `_background` | `-G_background="..."` | No | xdot background drawn behind the graph. Write-only — set by xdot renderer. |
+| `bb` | — | No | Bounding box `"x1,y1,x2,y2"` in points. Write-only — computed by `_write_back()` after layout. |
+| `beautify` | `-Gbeautify=true` | Yes | Arrange leaf nodes in circle around root (sfdp only). |
+| `bgcolor` | `-Gbgcolor=lightgray` | Yes | Canvas background color. |
+| `center` | `-Gcenter=true` | Yes | Center drawing in output canvas. |
+| `charset` | `-Gcharset=UTF-8` | No | Character encoding for string input. Write-only — affects file loading, not layout. |
+| `class` | `-Gclass=mygraph` | Yes | CSS classnames for SVG element. |
+| `clusterrank` | `-Gclusterrank=global` | Yes | Cluster handling: `local`, `global`, `none` (dot only). |
+| `colorscheme` | `-Gcolorscheme=x11` | Yes | Color scheme namespace for interpreting color names. |
+| `comment` | `-Gcomment="note"` | Yes | Comment inserted into output. |
+| `compound` | `-Gcompound=true` | Yes | Allow edges between clusters via `lhead`/`ltail` (dot only). |
+| `concentrate` | `-Gconcentrate=true` | Yes | Merge parallel edges. |
+| `Damping` | `-GDamping=0.95` | Yes | Force motion damping factor per iteration (neato only, default 0.99). |
+| `defaultdist` | `-Gdefaultdist=2` | Yes | Distance between nodes in separate components (neato only). |
+| `dim` | `-Gdim=3` | Yes | Dimensions for layout computation (neato, fdp, sfdp only, default 2). |
+| `dimen` | `-Gdimen=3` | Yes | Dimensions for rendering (neato, fdp, sfdp only, default 2). |
+| `diredgeconstraints` | `-Gdiredgeconstraints=true` | Yes | Constrain edges to point downwards (neato only). |
+| `dpi` | `-Gdpi=150` | Yes | Pixels per inch for output (default 96). |
+| `epsilon` | `-Gepsilon=0.001` | Yes | Convergence threshold for energy minimization (neato only). |
+| `esep` | `-Gesep=5` | Yes | Margin around polygons for spline edge routing. |
+| `fontcolor` | `-Gfontcolor=blue` | Yes | Default text color (default `black`). |
+| `fontname` | `-Gfontname=Helvetica` | Yes | Default font face (default `Times-Roman`). |
+| `fontnames` | `-Gfontnames=ps` | No | Font name representation in SVG. Write-only — affects SVG font output only. |
+| `fontpath` | `-Gfontpath=/usr/share/fonts` | No | Directory list for bitmap font search. Write-only — runtime config. |
+| `fontsize` | `-Gfontsize=18` | Yes | Default font size in points (default 14). |
+| `forcelabels` | `-Gforcelabels=false` | Yes | Force placement of all xlabels even if overlapping (default `true`). |
+| `gradientangle` | `-Ggradientangle=45` | Yes | Gradient fill angle in degrees. |
+| `href` | `-Ghref="https://..."` | Yes | URL synonym for SVG/map/PS output. |
+| `id` | `-Gid=graph1` | Yes | Identifier for SVG/map output. |
+| `imagepath` | `-Gimagepath=./images` | No | Directories to search for image files. Write-only — runtime config. |
+| `inputscale` | `-Ginputscale=72` | Yes | Scale applied to input `pos` values (neato, fdp only). |
+| `K` | `-GK=0.5` | Yes | Spring constant / ideal edge length (fdp, sfdp only, default 0.3). |
+| `label` | `-Glabel="My Graph"` | Yes | Graph title label text. |
+| `label_scheme` | `-Glabel_scheme=1` | Yes | Treat `\|edgelabel\|*` nodes as edge labels (sfdp only). |
+| `labeljust` | `-Glabeljust=l` | Yes | Graph/cluster label justification: `l`, `c`, `r` (default `c`). |
+| `labelloc` | `-Glabelloc=t` | Yes | Graph label vertical position: `t` (top), `b` (bottom, default). |
+| `landscape` | `-Glandscape=true` | Yes | Render in landscape orientation. |
+| `layerlistsep` | — | No | Separator for layerRange splitting. Write-only — layer system not implemented. |
+| `layers` | — | No | Ordered layer name list. Write-only — layer system not implemented. |
+| `layerselect` | — | No | Layers to emit. Write-only — layer system not implemented. |
+| `layersep` | — | No | Separator for layers attribute. Write-only — layer system not implemented. |
+| `layout` | — | No | Layout engine name. Handled by `-K` flag / engine selector widget. |
+| `levels` | `-Glevels=5` | Yes | Multilevel coarsening levels (sfdp only). |
+| `levelsgap` | `-Glevelsgap=0.5` | Yes | Strictness of level constraints (neato only). |
+| `lheight` | — | No | Graph/cluster label height in inches. Write-only — computed from label text. |
+| `linelength` | — | No | Max chars before line overflow in text output. Write-only — affects text serialization. |
+| `lp` | — | No | Label center position. Write-only — computed by `_compute_label_positions()`. |
+| `lwidth` | — | No | Graph/cluster label width in inches. Write-only — computed from label text. |
+| `margin` | `-Gmargin=0.5` | Yes | Canvas margins in inches. |
+| `maxiter` | `-Gmaxiter=1000` | Yes | Maximum layout solver iterations (neato, fdp only). |
+| `mclimit` | `-Gmclimit=2.0` | Yes | Scale factor for mincross edge crossing iterations (dot only). |
+| `mindist` | `-Gmindist=1.5` | Yes | Minimum separation between all nodes (circo only, default 1.0). |
+| `mode` | `-Gmode=KK` | Yes | Optimization algorithm: `major`, `KK`, `sgd`, `hier` (neato only). |
+| `model` | `-Gmodel=circuit` | Yes | Distance matrix method: `shortpath`, `circuit`, `subset` (neato only). |
+| `newrank` | `-Gnewrank=true` | Yes | Single global ranking ignoring clusters (dot only). |
+| `nodesep` | `-Gnodesep=0.5` | Yes | Min horizontal space between same-rank nodes (dot only, default 0.25). |
+| `nojustify` | `-Gnojustify=true` | Yes | Multiline text justification mode. |
+| `normalize` | `-Gnormalize=true` | Yes | Normalize coordinates to origin (neato, fdp, sfdp, circo, twopi). |
+| `notranslate` | `-Gnotranslate=true` | Yes | Suppress automatic translation to origin (neato only). |
+| `nslimit` | `-Gnslimit=2` | Yes | Network simplex iteration limit for ranking (dot only). |
+| `nslimit1` | `-Gnslimit1=2` | Yes | Network simplex iteration limit for X positioning (dot only). |
+| `oneblock` | `-Goneblock=true` | Yes | Draw all components on one circle (circo only). |
+| `ordering` | `-Gordering=out` | Yes | Left-to-right edge ordering: `in`, `out` (dot only). |
+| `orientation` | `-Gorientation=landscape` | Yes | Graph orientation angle or landscape string. |
+| `outputorder` | `-Goutputorder=nodesfirst` | Yes | Draw order: `breadthfirst`, `nodesfirst`, `edgesfirst`. |
+| `overlap` | `-Goverlap=false` | Yes | Node overlap removal: `true`, `false`, `scale`, `prism`, `voronoi`. |
+| `overlap_scaling` | `-Goverlap_scaling=-4` | Yes | Scale factor for overlap reduction. |
+| `overlap_shrink` | `-Goverlap_shrink=true` | Yes | Compression pass after overlap removal. |
+| `pack` | `-Gpack=true` | Yes | Pack disconnected components separately. |
+| `packmode` | `-Gpackmode=clust` | Yes | How to pack: `node`, `clust`, `graph`, `array`. |
+| `pad` | `-Gpad=0.5` | Yes | Extend drawing area beyond minimum in inches (default 0.0555). |
+| `page` | — | No | Output page dimensions. Write-only — pagination not implemented. |
+| `pagedir` | `-Gpagedir=TL` | Yes | Order in which pages are emitted. |
+| `quadtree` | `-Gquadtree=fast` | Yes | Barnes-Hut quadtree mode: `normal`, `fast`, `none` (sfdp only). |
+| `quantum` | `-Gquantum=10` | Yes | Round node dimensions to multiples of quantum. |
+| `rankdir` | `-Grankdir=LR` | Yes | Layout direction: `TB`, `LR`, `BT`, `RL` (dot only). |
+| `ranksep` | `-Granksep=1.0` | Yes | Separation between ranks / radial rings (dot, twopi). |
+| `ratio` | `-Gratio=compress` | Yes | Aspect ratio: `compress`, `fill`, `auto`, or numeric. |
+| `remincross` | `-Gremincross=true` | Yes | Run crossing minimization a second time (dot only). |
+| `repulsiveforce` | `-Grepulsiveforce=2.0` | Yes | Repulsive force strength in FR model (sfdp only). |
+| `resolution` | `-Gresolution=150` | Yes | Synonym for `dpi` — pixels per inch for output. |
+| `root` | `-Groot=center` | Yes | Center node for radial/circular layout (twopi, circo). |
+| `rotate` | `-Grotate=90` | Yes | Rotate drawing for landscape. |
+| `rotation` | `-Grotation=45` | Yes | Counter-clockwise rotation of final layout in degrees (sfdp only). |
+| `scale` | `-Gscale=2.0` | Yes | Scale layout after initial placement (neato, twopi). |
+| `searchsize` | `-Gsearchsize=50` | Yes | Max negative-cut edges in network simplex search (dot only, default 30). |
+| `sep` | `-Gsep=10` | Yes | Node margin for overlap removal routing. |
+| `showboxes` | `-Gshowboxes=1` | Yes | Print debug guide boxes (dot only). |
+| `size` | `-Gsize="8,10"` | Yes | Maximum drawing width and height in inches. |
+| `smoothing` | `-Gsmoothing=spring` | Yes | Post-processing smoothing: `none`, `avg_dist`, `spring`, etc. (sfdp only). |
+| `sortv` | — | No | Sort order for packmode packing. Write-only — used internally by packing. |
+| `splines` | `-Gsplines=ortho` | Yes | Edge routing: `none`, `line`, `polyline`, `curved`, `ortho`, `spline`. |
+| `start` | `-Gstart=42` | Yes | Initial node placement seed or method (neato, fdp, sfdp). |
+| `style` | `-Gstyle=filled` | Yes | Style for graph/cluster border. |
+| `stylesheet` | `-Gstylesheet=style.css` | Yes | URL of XML stylesheet for SVG output. |
+| `target` | `-Gtarget=_blank` | Yes | Browser window for URL links in SVG/map. |
+| `TBbalance` | `-GTBbalance=max` | Yes | Rank placement for floating nodes: `min`, `max`, `none` (dot only). |
+| `tooltip` | `-Gtooltip="hover text"` | Yes | Mouse hover tooltip for SVG/cmap. |
+| `truecolor` | — | No | Truecolor bitmap rendering. Write-only — bitmap output only. |
+| `URL` | `-GURL="https://..."` | Yes | Hyperlink for graph in SVG/map/PS. |
+| `viewport` | — | No | Clipping window on final drawing. Write-only — not implemented. |
+| `voro_margin` | `-Gvoro_margin=0.1` | Yes | Voronoi margin tuning (neato, fdp, sfdp, circo, twopi). |
+| `xdotversion` | — | No | xdot output format version. Write-only — xdot format only. |
+
+**Summary:** 83 of 101 graph attributes are available in the wizard. The remaining 18 are write-only (computed by layout engines), runtime config (file paths), or format-specific (layer system, pagination, xdot).
+
+## Node Attributes Reference
+
+Complete list of node-level attributes. All attributes are available in the wizard's Node tab unless marked "write-only".
+
+| Attribute | Example CLI | Wizard | Description |
+|-----------|-------------|:------:|-------------|
+| `area` | `-Narea=4` | Yes | Preferred area for node in squarified treemap (patchwork only, default 1). |
+| `class` | `-Nclass=mynode` | Yes | CSS classnames for SVG element. |
+| `color` | `-Ncolor=red` | Yes | Node border/outline color (default `black`). |
+| `colorscheme` | `-Ncolorscheme=x11` | Yes | Color scheme namespace for interpreting color names. |
+| `comment` | `-Ncomment="note"` | Yes | Comment inserted into output. |
+| `distortion` | `-Ndistortion=0.5` | Yes | Distortion factor for `shape=polygon` (default 0). |
+| `fillcolor` | `-Nfillcolor=lightblue` | Yes | Node fill color (default `lightgrey`). |
+| `fixedsize` | `-Nfixedsize=true` | Yes | Use exact `width`/`height` rather than fitting label. |
+| `fontcolor` | `-Nfontcolor=blue` | Yes | Node label text color (default `black`). |
+| `fontname` | `-Nfontname=Courier` | Yes | Node label font face (default `Times-Roman`). |
+| `fontsize` | `-Nfontsize=18` | Yes | Node label font size in points (default 14). |
+| `gradientangle` | `-Ngradientangle=90` | Yes | Gradient fill angle for node. |
+| `group` | `-Ngroup=cluster1` | Yes | Group name for keeping nodes near each other (dot only). |
+| `height` | `-Nheight=1.0` | Yes | Node height in inches (default 0.5). |
+| `href` | `-Nhref="https://..."` | Yes | URL synonym for SVG/map/PS. |
+| `id` | `-Nid=node1` | Yes | SVG/map identifier. |
+| `image` | `-Nimage=icon.png` | Yes | Image file to display inside node. |
+| `imagepos` | `-Nimagepos=tl` | Yes | Image position within node (default `mc`). |
+| `imagescale` | `-Nimagescale=true` | Yes | How image fills the node. |
+| `K` | `-NK=0.5` | Yes | Per-node spring constant override (fdp, sfdp only). |
+| `label` | `-Nlabel="Node A"` | Yes | Node label text (default: node name). |
+| `labelloc` | `-Nlabelloc=t` | Yes | Vertical label placement within node (default `c`). |
+| `layer` | — | No | Layer membership. Write-only — layer system not implemented. |
+| `margin` | `-Nmargin=0.1` | Yes | Margin between label and node boundary. |
+| `nojustify` | `-Nnojustify=true` | Yes | Multiline label justification mode. |
+| `ordering` | `-Nordering=out` | Yes | Per-node left-to-right edge ordering (dot only). |
+| `orientation` | `-Norientation=45` | Yes | Node shape rotation angle in degrees (default 0). |
+| `penwidth` | `-Npenwidth=2` | Yes | Width of node border pen in points (default 1). |
+| `peripheries` | `-Nperipheries=2` | Yes | Number of border rings around node. |
+| `pin` | `-Npin=true` | Yes | Lock node at its input `pos` coordinate (neato, fdp only). |
+| `pos` | — | No | Node position `"x,y"`. Write-only — computed by `_write_back()` after layout. |
+| `rects` | — | No | Record field rectangles in points. Write-only — computed by dot for record shapes. |
+| `regular` | `-Nregular=true` | Yes | Force polygon to be regular (equal sides/angles). |
+| `root` | `-Nroot=true` | Yes | Mark this node as the layout root (twopi, circo only). |
+| `samplepoints` | — | No | Points used to approximate circle/ellipse. Write-only — internal rendering parameter. |
+| `shape` | `-Nshape=box` | Yes | Node shape (default `ellipse`). 20+ shapes supported. |
+| `shapefile` | — | No | External file for custom node shape. Write-only — runtime file reference. |
+| `showboxes` | `-Nshowboxes=1` | Yes | Debug guide boxes for node (dot only). |
+| `sides` | `-Nsides=6` | Yes | Side count for `shape=polygon` (default 4). |
+| `skew` | `-Nskew=0.5` | Yes | Skew factor for `shape=polygon` (default 0). |
+| `sortv` | — | No | Sort value for pack ordering. Write-only — used internally by packing. |
+| `style` | `-Nstyle=filled` | Yes | Node style: `filled`, `dashed`, `dotted`, `rounded`, `bold`, `invis`. |
+| `target` | `-Ntarget=_blank` | Yes | Browser window for URL in SVG/map. |
+| `tooltip` | `-Ntooltip="hover"` | Yes | Mouse hover tooltip for SVG/cmap. |
+| `URL` | `-NURL="https://..."` | Yes | Hyperlink for node in SVG/map/PS. |
+| `vertices` | — | No | Custom polygon vertex list. Write-only — computed after layout. |
+| `width` | `-Nwidth=1.5` | Yes | Node width in inches (default 0.75). |
+| `xlabel` | `-Nxlabel="extra"` | Yes | External label placed outside node boundary. |
+| `xlp` | — | No | External label position. Write-only — computed by `_compute_label_positions()`. |
+| `z` | `-Nz=1.0` | Yes | Z-coordinate for 3D layouts (neato, fdp only, default 0). |
+
+**Summary:** 41 of 49 node attributes are available in the wizard. The remaining 8 are write-only (positions, vertices, rectangles computed by layout engines).
+
+## Edge Attributes Reference
+
+Complete list of edge-level attributes. All attributes are available in the wizard's Edge tab unless marked "write-only".
+
+| Attribute | Example CLI | Wizard | Description |
+|-----------|-------------|:------:|-------------|
+| `arrowhead` | `-Earrowhead=vee` | Yes | Arrowhead shape at head node (default `normal`). |
+| `arrowsize` | `-Earrowsize=1.5` | Yes | Arrowhead scale multiplier (default 1). |
+| `arrowtail` | `-Earrowtail=dot` | Yes | Arrowhead shape at tail node (default `normal`). |
+| `class` | `-Eclass=myedge` | Yes | CSS classnames for SVG element. |
+| `color` | `-Ecolor=red` | Yes | Edge line color (default `black`). |
+| `colorscheme` | `-Ecolorscheme=x11` | Yes | Color scheme namespace. |
+| `comment` | `-Ecomment="note"` | Yes | Comment inserted into output. |
+| `constraint` | `-Econstraint=false` | Yes | Whether edge participates in rank assignment (dot only, default `true`). |
+| `decorate` | `-Edecorate=true` | Yes | Draw line connecting edge label to edge. |
+| `dir` | `-Edir=both` | Yes | Arrow direction: `forward`, `back`, `both`, `none` (default `forward`). |
+| `edgehref` | `-Eedgehref="..."` | Yes | Synonym for `edgeURL` for SVG/map. |
+| `edgetarget` | `-Eedgetarget=_blank` | Yes | Browser window for `edgeURL` link. |
+| `edgetooltip` | `-Eedgetooltip="info"` | Yes | Tooltip on non-label part of edge. |
+| `edgeURL` | `-EedgeURL="https://..."` | Yes | URL for non-label part of edge. |
+| `fillcolor` | `-Efillcolor=yellow` | Yes | Fill color for edge arrowheads (default `black`). |
+| `fontcolor` | `-Efontcolor=blue` | Yes | Edge label text color (default `black`). |
+| `fontname` | `-Efontname=Courier` | Yes | Edge label font face (default `Times-Roman`). |
+| `fontsize` | `-Efontsize=10` | Yes | Edge label font size in points (default 14). |
+| `head_lp` | — | No | Head label center position. Write-only — computed by `_compute_label_positions()`. |
+| `headclip` | `-Eheadclip=false` | Yes | Clip edge to head node boundary (default `true`). |
+| `headhref` | `-Eheadhref="..."` | Yes | URL for head of edge in SVG/map. |
+| `headlabel` | `-Eheadlabel="H"` | Yes | Text label at head end of edge. |
+| `headport` | `-Eheadport=n` | Yes | Compass port on head node (default `center`). |
+| `headtarget` | `-Eheadtarget=_blank` | Yes | Browser window for `headURL`. |
+| `headtooltip` | `-Eheadtooltip="tip"` | Yes | Tooltip on head label. |
+| `headURL` | `-EheadURL="..."` | Yes | URL for head label in SVG/map. |
+| `href` | `-Ehref="https://..."` | Yes | URL synonym for SVG/map/PS. |
+| `id` | `-Eid=edge1` | Yes | SVG/map identifier. |
+| `label` | `-Elabel="connects"` | Yes | Edge label text. |
+| `labelangle` | `-Elabelangle=-25` | Yes | Polar angle for head/tail label positioning (default -25). |
+| `labeldistance` | `-Elabeldistance=2` | Yes | Scale factor for head/tail label distance from node (default 1). |
+| `labelfloat` | `-Elabelfloat=true` | Yes | Allow label to float to reduce edge crossings. |
+| `labelfontcolor` | `-Elabelfontcolor=red` | Yes | Head/tail label text color (default `black`). |
+| `labelfontname` | `-Elabelfontname=Arial` | Yes | Head/tail label font face. |
+| `labelfontsize` | `-Elabelfontsize=10` | Yes | Head/tail label font size in points (default 14). |
+| `labelhref` | `-Elabelhref="..."` | Yes | URL for label in SVG/map. |
+| `labeltarget` | `-Elabeltarget=_blank` | Yes | Browser window for `labelURL`. |
+| `labeltooltip` | `-Elabeltooltip="tip"` | Yes | Tooltip on label. |
+| `labelURL` | `-ElabelURL="..."` | Yes | URL for label in SVG/map. |
+| `layer` | — | No | Layer membership. Write-only — layer system not implemented. |
+| `len` | `-Elen=2.0` | Yes | Preferred edge length in inches (neato, fdp only, default 1.0). |
+| `lhead` | `-Elhead=cluster_0` | Yes | Logical head cluster for edge termination (dot only, requires `compound=true`). |
+| `lp` | — | No | Label center position. Write-only — computed by layout. |
+| `ltail` | `-Eltail=cluster_1` | Yes | Logical tail cluster for edge origination (dot only, requires `compound=true`). |
+| `minlen` | `-Eminlen=2` | Yes | Minimum rank difference between head and tail (dot only, default 1). |
+| `nojustify` | `-Enojustify=true` | Yes | Multiline label justification mode. |
+| `penwidth` | `-Epenwidth=2` | Yes | Pen width for edge line in points (default 1). |
+| `pos` | — | No | Spline control points. Write-only — computed by `_write_back()` after layout. |
+| `radius` | `-Eradius=5` | Yes | Radius of rounded corners on orthogonal edges (default 0). |
+| `samehead` | `-Esamehead=port1` | Yes | Edges with same head + samehead share a head port (dot only). |
+| `sametail` | `-Esametail=port1` | Yes | Edges with same tail + sametail share a tail port (dot only). |
+| `showboxes` | `-Eshowboxes=1` | Yes | Debug guide boxes for edge routing (dot only). |
+| `style` | `-Estyle=dashed` | Yes | Edge style: `solid`, `dashed`, `dotted`, `bold`, `invis`. |
+| `tail_lp` | — | No | Tail label center position. Write-only — computed by `_compute_label_positions()`. |
+| `tailclip` | `-Etailclip=false` | Yes | Clip edge to tail node boundary (default `true`). |
+| `tailhref` | `-Etailhref="..."` | Yes | URL for tail of edge in SVG/map. |
+| `taillabel` | `-Etaillabel="T"` | Yes | Text label at tail end of edge. |
+| `tailport` | `-Etailport=s` | Yes | Compass port on tail node (default `center`). |
+| `tailtarget` | `-Etailtarget=_blank` | Yes | Browser window for `tailURL`. |
+| `tailtooltip` | `-Etailtooltip="tip"` | Yes | Tooltip on tail label. |
+| `tailURL` | `-EtailURL="..."` | Yes | URL for tail label in SVG/map. |
+| `target` | `-Etarget=_blank` | Yes | Browser window for URL in SVG/map. |
+| `tooltip` | `-Etooltip="hover"` | Yes | Mouse hover tooltip for SVG/cmap. |
+| `URL` | `-EURL="https://..."` | Yes | Hyperlink for edge in SVG/map/PS. |
+| `weight` | `-Eweight=5` | Yes | Edge weight: rank importance in dot, spring strength in neato/fdp (default 1). |
+| `xlabel` | `-Exlabel="extra"` | Yes | External label outside edge path. |
+| `xlp` | — | No | External label position. Write-only — computed by `_compute_label_positions()`. |
+
+**Summary:** 61 of 68 edge attributes are available in the wizard. The remaining 7 are write-only (label positions, spline control points computed by layout engines).
 
 ## Supported Formats
 
@@ -309,11 +607,215 @@ result = DotLayout(graph).layout()
 svg = render_svg(result)
 ```
 
+## Graph Tools (`gvtools.py`)
+
+`gvtools.py` provides graph analysis, transformation, and generation utilities — the Python equivalents of Graphviz standalone commands like `acyclic`, `tred`, `gc`, `gvgen`, etc.
+
+### Usage
+
+```bash
+python gvtools.py <tool> [options] [file]
+python gvtools.py --list              # list all tools
+```
+
+### Available Tools
+
+| Tool | Graphviz equivalent | Description |
+|------|-------------------|-------------|
+| `acyclic` | `acyclic` | Break cycles by reversing edges |
+| `tred` | `tred` | Transitive reduction — remove implied edges |
+| `unflatten` | `unflatten` | Improve layout aspect ratio by staggering chains |
+| `ccomps` | `ccomps` | Extract connected components |
+| `bcomps` | `bcomps` | Extract biconnected components + articulation points |
+| `sccmap` | `sccmap` | Strongly connected components (Tarjan's algorithm) |
+| `gc` | `gc` | Graph statistics — count nodes, edges, components |
+| `nop` | `nop` | Canonicalize / pretty-print DOT |
+| `gvgen` | `gvgen` | Generate standard graphs (complete, cycle, grid, etc.) |
+| `gvcolor` | `gvcolor` | Color nodes by component or degree |
+| `edgepaint` | `edgepaint` | Color edges to reduce crossing confusion |
+| `mingle` | `mingle` | Edge bundling — reduce clutter in dense graphs |
+
+### Tool CLI Flags
+
+Each tool supports `-?` for usage help:
+
+```bash
+python gvtools.py acyclic -?
+python gvtools.py gc -?
+python gvtools.py gvgen -?
+```
+
+**acyclic** — `acyclic [-nv?] [-o outfile] <file>`
+
+| Flag | Description |
+|------|-------------|
+| `-n` | Do not output graph (check only) |
+| `-v` | Verbose (report to stderr) |
+| `-o file` | Write output to file |
+
+**tred** — `tred [-vr?] [-o FILE] <files>`
+
+| Flag | Description |
+|------|-------------|
+| `-v` | Verbose |
+| `-r` | Print removed edges to stderr |
+| `-o FILE` | Redirect output to file |
+
+**unflatten** — `unflatten [-f?] [-l M] [-c N] [-o outfile] <files>`
+
+| Flag | Description |
+|------|-------------|
+| `-f` | Adjust immediate fanout chains |
+| `-l M` | Stagger leaf edge length between [1, M] |
+| `-c N` | Chain disconnected nodes in groups of N |
+| `-o file` | Write output to file |
+
+**ccomps** — `ccomps [-svxz?] [-o template] <files>`
+
+| Flag | Description |
+|------|-------------|
+| `-s` | Silent (print count only) |
+| `-v` | Verbose |
+| `-x` | Emit components as separate root graphs |
+| `-z` | Sort by size, largest first |
+| `-o template` | Output file template |
+
+**bcomps** — `bcomps [-stvx?] [-o template] <files>`
+
+| Flag | Description |
+|------|-------------|
+| `-s` | Don't print components |
+| `-t` | Emit block-cutpoint tree |
+| `-v` | Verbose |
+| `-x` | Emit blocks as root graphs |
+| `-o template` | Output file template |
+
+**sccmap** — `sccmap [-sSdv?] [-o outfile] <files>`
+
+| Flag | Description |
+|------|-------------|
+| `-s` | Statistics only (no component output) |
+| `-S` | Silent (no stderr) |
+| `-d` | Include degenerate (single-node) components |
+| `-v` | Verbose |
+| `-o file` | Write output to file |
+
+**gc** — `gc [-necCaDUrsv?] <files>`
+
+| Flag | Description |
+|------|-------------|
+| `-n` | Print number of nodes |
+| `-e` | Print number of edges |
+| `-c` | Print number of connected components |
+| `-C` | Print number of clusters |
+| `-a` | Print all counts |
+| `-D` | Only directed graphs |
+| `-U` | Only undirected graphs |
+| `-r` | Recursively analyze subgraphs |
+| `-s` | Silent |
+
+**nop** — `nop [-p?] <files>`
+
+| Flag | Description |
+|------|-------------|
+| `-p` | Parse-only (validate DOT without output) |
+
+**gvgen** — `gvgen [-dv?] [options]`
+
+| Flag | Description |
+|------|-------------|
+| `-k<n>` | Complete graph K_n |
+| `-c<n>` | Cycle C_n |
+| `-p<n>` | Path P_n |
+| `-s<n>` | Star S_n |
+| `-g<r,c>` | Grid r × c |
+| `-t<d>` | Binary tree depth d |
+| `-d` | Directed graph |
+| `-o file` | Write output to file |
+
+Also accepts named types: `petersen`
+
+**gvcolor** — `gvcolor [-?] [mode=component\|degree] <files>`
+
+| Flag | Description |
+|------|-------------|
+| `mode=component` | Color by connected component (default) |
+| `mode=degree` | Color by node degree |
+
+**edgepaint** — `edgepaint [-v?] [-o fname] <file>`
+
+| Flag | Description |
+|------|-------------|
+| `--angle=a` | Min crossing angle in degrees (default 15) |
+| `--color_scheme=c` | Palette: rgb, gray, lab, or hex list |
+| `--share_endpoint` | Edges sharing endpoints not conflicting |
+| `-v` | Verbose |
+| `-o fname` | Write output to file |
+
+**mingle** — `mingle <options> <file>`
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-a t` | 40 | Max turning angle [0-180] |
+| `-c i` | 1 | Compatibility: 0=distance, 1=full |
+| `-i iter` | 4 | Outer iterations/subdivisions |
+| `-k k` | 10 | Nearest neighbor graph size |
+| `-K k` | — | Force constant |
+| `-m method` | 1 | 0=force directed, 1=agglom ink, 2=cluster |
+| `-o fname` | stdout | Output file |
+| `-p t` | — | Sharp angle balance |
+| `-r R` | 100 | Max recursion level |
+| `-T fmt` | gv | Output format: gv or simple |
+| `-v` | — | Verbose |
+
+### Examples
+
+```bash
+# Graph statistics
+python gvtools.py gc -a input.gv
+
+# Break cycles and show what changed
+python gvtools.py acyclic -v input.gv -o acyclic.gv
+
+# Find strongly connected components
+python gvtools.py sccmap -d input.gv
+
+# Biconnected components with block-cutpoint tree
+python gvtools.py bcomps -t input.gv
+
+# Generate standard graphs
+python gvtools.py gvgen -k8                    # complete K8
+python gvtools.py gvgen -c12                   # cycle C12
+python gvtools.py gvgen -g4,6                  # 4x6 grid
+python gvtools.py gvgen -t4 -d                 # directed binary tree
+python gvtools.py gvgen petersen               # Petersen graph
+
+# Color nodes by degree
+python gvtools.py gvcolor mode=degree input.gv | python gvcli.py - -Tsvg -o colored.svg
+
+# Bundle edges after layout
+python gvcli.py -Kneato input.gv -Tsvg --bundle -o bundled.svg
+```
+
+### Python API
+
+```python
+from gvpy.tools.gc import graph_stats
+from gvpy.tools.ccomps import connected_components
+from gvpy.tools.bcomps import biconnected_components
+from gvpy.tools.sccmap import strongly_connected_components
+from gvpy.tools.gvgen import generate_complete, generate_petersen, generate_grid
+from gvpy.tools.gvcolor import color_by_component, color_by_degree
+from gvpy.tools.edgepaint import edgepaint
+from gvpy.tools.mingle import MingleBundler
+```
+
 ## Project Structure
 
 ```
 GraphvizPy/
 ├── gvcli.py                      # Unified CLI (all engines, all formats)
+├── gvtools.py                    # Graph tools CLI (analysis, transforms, generation)
 ├── dot.py                        # Wrapper: calls gvcli.py with -Kdot default
 ├── pyproject.toml                # Package definition (pip install -e .)
 │
@@ -338,30 +840,42 @@ GraphvizPy/
 │   │   ├── build_grammar.bat     #   ANTLR4 regeneration script
 │   │   └── generated/            #   Auto-generated GVLexer.py, GVParser.py
 │   │
-│   ├── engines/                  # Layout engines
+│   ├── engines/                  # Layout engines (all implemented)
 │   │   ├── __init__.py           #   Engine registry: get_engine(), list_engines()
-│   │   ├── base.py               #   Abstract LayoutEngine base class
-│   │   ├── wizard.py             #   Interactive PyQt6 layout wizard (any engine)
+│   │   ├── base.py               #   LayoutEngine base class (shared methods)
+│   │   ├── layout_features.py    #   Attribute table per engine (200+ attrs)
+│   │   ├── wizard.py             #   Interactive PyQt6 layout wizard
 │   │   ├── dot/                  #   Hierarchical layout (Sugiyama)
-│   │   │   └── dot_layout.py
-│   │   ├── circo/                #   Circular layout (biconnected decomposition)
-│   │   │   └── circo_layout.py
-│   │   ├── neato/                #   Spring-model (stub)
-│   │   ├── fdp/                  #   Force-directed (stub)
-│   │   ├── sfdp/                 #   Scalable force-directed (stub)
-│   │   ├── twopi/                #   Radial (stub)
-│   │   ├── osage/                #   Cluster packing (stub)
-│   │   ├── patchwork/            #   Treemap (stub)
-│   │   └── mingle/               #   Edge bundling (stub)
+│   │   ├── neato/                #   Spring-model (stress majorization / KK / SGD)
+│   │   ├── fdp/                  #   Force-directed (Fruchterman-Reingold + grid)
+│   │   ├── sfdp/                 #   Scalable force-directed (multilevel + quadtree)
+│   │   ├── circo/                #   Circular (biconnected decomposition)
+│   │   ├── twopi/                #   Radial (BFS concentric rings)
+│   │   ├── osage/                #   Cluster packing (rectangular array)
+│   │   └── patchwork/            #   Treemap (squarified rectangles)
 │   │
-│   └── render/                   # Output rendering and format I/O
-│       ├── svg_renderer.py       #   Layout dict → SVG
-│       ├── json_io.py            #   Graphviz JSON/JSON0 read/write
-│       └── gxl_io.py             #   GXL (XML) read/write
+│   ├── render/                   # Output rendering and format I/O
+│   │   ├── svg_renderer.py       #   Layout dict → SVG
+│   │   ├── json_io.py            #   Graphviz JSON/JSON0 read/write
+│   │   └── gxl_io.py             #   GXL (XML) read/write
+│   │
+│   └── tools/                    # Graph utilities (analysis, transforms, generation)
+│       ├── acyclic.py            #   Break cycles
+│       ├── tred.py               #   Transitive reduction
+│       ├── unflatten.py          #   Improve aspect ratio
+│       ├── ccomps.py             #   Connected components
+│       ├── bcomps.py             #   Biconnected components
+│       ├── sccmap.py             #   Strongly connected components
+│       ├── gc.py                 #   Graph statistics
+│       ├── nop.py                #   Pretty-print DOT
+│       ├── gvgen.py              #   Generate standard graphs
+│       ├── gvcolor.py            #   Color nodes by component/degree
+│       ├── edgepaint.py          #   Color crossing edges
+│       └── mingle.py             #   Edge bundling post-processor
 │
 ├── test_data/                    # Test files (.gv, .dot, .json, .gxl)
 │
-├── tests/                        # pytest test suite (558 tests)
+├── tests/                        # pytest test suite (685 tests)
 │   ├── test_cgraph_api.py        #   Core API (76 tests)
 │   ├── test_node_operations.py   #   Node CRUD (31 tests)
 │   ├── test_edge_operations.py   #   Edge CRUD (14 tests)
@@ -373,9 +887,15 @@ GraphvizPy/
 │   ├── test_dot_layout.py        #   Dot layout + attributes (165+ tests)
 │   ├── test_svg_renderer.py      #   SVG rendering (18 tests)
 │   ├── test_formats.py           #   Format roundtrip (71 tests)
-│   └── test_circo_layout.py      #   Circo layout (25 tests)
-│
-└── lib/                          # Original C-to-Python translation (reference)
+│   ├── test_circo_layout.py      #   Circo layout (25 tests)
+│   ├── test_neato_layout.py      #   Neato layout (27 tests)
+│   ├── test_fdp_layout.py        #   Fdp layout (16 tests)
+│   ├── test_sfdp_layout.py       #   Sfdp layout (16 tests)
+│   ├── test_twopi_layout.py      #   Twopi layout (17 tests)
+│   ├── test_osage_layout.py      #   Osage layout (16 tests)
+│   ├── test_patchwork_layout.py  #   Patchwork layout (17 tests)
+│   ├── test_mingle.py            #   Mingle bundling (18 tests)
+│   └── test_all_files.py         #   Bulk file validation (187 files)
 ```
 
 ## Interactive Wizard
@@ -416,18 +936,24 @@ See `pyproject.toml` for the full dependency specification.
 |---|---|---|
 | DOT parser | 44 | All pass |
 | Dot layout + labels | 165+ | All pass |
+| Neato layout | 27 | All pass |
+| Fdp layout | 16 | All pass |
+| Sfdp layout | 16 | All pass |
 | Circo layout | 25 | All pass |
+| Twopi layout | 17 | All pass |
+| Osage layout | 16 | All pass |
+| Patchwork layout | 17 | All pass |
+| Mingle bundling | 18 | All pass |
 | SVG renderer | 18 | All pass |
 | Core API | 100+ | All pass |
 | Format I/O (DOT/JSON/GXL) | 71 | All pass |
-| Attribute coverage | 101/101 | All tested |
-| **Total** | **558** | **All pass** |
+| Bulk file validation | 187 files | 155 pass, 32 skip |
+| **Total** | **685** | **All pass** |
 
 ## Original Code
 
 The original Graphviz C source is from https://gitlab.com/graphviz/graphviz/
 
-The `lib/` directory contains a literal C-to-Python translation for reference. The `gvpy/` package is the active, refactored implementation.
 
 ## Related Projects
 

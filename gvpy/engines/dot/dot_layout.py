@@ -34,28 +34,43 @@ The layout runs in four phases, following the Sugiyama framework:
 
 Command-line usage
 ------------------
-The companion script ``dot.py`` provides a CLI equivalent of Graphviz
-``dot``::
+Use ``gvcli.py`` (the unified CLI) with ``-Kdot`` or simply ``dot.py``
+(a wrapper that defaults to the dot engine)::
 
-    python dot.py <input.gv>                     # JSON to stdout
-    python dot.py <input.gv> -Tsvg               # SVG to stdout
-    python dot.py <input.gv> -Tsvg output.svg    # SVG to file
-    python dot.py <input.gv> -Tjson output.json  # JSON to file
+    python gvcli.py input.gv -Tsvg -o output.svg      # dot layout (default)
+    python gvcli.py -Kdot input.gv -Tsvg               # explicit engine
+    python dot.py input.gv -Tsvg -o output.svg          # same as above
+
+    python gvcli.py input.gv                            # JSON to stdout
+    python gvcli.py input.gv -Tdot                      # DOT with layout coords
+    python gvcli.py input.gv -Tjson0                    # structural JSON (no layout)
+    python gvcli.py input.gv -Tgxl                      # GXL XML output
+
+    echo "digraph{a->b}" | python gvcli.py - -Tsvg     # stdin
+    python gvcli.py input.gv -Grankdir=LR -Nshape=box  # attribute overrides
+    python gvcli.py --ui                                # interactive wizard
 
 API usage
 ---------
 Parse a DOT file and run the layout::
 
-    from gvpycode.dot import read_dot, read_dot_file
-    from gvpycode.dot_layout import DotLayout
+    from gvpy.grammar import read_gv, read_gv_file
+    from gvpy.engines.dot import DotLayout
 
     # From a file
-    graph = read_dot_file("input.gv")
+    graph = read_gv_file("input.gv")
     result = DotLayout(graph).layout()   # returns a JSON-serializable dict
 
     # From a string
-    graph = read_dot('digraph G { a -> b -> c; }')
+    graph = read_gv('digraph G { a -> b -> c; }')
     result = DotLayout(graph).layout()
+
+Or use the engine registry::
+
+    from gvpy.engines import get_engine
+
+    EngineClass = get_engine("dot")
+    result = EngineClass(graph).layout()
 
 The returned dict has the structure::
 
@@ -100,9 +115,14 @@ The returned dict has the structure::
 Coordinates are in **points** (1 pt = 1/72 inch).  The Y axis increases
 downward (rank 0 at the top in TB mode).
 
+After layout, ``pos``, ``width``, ``height`` are written back to each
+node's attributes, edge spline points are written to ``pos``, and the
+graph bounding box is set as ``bb``.  This means ``-Tdot`` output
+contains embedded layout coordinates.
+
 To render the result as SVG::
 
-    from gvpycode.svg_renderer import render_svg, render_svg_file
+    from gvpy.render import render_svg, render_svg_file
 
     svg_string = render_svg(result)
     render_svg_file(result, "output.svg")
@@ -193,6 +213,7 @@ from typing import Optional
 from gvpy.core.graph import Graph
 from gvpy.core.node import Node
 from gvpy.core.edge import Edge
+from gvpy.engines.base import LayoutEngine
 
 
 # ── Internal data structures ─────────────────────
@@ -680,13 +701,16 @@ def _parse_record_ports(label: str) -> dict[str, float]:
 
 # ── Layout engine ────────────────────────────────
 
-class DotLayout:
+class DotLayout(LayoutEngine):
     """Hierarchical (dot) layout for directed and undirected graphs."""
 
     MAX_MINCROSS_ITER = 24
 
+    # Dot-specific sizing constants for record shapes
+    _FIELD_PAD = 8.0
+
     def __init__(self, graph: Graph):
-        self.graph = graph
+        super().__init__(graph)
         self.lnodes: dict[str, LayoutNode] = {}
         self.ledges: list[LayoutEdge] = []
         self.ranks: dict[int, list[str]] = {}
@@ -1166,11 +1190,7 @@ class DotLayout:
 
     # ── Node sizing ──────────────────────────────
 
-    _H_PAD = 36.0           # horizontal padding (left+right) in points
-    _V_PAD = 18.0           # vertical padding (top+bottom) in points
-    _MIN_WIDTH = 54.0       # 0.75 inches
-    _MIN_HEIGHT = 36.0      # 0.50 inches
-    _FIELD_PAD = 8.0        # padding per record field
+    # _MIN_WIDTH, _MIN_HEIGHT, _H_PAD, _V_PAD inherited from LayoutEngine
 
     def _compute_node_size(self, name: str, node) -> tuple[float, float]:
         """Compute node dimensions from label text, shape, and explicit width/height."""
@@ -1855,24 +1875,7 @@ class DotLayout:
             if ln.fixed_pos is not None:
                 ln.x, ln.y = ln.fixed_pos
 
-    def _apply_rotation(self):
-        """Rotate layout by landscape or rotate attribute."""
-        import math
-        angle = 0
-        if self.landscape:
-            angle = 90
-        if self.rotate_deg:
-            angle = self.rotate_deg
-        if angle == 0:
-            return
-        rad = math.radians(angle)
-        cos_a, sin_a = math.cos(rad), math.sin(rad)
-        for ln in self.lnodes.values():
-            x, y = ln.x, ln.y
-            ln.x = x * cos_a - y * sin_a
-            ln.y = x * sin_a + y * cos_a
-            if angle in (90, -90, 270):
-                ln.width, ln.height = ln.height, ln.width
+    # _apply_rotation inherited from LayoutEngine
 
     def _apply_center(self):
         """Shift layout so the center of the bounding box is at the origin."""
@@ -1895,31 +1898,7 @@ class DotLayout:
     # index (list-based; R-tree unnecessary for typical graph sizes)
     # and a 9-position grid search with edge-sliding fallback.
 
-    @staticmethod
-    def _estimate_label_size(text: str, font_size: float = 14.0) -> tuple[float, float]:
-        """Estimate label bounding box in points (width, height)."""
-        # Approximate: 0.6 * font_size per character width, font_size * 1.2 height
-        # Multi-line: split on \n or \\n
-        lines = text.replace("\\n", "\n").split("\n")
-        max_chars = max(len(line) for line in lines) if lines else len(text)
-        w = max(max_chars * font_size * 0.6, 20.0)
-        h = len(lines) * font_size * 1.2
-        return (w, h)
-
-    @staticmethod
-    def _rects_overlap(ax, ay, aw, ah, bx, by, bw, bh) -> bool:
-        """Test if two rectangles overlap (center-based coords)."""
-        return (abs(ax - bx) < (aw + bw) / 2.0 and
-                abs(ay - by) < (ah + bh) / 2.0)
-
-    @staticmethod
-    def _overlap_area(ax, ay, aw, ah, bx, by, bw, bh) -> float:
-        """Compute overlap area between two center-based rectangles."""
-        dx = min(ax + aw / 2, bx + bw / 2) - max(ax - aw / 2, bx - bw / 2)
-        dy = min(ay + ah / 2, by + bh / 2) - max(ay - ah / 2, by - bh / 2)
-        if dx > 0 and dy > 0:
-            return dx * dy
-        return 0.0
+    # _estimate_label_size and _overlap_area inherited from LayoutEngine
 
     def _compute_xlabel_positions(self):
         """Compute positions for xlabel, headlabel, taillabel, and graph label.

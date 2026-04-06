@@ -2112,8 +2112,9 @@ class TestLabelPlacement:
 
     def test_overlap_detection(self):
         """Overlap detection correctly identifies overlapping rectangles."""
-        assert DotLayout._rects_overlap(0, 0, 10, 10, 5, 5, 10, 10) is True
-        assert DotLayout._rects_overlap(0, 0, 10, 10, 20, 20, 10, 10) is False
+        # _rects_overlap removed; use _overlap_area > 0 instead
+        assert DotLayout._overlap_area(0, 0, 10, 10, 5, 5, 10, 10) > 0
+        assert DotLayout._overlap_area(0, 0, 10, 10, 20, 20, 10, 10) == 0
 
     def test_overlap_area(self):
         """Overlap area calculation returns correct values."""

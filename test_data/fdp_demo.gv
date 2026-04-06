@@ -1,0 +1,47 @@
+// Fdp force-directed demo — peer-to-peer network topology
+// Usage: python gvcli.py -Kfdp test_data/fdp_demo.gv -Tsvg -o fdp_demo.svg
+//
+// Fdp excels at undirected graphs with natural clustering
+// where you want symmetric, organic-looking layouts.
+graph p2p_network {
+    K=0.5;
+    overlap=false;
+
+    // Seed nodes (well-connected hubs)
+    seed1 [label="Seed 1", shape=doublecircle, style=filled, fillcolor=gold];
+    seed2 [label="Seed 2", shape=doublecircle, style=filled, fillcolor=gold];
+    seed3 [label="Seed 3", shape=doublecircle, style=filled, fillcolor=gold];
+
+    // Seeds interconnected
+    seed1 -- seed2 [len=2, penwidth=3, color=red];
+    seed2 -- seed3 [len=2, penwidth=3, color=red];
+    seed3 -- seed1 [len=2, penwidth=3, color=red];
+
+    // Cluster around seed1
+    seed1 -- p1; seed1 -- p2; seed1 -- p3; seed1 -- p4;
+    p1 -- p2; p2 -- p3; p1 -- p5;
+    p3 -- p6; p4 -- p7; p5 -- p6;
+
+    // Cluster around seed2
+    seed2 -- q1; seed2 -- q2; seed2 -- q3;
+    q1 -- q2; q2 -- q3; q1 -- q4;
+    q3 -- q5; q4 -- q5; q2 -- q6;
+
+    // Cluster around seed3
+    seed3 -- r1; seed3 -- r2; seed3 -- r3; seed3 -- r4; seed3 -- r5;
+    r1 -- r2; r2 -- r3; r3 -- r4; r4 -- r5; r1 -- r5;
+    r2 -- r6; r4 -- r7;
+
+    // Cross-cluster connections (weak ties)
+    p7 -- q1 [style=dashed, color=gray];
+    q5 -- r1 [style=dashed, color=gray];
+    p6 -- r3 [style=dashed, color=gray];
+
+    // Peer styling
+    p1 [label="A1"]; p2 [label="A2"]; p3 [label="A3"];
+    p4 [label="A4"]; p5 [label="A5"]; p6 [label="A6"]; p7 [label="A7"];
+    q1 [label="B1"]; q2 [label="B2"]; q3 [label="B3"];
+    q4 [label="B4"]; q5 [label="B5"]; q6 [label="B6"];
+    r1 [label="C1"]; r2 [label="C2"]; r3 [label="C3"];
+    r4 [label="C4"]; r5 [label="C5"]; r6 [label="C6"]; r7 [label="C7"];
+}

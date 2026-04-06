@@ -1,18 +1,11 @@
 """
-Sfdp layout engine — scalable force-directed placement (not yet implemented).
+Sfdp layout engine — scalable force-directed placement.
 
-Sfdp extends fdp with a multi-level coarsening approach for large graphs
-(10K+ nodes).  Uses Barnes-Hut approximation for repulsive forces.
+Extends fdp with multilevel coarsening and Barnes-Hut quadtree
+approximation for O(n log n) repulsive force computation.
 
 Reference: Graphviz lib/sfdpgen/
 """
+from .sfdp_layout import SfdpLayout
 
-
-class SfdpLayout:
-    """Scalable force-directed placement layout engine (not yet implemented)."""
-
-    def __init__(self, graph):
-        self.graph = graph
-
-    def layout(self) -> dict:
-        raise NotImplementedError("Sfdp layout engine not yet implemented")
+__all__ = ["SfdpLayout"]

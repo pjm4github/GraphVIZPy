@@ -1,0 +1,66 @@
+// Osage cluster packing demo — microservices architecture
+// Usage: python gvcli.py -Kosage test_data/osage_demo.gv -Tsvg -o osage_demo.svg
+digraph microservices {
+
+    subgraph cluster_gateway {
+        label="API Gateway";
+        style=filled; fillcolor="#e8f4fd";
+        nginx [label="Nginx\nProxy", shape=box];
+        auth  [label="Auth\nMiddleware", shape=box];
+        rate  [label="Rate\nLimiter", shape=box];
+    }
+
+    subgraph cluster_services {
+        label="Business Services";
+        style=filled; fillcolor="#d4edda";
+
+        subgraph cluster_users {
+            label="User Service";
+            style=filled; fillcolor="#c3e6cb";
+            user_api  [label="REST API", shape=box];
+            user_db   [label="PostgreSQL", shape=cylinder];
+            user_cache[label="Redis\nCache", shape=box];
+        }
+
+        subgraph cluster_orders {
+            label="Order Service";
+            style=filled; fillcolor="#c3e6cb";
+            order_api [label="REST API", shape=box];
+            order_db  [label="MongoDB", shape=cylinder];
+            order_q   [label="RabbitMQ", shape=box];
+        }
+
+        subgraph cluster_products {
+            label="Product Service";
+            style=filled; fillcolor="#c3e6cb";
+            prod_api  [label="GraphQL", shape=box];
+            prod_db   [label="PostgreSQL", shape=cylinder];
+            prod_search[label="Elasticsearch", shape=box];
+        }
+    }
+
+    subgraph cluster_infra {
+        label="Infrastructure";
+        style=filled; fillcolor="#fff3cd";
+        k8s     [label="Kubernetes", shape=box];
+        docker  [label="Docker\nRegistry", shape=box];
+        jenkins [label="Jenkins\nCI/CD", shape=box];
+        grafana [label="Grafana", shape=box];
+        prom    [label="Prometheus", shape=box];
+    }
+
+    // Connections
+    nginx -> auth -> user_api;
+    nginx -> order_api;
+    nginx -> prod_api;
+    user_api -> user_db;
+    user_api -> user_cache;
+    order_api -> order_db;
+    order_api -> order_q;
+    prod_api -> prod_db;
+    prod_api -> prod_search;
+    order_q -> user_api;
+    prom -> grafana;
+    jenkins -> docker;
+    k8s -> docker;
+}

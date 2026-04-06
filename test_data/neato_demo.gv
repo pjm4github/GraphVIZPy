@@ -1,0 +1,49 @@
+// Neato spring-model layout demo — molecular structure
+// Usage: python gvcli.py -Kneato test_data/neato_demo.gv -Tsvg -o neato_demo.svg
+graph molecule {
+    // Benzene ring core
+    C1 -- C2 [len=1.0];
+    C2 -- C3 [len=1.0];
+    C3 -- C4 [len=1.0];
+    C4 -- C5 [len=1.0];
+    C5 -- C6 [len=1.0];
+    C6 -- C1 [len=1.0];
+
+    // Hydrogen atoms (shorter bonds)
+    C1 -- H1 [len=0.7];
+    C2 -- H2 [len=0.7];
+    C3 -- H3 [len=0.7];
+    C5 -- H5 [len=0.7];
+    C6 -- H6 [len=0.7];
+
+    // Functional group (OH at C4)
+    C4 -- O1 [len=0.8];
+    O1 -- H4 [len=0.6];
+
+    // Side chain at C3
+    C3 -- CH3 [len=1.2];
+    CH3 -- Ha [len=0.7];
+    CH3 -- Hb [len=0.7];
+    CH3 -- Hc [len=0.7];
+
+    // Styling
+    C1 [label="C", shape=circle, width=0.3, style=filled, fillcolor=gray30, fontcolor=white];
+    C2 [label="C", shape=circle, width=0.3, style=filled, fillcolor=gray30, fontcolor=white];
+    C3 [label="C", shape=circle, width=0.3, style=filled, fillcolor=gray30, fontcolor=white];
+    C4 [label="C", shape=circle, width=0.3, style=filled, fillcolor=gray30, fontcolor=white];
+    C5 [label="C", shape=circle, width=0.3, style=filled, fillcolor=gray30, fontcolor=white];
+    C6 [label="C", shape=circle, width=0.3, style=filled, fillcolor=gray30, fontcolor=white];
+    CH3 [label="C", shape=circle, width=0.3, style=filled, fillcolor=gray30, fontcolor=white];
+
+    O1 [label="O", shape=circle, width=0.3, style=filled, fillcolor=red, fontcolor=white];
+
+    H1 [label="H", shape=circle, width=0.2, style=filled, fillcolor=lightyellow];
+    H2 [label="H", shape=circle, width=0.2, style=filled, fillcolor=lightyellow];
+    H3 [label="H", shape=circle, width=0.2, style=filled, fillcolor=lightyellow];
+    H4 [label="H", shape=circle, width=0.2, style=filled, fillcolor=lightyellow];
+    H5 [label="H", shape=circle, width=0.2, style=filled, fillcolor=lightyellow];
+    H6 [label="H", shape=circle, width=0.2, style=filled, fillcolor=lightyellow];
+    Ha [label="H", shape=circle, width=0.2, style=filled, fillcolor=lightyellow];
+    Hb [label="H", shape=circle, width=0.2, style=filled, fillcolor=lightyellow];
+    Hc [label="H", shape=circle, width=0.2, style=filled, fillcolor=lightyellow];
+}

@@ -1,0 +1,37 @@
+// Twopi radial layout demo — network topology
+// Usage: python gvcli.py -Ktwopi test_data/twopi_demo.gv -Tsvg -o twopi_demo.svg
+graph network {
+    root=router;
+    ranksep=1.5;
+
+    // Core
+    router [label="Core\nRouter", shape=box, style=filled, fillcolor=lightyellow];
+
+    // Ring 1: switches
+    router -- sw1 [label="10G"];
+    router -- sw2 [label="10G"];
+    router -- sw3 [label="10G"];
+
+    sw1 [label="Switch 1", shape=box];
+    sw2 [label="Switch 2", shape=box];
+    sw3 [label="Switch 3", shape=box];
+
+    // Ring 2: servers
+    sw1 -- web1; sw1 -- web2; sw1 -- web3;
+    sw2 -- db1; sw2 -- db2;
+    sw3 -- app1; sw3 -- app2; sw3 -- app3; sw3 -- app4;
+
+    web1 [label="Web 1"]; web2 [label="Web 2"]; web3 [label="Web 3"];
+    db1  [label="DB Primary", style=filled, fillcolor=lightblue];
+    db2  [label="DB Replica", style=filled, fillcolor=lightblue];
+    app1 [label="App 1"]; app2 [label="App 2"];
+    app3 [label="App 3"]; app4 [label="App 4"];
+
+    // Ring 3: clients
+    web1 -- client1; web1 -- client2;
+    web2 -- client3;
+
+    client1 [label="Client A", shape=ellipse];
+    client2 [label="Client B", shape=ellipse];
+    client3 [label="Client C", shape=ellipse];
+}

@@ -26,13 +26,13 @@ if TYPE_CHECKING:
 _ENGINES: dict[str, tuple[str, str, str]] = {
     "dot":       ("gvpy.engines.dot",       "DotLayout",       "implemented"),
     "circo":     ("gvpy.engines.circo",     "CircoLayout",     "implemented"),
-    "neato":     ("gvpy.engines.neato",     "NeatoLayout",     "stub"),
-    "fdp":       ("gvpy.engines.fdp",       "FdpLayout",       "stub"),
-    "sfdp":      ("gvpy.engines.sfdp",      "SfdpLayout",      "stub"),
-    "twopi":     ("gvpy.engines.twopi",     "TwopiLayout",     "stub"),
-    "osage":     ("gvpy.engines.osage",     "OsageLayout",     "stub"),
-    "patchwork": ("gvpy.engines.patchwork", "PatchworkLayout", "stub"),
-    "mingle":    ("gvpy.engines.mingle",    "MingleBundler",   "stub"),
+    "neato":     ("gvpy.engines.neato",     "NeatoLayout",     "implemented"),
+    "fdp":       ("gvpy.engines.fdp",       "FdpLayout",       "implemented"),
+    "sfdp":      ("gvpy.engines.sfdp",      "SfdpLayout",      "implemented"),
+    "twopi":     ("gvpy.engines.twopi",     "TwopiLayout",     "implemented"),
+    "osage":     ("gvpy.engines.osage",     "OsageLayout",     "implemented"),
+    "patchwork": ("gvpy.engines.patchwork", "PatchworkLayout", "implemented"),
+    # mingle moved to gvpy.tools.mingle (it's a post-processor, not a layout engine)
 }
 
 

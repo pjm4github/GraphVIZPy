@@ -1,20 +1,12 @@
 """
-Osage layout engine — recursive cluster packing (not yet implemented).
+Osage layout engine — recursive cluster packing.
 
-Osage arranges nodes within nested rectangular clusters using a
-recursive packing algorithm.  Unlike dot (hierarchical), osage focuses
-on cluster containment: each cluster becomes a rectangular region and
-nodes are packed inside it.
+Arranges nodes within nested rectangular clusters using a bottom-up
+packing algorithm.  Each cluster becomes a rectangular region with
+its children (nodes and subclusters) packed inside.
 
 Reference: Graphviz lib/osage/
 """
+from .osage_layout import OsageLayout
 
-
-class OsageLayout:
-    """Recursive cluster packing layout engine (not yet implemented)."""
-
-    def __init__(self, graph):
-        self.graph = graph
-
-    def layout(self) -> dict:
-        raise NotImplementedError("Osage layout engine not yet implemented")
+__all__ = ["OsageLayout"]
