@@ -1163,11 +1163,17 @@ class DotLayout(LayoutEngine):
             self._scan_clusters(self.graph)
 
     def _all_nodes_recursive(self, sub) -> list[str]:
-        """Collect all node names from a subgraph and its descendants."""
-        names = [n for n in sub.nodes if n in self.lnodes]
+        """Collect all unique node names from a subgraph and its descendants."""
+        seen: set[str] = set()
+        self._collect_nodes_into(sub, seen)
+        return list(seen)
+
+    def _collect_nodes_into(self, sub, seen: set[str]):
+        for n in sub.nodes:
+            if n in self.lnodes:
+                seen.add(n)
         for child in sub.subgraphs.values():
-            names.extend(self._all_nodes_recursive(child))
-        return names
+            self._collect_nodes_into(child, seen)
 
     def _scan_clusters(self, g: Graph):
         for sub_name, sub in g.subgraphs.items():
@@ -2450,8 +2456,11 @@ class DotLayout(LayoutEngine):
             # Fallback to simple placement if NS fails
             self._simple_x_position()
             self._median_x_improvement()
+            self._center_ranks()
 
-        self._center_ranks()
+        # NS positions are already optimal — centering would break
+        # cluster alignment by shifting narrow ranks independently.
+
         self._apply_rankdir()
 
     def _expand_leaves(self):
