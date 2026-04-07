@@ -764,8 +764,6 @@ class DotLayout(LayoutEngine):
         self._apply_fixed_positions()
         self._apply_size()
         self._compute_cluster_boxes()
-        self._separate_sibling_clusters()
-        self._compute_cluster_boxes()  # recompute after separation
         self._phase4_routing()
         if self.concentrate:
             self._concentrate_edges()
@@ -1935,9 +1933,12 @@ class DotLayout(LayoutEngine):
         for name, ln in self.lnodes.items():
             ln.y = rank_y.get(ln.rank, ln.rank * self.ranksep)
 
-        # X coordinates: simple placement with median improvement
-        self._simple_x_position()
-        self._median_x_improvement()
+        # X coordinates: network simplex on auxiliary constraint graph
+        # (matching Graphviz position.c create_aux_edges + rank)
+        if not self._ns_x_position():
+            # Fallback to simple placement if NS fails
+            self._simple_x_position()
+            self._median_x_improvement()
 
         self._center_ranks()
         self._apply_rankdir()
@@ -2024,25 +2025,51 @@ class DotLayout(LayoutEngine):
                 break
 
     def _ns_x_position(self) -> bool:
-        """Use network simplex for X-coordinate assignment. Returns False on failure."""
-        # Build auxiliary graph: separation edges + alignment edges
-        aux_nodes = list(self.lnodes.keys())
-        if len(aux_nodes) < 2:
+        """Assign X coordinates using network simplex on an auxiliary graph.
+
+        Mirrors Graphviz ``position.c:create_aux_edges()``:
+
+        1. **Separation edges** (``make_LR_constraints``): adjacent nodes in
+           the same rank get a directed edge with
+           ``minlen = (rw_left + lw_right + nodesep)`` and ``weight = 0``.
+
+        2. **Alignment edges** (``make_edge_pairs``): for each real edge
+           (tail → head) a virtual "slack" node is created with two edges
+           pulling tail and head toward horizontal alignment.
+
+        3. **Cluster boundary edges** (``pos_clusters``): virtual ``ln``/
+           ``rn`` nodes per cluster enforce containment (all cluster members
+           between ln and rn) and sibling separation (rn_left → ln_right).
+
+        After building, network simplex is run and the resulting ranks are
+        used directly as X coordinates.
+        """
+        real_nodes = [n for n in self.lnodes if not self.lnodes[n].virtual]
+        if len(real_nodes) < 2:
             return False
 
-        aux_edges = []
+        aux_nodes: list[str] = list(self.lnodes.keys())
+        aux_edges: list[tuple[str, str, int, int]] = []
+        _vn_counter = [0]
 
-        # Separation edges: adjacent nodes in same rank must have minimum distance
+        def _vnode(prefix: str = "_xv") -> str:
+            _vn_counter[0] += 1
+            return f"{prefix}_{_vn_counter[0]}"
+
+        # ── 1. Separation edges (make_LR_constraints) ──────────
         for rank_val, rank_nodes in self.ranks.items():
             for i in range(len(rank_nodes) - 1):
                 left = rank_nodes[i]
                 right = rank_nodes[i + 1]
                 ln_l = self.lnodes[left]
                 ln_r = self.lnodes[right]
-                min_dist = int((ln_l.width + ln_r.width) / 2.0 + self.nodesep)
+                min_dist = int(ln_l.width / 2.0 + ln_r.width / 2.0
+                               + self.nodesep)
                 aux_edges.append((left, right, max(1, min_dist), 0))
 
-        # Build node group map for weight boosting
+        # ── 2. Alignment edges (make_edge_pairs) ──────────
+        # For each real edge, create a slack node that pulls tail and head
+        # toward vertical alignment with weight proportional to edge weight.
         node_groups: dict[str, str] = {}
         for name, ln in self.lnodes.items():
             if ln.node:
@@ -2050,25 +2077,98 @@ class DotLayout(LayoutEngine):
                 if grp:
                     node_groups[name] = grp
 
-        # Alignment edges: connected nodes in adjacent ranks pulled toward
-        # vertical alignment.  Only include edges spanning 1 rank to avoid
-        # the solver spreading nodes too far apart when trying to align
-        # distant pairs.
         for le in self.ledges:
             t_ln = self.lnodes.get(le.tail_name)
             h_ln = self.lnodes.get(le.head_name)
             if not t_ln or not h_ln:
                 continue
-            rank_span = abs(t_ln.rank - h_ln.rank)
-            if rank_span > 1:
-                continue
-            w = max(le.weight, 1)
-            # Boost same-group edges for vertical alignment
+            w = le.weight
             t_grp = node_groups.get(le.tail_name, "")
             h_grp = node_groups.get(le.head_name, "")
             if t_grp and t_grp == h_grp:
-                w = max(w, 200)
-            aux_edges.append((le.tail_name, le.head_name, 0, w))
+                w = max(w * 100, 100)
+            sn = _vnode("_sn")
+            aux_nodes.append(sn)
+            # Pull slack toward both tail and head with minlen=1
+            aux_edges.append((sn, le.tail_name, 0, w))
+            aux_edges.append((sn, le.head_name, 0, w))
+
+        # ── 3. Cluster boundary edges (pos_clusters) ──────────
+        if self._clusters:
+            node_sets = {cl.name: set(cl.nodes) for cl in self._clusters}
+
+            # Build parent map (smallest containing cluster)
+            parent_of: dict[str, str | None] = {}
+            for cl in self._clusters:
+                best, best_sz = None, float("inf")
+                for other in self._clusters:
+                    if other.name == cl.name:
+                        continue
+                    if node_sets[cl.name] < node_sets[other.name]:
+                        if len(node_sets[other.name]) < best_sz:
+                            best, best_sz = other.name, len(node_sets[other.name])
+                parent_of[cl.name] = best
+
+            children_of: dict[str | None, list[str]] = {}
+            for cn, par in parent_of.items():
+                children_of.setdefault(par, []).append(cn)
+
+            cl_by_name = {cl.name: cl for cl in self._clusters}
+            cl_ln: dict[str, str] = {}  # cluster → left boundary vnode
+            cl_rn: dict[str, str] = {}  # cluster → right boundary vnode
+
+            for cl in self._clusters:
+                ln_name = _vnode("_cln")
+                rn_name = _vnode("_crn")
+                aux_nodes.extend([ln_name, rn_name])
+                cl_ln[cl.name] = ln_name
+                cl_rn[cl.name] = rn_name
+
+                margin = int(cl.margin)
+
+                # Contain cluster nodes: ln → node, node → rn
+                for n in cl.nodes:
+                    if n not in self.lnodes:
+                        continue
+                    nln = self.lnodes[n]
+                    lw = int(nln.width / 2.0)
+                    rw = int(nln.width / 2.0)
+                    aux_edges.append((ln_name, n, max(1, lw + margin), 0))
+                    aux_edges.append((n, rn_name, max(1, rw + margin), 0))
+
+                # Compaction: ln → rn with high weight to keep cluster tight
+                aux_edges.append((ln_name, rn_name, 1, 128))
+
+            # Contain subclusters: parent.ln → child.ln, child.rn → parent.rn
+            for cl in self._clusters:
+                par = parent_of.get(cl.name)
+                if par is None:
+                    continue
+                margin = int(cl_by_name[par].margin)
+                aux_edges.append((cl_ln[par], cl_ln[cl.name],
+                                  max(1, margin), 0))
+                aux_edges.append((cl_rn[cl.name], cl_rn[par],
+                                  max(1, margin), 0))
+
+            # Separate sibling clusters: rn(left) → ln(right)
+            for _parent, siblings in children_of.items():
+                if len(siblings) < 2:
+                    continue
+                # Sort siblings by median node order to determine left→right
+                def _median_order(cn):
+                    orders = [self.lnodes[n].order for n in node_sets[cn]
+                              if n in self.lnodes]
+                    if not orders:
+                        return 0
+                    orders.sort()
+                    return orders[len(orders) // 2]
+                siblings_sorted = sorted(siblings, key=_median_order)
+                margin = int(self.nodesep)
+                for i in range(len(siblings_sorted) - 1):
+                    left_cl = siblings_sorted[i]
+                    right_cl = siblings_sorted[i + 1]
+                    aux_edges.append((cl_rn[left_cl], cl_ln[right_cl],
+                                      max(1, margin), 0))
 
         if not aux_edges:
             return False
