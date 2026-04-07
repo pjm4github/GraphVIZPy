@@ -256,6 +256,7 @@ class LayoutEdge:
     tailclip: bool = True
     samehead: str = ""
     sametail: str = ""
+    edge_type: str = "normal"  # normal, flat, reversed, self, virtual
 
 
 @dataclass
@@ -1423,6 +1424,7 @@ class DotLayout(LayoutEngine):
 
     def _phase1_rank(self):
         self._break_cycles()
+        self._classify_edges()
         if self.newrank or self.clusterrank == "none":
             # Global ranking: all nodes in one pass (ignores cluster boundaries)
             self._network_simplex_rank()
@@ -1433,6 +1435,43 @@ class DotLayout(LayoutEngine):
         self._compact_ranks()
         self._add_virtual_nodes()
         self._build_ranks()
+        self._classify_flat_edges()
+
+    def _classify_flat_edges(self):
+        """Post-ranking pass: mark same-rank edges as flat."""
+        for le in self.ledges:
+            if le.virtual:
+                continue
+            t = self.lnodes.get(le.tail_name)
+            h = self.lnodes.get(le.head_name)
+            if t and h and t.rank == h.rank:
+                le.edge_type = "flat"
+
+    def _classify_edges(self):
+        """Classify edges by type for downstream processing.
+
+        Sets ``le.edge_type`` on each LayoutEdge to one of:
+        - ``'normal'`` — standard cross-rank edge
+        - ``'flat'`` — same-rank edge (detected after ranking)
+        - ``'reversed'`` — edge reversed by cycle breaking
+        - ``'self'`` — self-loop
+
+        This runs before ranking so types are preliminary; flat edges
+        can only be fully detected after ranks are assigned.  A second
+        pass runs after ranking to finalize flat-edge classification.
+
+        Mirrors Graphviz ``class1.c:class1()`` (pre-rank) and
+        ``class2.c:class2()`` (post-rank) classification.
+        """
+        for le in self.ledges:
+            if le.virtual:
+                le.edge_type = "virtual"
+            elif le.tail_name == le.head_name:
+                le.edge_type = "self"
+            elif le.reversed:
+                le.edge_type = "reversed"
+            else:
+                le.edge_type = "normal"
 
     def _cluster_aware_rank(self):
         """Rank nodes with cluster-aware ordering.
@@ -3510,74 +3549,184 @@ class DotLayout(LayoutEngine):
         # The _to_bezier will convert these to a smooth cubic Bezier
         return waypoints
 
-    def _flat_edge_route(self, le: LayoutEdge, tail: LayoutNode,
-                         head: LayoutNode) -> list[tuple[float, float]]:
-        """Route an edge between two nodes on the same rank.
+    def _classify_flat_edge(self, le: LayoutEdge, tail: LayoutNode,
+                            head: LayoutNode) -> str:
+        """Classify a flat edge into a routing variant.
 
-        Uses an arc above or below the nodes.  When ports specify a
-        direction (e.g. ``n`` = north), the arc goes in that direction.
-        Otherwise arcs default above the nodes with staggering based on
-        distance and edge index.
+        Returns one of: 'adjacent', 'labeled', 'bottom', 'top' (default).
+        Mirrors Graphviz ``dotsplines.c:make_flat_edge()`` dispatch.
         """
-        p1 = self._edge_start_point(le, tail, head)
-        p2 = self._edge_end_point(le, head, tail)
+        is_adjacent = abs(tail.order - head.order) == 1
 
-        dx = abs(p2[0] - p1[0])
+        if is_adjacent and not le.tailport and not le.headport:
+            return "adjacent"
 
-        # If no ports are specified and nodes are adjacent in the ordering,
-        # use a straight line (like Graphviz does for directed same-rank edges)
-        if not le.tailport and not le.headport:
-            t_order = tail.order
-            h_order = head.order
-            if abs(t_order - h_order) == 1:
-                # Adjacent nodes: straight bezier (control points on the line)
-                le.spline_type = "bezier"
-                return [
-                    p1,
-                    ((2 * p1[0] + p2[0]) / 3, p1[1]),
-                    ((p1[0] + 2 * p2[0]) / 3, p2[1]),
-                    p2,
-                ]
+        if le.label and hasattr(le, '_flat_label_vnode'):
+            return "labeled"
 
-        # Determine arc direction from ports
-        port_dir = None  # -1 = above (north), +1 = below (south)
+        # Check port sides for bottom routing
         for port in (le.tailport, le.headport):
             if port:
                 compass = port.split(":")[-1] if ":" in port else port
-                if compass in ("n", "nw", "ne"):
-                    port_dir = -1
-                    break
-                elif compass in ("s", "sw", "se"):
-                    port_dir = 1
-                    break
+                if compass in ("s", "sw", "se"):
+                    return "bottom"
 
-        # Count prior flat edges between the same node pair (parallel edges)
-        arc_index = 0
+        return "top"
+
+    def _count_flat_edge_index(self, le: LayoutEdge) -> int:
+        """Count how many flat edges between the same pair come before this one."""
+        idx = 0
+        for other in self.ledges:
+            if other is le:
+                return idx
+            if other.virtual:
+                continue
+            t = self.lnodes.get(other.tail_name)
+            h = self.lnodes.get(other.head_name)
+            if t and h and t.rank == h.rank:
+                if ((other.tail_name == le.tail_name and
+                     other.head_name == le.head_name) or
+                    (other.tail_name == le.head_name and
+                     other.head_name == le.tail_name)):
+                    idx += 1
+        return idx
+
+    def _flat_edge_route(self, le: LayoutEdge, tail: LayoutNode,
+                         head: LayoutNode) -> list[tuple[float, float]]:
+        """Route a same-rank edge using the appropriate variant.
+
+        Dispatches to one of four routing strategies matching Graphviz
+        ``dotsplines.c:make_flat_edge()``:
+
+        1. **adjacent** — straight bezier for nodes next to each other
+        2. **labeled** — route through the label dummy node
+        3. **bottom** — arc below the rank (south ports)
+        4. **top** (default) — arc above the rank with multi-edge staggering
+        """
+        variant = self._classify_flat_edge(le, tail, head)
+        p1 = self._edge_start_point(le, tail, head)
+        p2 = self._edge_end_point(le, head, tail)
+        le.spline_type = "bezier"
+
+        if variant == "adjacent":
+            return self._flat_adjacent(le, p1, p2, tail, head)
+        elif variant == "labeled":
+            return self._flat_labeled(le, p1, p2, tail, head)
+        elif variant == "bottom":
+            return self._flat_arc(le, p1, p2, tail, head, direction=1)
+        else:  # "top"
+            return self._flat_arc(le, p1, p2, tail, head, direction=-1)
+
+    def _flat_adjacent(self, le: LayoutEdge, p1, p2,
+                       tail: LayoutNode, head: LayoutNode):
+        """Route a flat edge between adjacent nodes as a straight bezier.
+
+        For multi-edges between the same pair, distributes y-offsets
+        across the node height (Graphviz ``makeSimpleFlat``).
+        """
+        idx = self._count_flat_edge_index(le)
+        if idx == 0:
+            # Single or first edge: straight line
+            return [
+                p1,
+                ((2 * p1[0] + p2[0]) / 3, p1[1]),
+                ((p1[0] + 2 * p2[0]) / 3, p2[1]),
+                p2,
+            ]
+        # Multi-edge: offset y by distributing across node height
+        max_h = min(tail.height, head.height) / 2
+        dy = max_h * (idx / (idx + 1)) * (-1 if idx % 2 == 0 else 1)
+        return [
+            (p1[0], p1[1] + dy),
+            ((2 * p1[0] + p2[0]) / 3, p1[1] + dy),
+            ((p1[0] + 2 * p2[0]) / 3, p2[1] + dy),
+            (p2[0], p2[1] + dy),
+        ]
+
+    def _flat_labeled(self, le: LayoutEdge, p1, p2,
+                      tail: LayoutNode, head: LayoutNode):
+        """Route a flat edge through its label dummy node.
+
+        The label node was inserted in the rank above by
+        ``_insert_flat_label_nodes``.  The edge routes up to the label
+        node's Y, across, and back down.
+        """
+        vn_name = getattr(le, '_flat_label_vnode', None)
+        if not vn_name or vn_name not in self.lnodes:
+            # Fallback to top arc
+            return self._flat_arc(le, p1, p2, tail, head, direction=-1)
+
+        vn = self.lnodes[vn_name]
+        label_y = vn.y
+        return [
+            p1,
+            (p1[0], label_y),
+            (p2[0], label_y),
+            p2,
+        ]
+
+    def _flat_arc(self, le: LayoutEdge, p1, p2,
+                  tail: LayoutNode, head: LayoutNode,
+                  direction: int):
+        """Route a flat edge as an arc above (direction=-1) or below (+1).
+
+        Multi-edge staggering uses ``stepx`` and ``stepy`` proportional
+        to ``Multisep`` (= nodesep) and available vertical space.
+        Mirrors Graphviz 3-box corridor approach.
+        """
+        dx = abs(p2[0] - p1[0])
+        r = tail.rank
+
+        # Compute available vertical space to the adjacent rank
+        if direction < 0:
+            # Above: space to rank r-1
+            prev_r = r - 1
+            if prev_r in self.ranks and self.ranks[prev_r]:
+                prev_y = self.lnodes[self.ranks[prev_r][0]].y
+                vspace = abs(tail.y - prev_y) - self._rank_ht1.get(prev_r, 18)
+            else:
+                vspace = self.ranksep
+        else:
+            # Below: space to rank r+1
+            next_r = r + 1
+            if next_r in self.ranks and self.ranks[next_r]:
+                next_y = self.lnodes[self.ranks[next_r][0]].y
+                vspace = abs(next_y - tail.y) - self._rank_ht2.get(next_r, 18)
+            else:
+                vspace = self.ranksep
+
+        vspace = max(vspace, 20.0)
+
+        # Multi-edge staggering
+        idx = self._count_flat_edge_index(le)
+        # Count total parallel flat edges for this pair
+        total = idx + 1
         for other in self.ledges:
             if other is le or other.virtual:
                 continue
-            if (other.tail_name == le.tail_name and other.head_name == le.head_name):
-                arc_index += 1
-                break  # found a parallel edge, this one is the second
+            if ((other.tail_name == le.tail_name and
+                 other.head_name == le.head_name) or
+                (other.tail_name == le.head_name and
+                 other.head_name == le.tail_name)):
+                ot = self.lnodes.get(other.tail_name)
+                oh = self.lnodes.get(other.head_name)
+                if ot and oh and ot.rank == oh.rank:
+                    total += 1
 
-        # Arc height: proportional to distance for short spans, capped for
-        # long spans.  Graphviz keeps long port-to-port arcs relatively flat.
-        arc_height = max(dx * 0.22, 20.0) + arc_index * 12.0
-        arc_height = min(arc_height, 60.0)  # cap height
+        multisep = self.nodesep
+        stepx = multisep / (total + 1)
+        stepy = vspace / (total + 1)
 
-        if port_dir is not None:
-            arc_y = p1[1] + port_dir * arc_height
-        else:
-            # Default: arc above (negative Y in SVG = up)
-            arc_y = min(p1[1], p2[1]) - arc_height
+        # Arc height based on index and available space
+        arc_height = max(dx * 0.22, 20.0) + (idx + 1) * stepy
+        arc_height = min(arc_height, vspace * 0.8)
 
-        # Cubic Bézier: start, ctrl1, ctrl2, end
-        # Control points are directly above/below start and end
-        le.spline_type = "bezier"
+        arc_y = p1[1] + direction * arc_height
+
         return [
             p1,
-            (p1[0], arc_y),
-            (p2[0], arc_y),
+            (p1[0] + direction * (idx + 1) * stepx * 0.5, arc_y),
+            (p2[0] - direction * (idx + 1) * stepx * 0.5, arc_y),
             p2,
         ]
 

@@ -2243,3 +2243,147 @@ class TestKeepOutOtherNodes:
         dark_green = [cl for cl in clusters
                       if cl.get("color") == "DarkGreen"]
         assert len(dark_green) == 20
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Gap 4: Flat edge routing variants
+# ═══════════════════════════════════════════════════════════════
+
+class TestFlatEdgeVariants:
+    """Flat (same-rank) edge routing dispatches to the correct variant."""
+
+    def test_adjacent_straight(self):
+        """Adjacent same-rank nodes with no ports get a straight bezier."""
+        r = layout_dot("""
+            digraph G { {rank=same; a; b;} a -> b; }
+        """)
+        edge = r["edges"][0]
+        pts = edge["points"]
+        # Straight bezier: all points should have similar Y
+        ys = [p[1] for p in pts]
+        assert max(ys) - min(ys) < 5, f"Adjacent edge should be straight, Y range={max(ys)-min(ys)}"
+
+    def test_port_n_arcs_above(self):
+        """Flat edge with tailport=n routes above the nodes (negative Y)."""
+        r = layout_dot("""
+            digraph G {
+                {rank=same; a; b;}
+                a -> b [tailport=n, headport=n, dir=none, color=red];
+            }
+        """)
+        edges = [e for e in r["edges"] if e.get("color") == "red"]
+        assert len(edges) >= 1
+        pts = edges[0]["points"]
+        node_y = node_by_name(r, "a")["y"]
+        # Arc control points should be above (lower Y) the nodes
+        min_ctrl_y = min(p[1] for p in pts)
+        assert min_ctrl_y < node_y, "North-port arc should go above nodes"
+
+    def test_port_s_arcs_below(self):
+        """Flat edge with tailport=s routes below the nodes (positive Y)."""
+        r = layout_dot("""
+            digraph G {
+                {rank=same; a; b;}
+                a -> b [tailport=s, headport=s, dir=none];
+            }
+        """)
+        edges = r["edges"]
+        assert len(edges) >= 1
+        pts = edges[0]["points"]
+        node_y = node_by_name(r, "a")["y"]
+        max_ctrl_y = max(p[1] for p in pts)
+        assert max_ctrl_y > node_y, "South-port arc should go below nodes"
+
+    def test_241_directed_edges_straight(self):
+        """241_1.dot: directed same-rank edges between adjacent nodes are straight."""
+        src = Path("test_data/241_1.dot").read_text(encoding="utf-8")
+        r = layout_dot(src)
+        # Find a directed (non-red) edge between adjacent nodes
+        directed = [e for e in r["edges"]
+                    if not e.get("color") and not e.get("dir")]
+        assert len(directed) >= 6  # 0->1 through 11->12 minus missing
+        # Check that directed edges are approximately straight
+        for e in directed[:3]:
+            pts = e["points"]
+            ys = [p[1] for p in pts]
+            assert max(ys) - min(ys) < 10, \
+                f"Directed {e['tail']}->{e['head']} should be straight"
+
+    def test_241_red_edges_arc_above(self):
+        """241_1.dot: red undirected edges arc above the nodes."""
+        src = Path("test_data/241_1.dot").read_text(encoding="utf-8")
+        r = layout_dot(src)
+        red_edges = [e for e in r["edges"] if e.get("color") == "red"]
+        assert len(red_edges) == 12
+        node_ys = {n["name"]: n["y"] for n in r["nodes"]}
+        for e in red_edges:
+            pts = e["points"]
+            tail_y = node_ys.get(e["tail"], 0)
+            min_y = min(p[1] for p in pts)
+            assert min_y < tail_y, \
+                f"Red {e['tail']}->{e['head']} should arc above nodes"
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Gap 5: Edge classification
+# ═══════════════════════════════════════════════════════════════
+
+class TestEdgeClassification:
+    """Edge classification labels edges with correct types."""
+
+    def test_normal_edge_classified(self):
+        """Cross-rank edges are classified as 'normal'."""
+        g = read_gv("digraph G { a -> b; }")
+        engine = DotLayout(g)
+        engine._init_from_graph()
+        engine._classify_edges()
+        for le in engine.ledges:
+            if not le.virtual:
+                assert le.edge_type == "normal"
+
+    def test_self_loop_classified(self):
+        """Self-loop edges are classified as 'self'."""
+        g = read_gv("digraph G { a -> a; }")
+        engine = DotLayout(g)
+        engine._init_from_graph()
+        engine._classify_edges()
+        self_edges = [le for le in engine.ledges if le.edge_type == "self"]
+        assert len(self_edges) >= 1
+
+    def test_flat_edge_classified_after_ranking(self):
+        """Same-rank edges are classified as 'flat' after ranking."""
+        g = read_gv("""
+            digraph G { {rank=same; a; b;} a -> b; c -> a; }
+        """)
+        engine = DotLayout(g)
+        engine._init_from_graph()
+        engine._phase1_rank()
+        flat_edges = [le for le in engine.ledges
+                      if le.edge_type == "flat" and not le.virtual]
+        assert len(flat_edges) >= 1, "Should have at least 1 flat edge"
+
+    def test_1332_no_flat_edges(self):
+        """1332.dot has no same-rank edges (all cross-rank)."""
+        src = Path("test_data/1332.dot").read_text(encoding="utf-8")
+        g = read_gv(src)
+        engine = DotLayout(g)
+        engine._init_from_graph()
+        engine._phase1_rank()
+        flat_edges = [le for le in engine.ledges
+                      if le.edge_type == "flat" and not le.virtual]
+        # 1332.dot is rankdir=LR with no rank=same constraints,
+        # so there should be no flat edges
+        assert len(flat_edges) == 0
+
+    def test_241_flat_edges_detected(self):
+        """241_1.dot has flat edges (rank=same subgraph)."""
+        src = Path("test_data/241_1.dot").read_text(encoding="utf-8")
+        g = read_gv(src)
+        engine = DotLayout(g)
+        engine._init_from_graph()
+        engine._phase1_rank()
+        flat_edges = [le for le in engine.ledges
+                      if le.edge_type == "flat" and not le.virtual]
+        # All edges in 241_1.dot are same-rank
+        assert len(flat_edges) >= 18, \
+            f"Expected >= 18 flat edges, got {len(flat_edges)}"
