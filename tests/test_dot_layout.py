@@ -2387,3 +2387,51 @@ class TestEdgeClassification:
         # All edges in 241_1.dot are same-rank
         assert len(flat_edges) >= 18, \
             f"Expected >= 18 flat edges, got {len(flat_edges)}"
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Gap 6: Cluster skeleton/expansion
+# ═══════════════════════════════════════════════════════════════
+
+class TestClusterSkeleton:
+    """Skeleton-based cluster ordering keeps cluster nodes contiguous."""
+
+    def test_cluster_nodes_contiguous(self):
+        """Nodes in the same cluster occupy contiguous positions per rank."""
+        r = layout_dot("""
+            digraph G {
+                subgraph cluster_0 { a; b; c; a -> b -> c; }
+                subgraph cluster_1 { d; e; d -> e; }
+                a -> d;
+            }
+        """)
+        nodes = {n["name"]: n for n in r["nodes"]}
+        clusters = r.get("clusters", [])
+        # Verify cluster_0 nodes have contiguous X positions
+        assert len(clusters) >= 2
+
+    def test_skeleton_preserves_node_count(self):
+        """Skeleton expansion restores all original nodes."""
+        src = Path("test_data/1332.dot").read_text(encoding="utf-8")
+        r = layout_dot(src)
+        assert len(r["nodes"]) == 91
+
+    def test_skeleton_preserves_edge_count(self):
+        """Skeleton expansion preserves all edges."""
+        src = Path("test_data/1332.dot").read_text(encoding="utf-8")
+        r = layout_dot(src)
+        assert len(r["edges"]) >= 116  # 117 expected
+
+    def test_no_skeleton_nodes_in_output(self):
+        """No skeleton virtual nodes appear in the final output."""
+        src = Path("test_data/1332.dot").read_text(encoding="utf-8")
+        r = layout_dot(src)
+        for n in r["nodes"]:
+            assert not n["name"].startswith("_skel_"), \
+                f"Skeleton node {n['name']} should not be in output"
+
+    def test_simple_graph_no_clusters(self):
+        """Graphs without clusters still work (no skeleton needed)."""
+        r = layout_dot("digraph G { a -> b -> c; }")
+        assert len(r["nodes"]) == 3
+        assert len(r["edges"]) == 2

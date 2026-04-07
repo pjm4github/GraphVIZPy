@@ -1714,6 +1714,8 @@ class DotLayout(LayoutEngine):
 
     # ── Phase 2: Crossing minimization ───────────
 
+    _CL_CROSS = 1000  # Graphviz CL_CROSS: penalty weight for crossing cluster borders
+
     def _phase2_ordering(self):
         if not self.ranks:
             return
@@ -1726,6 +1728,19 @@ class DotLayout(LayoutEngine):
         if self.ordering in ("out", "in"):
             return
 
+        # ── Skeleton-based cluster ordering ──────────────
+        # Mirrors Graphviz class2 build_skeleton → init_mincross → mincross
+        # → mincross_clust expand_cluster → mincross per cluster.
+        if self._clusters:
+            self._skeleton_mincross()
+        else:
+            self._run_mincross()
+
+        # Enforce flat-edge ordering: tails left of heads
+        self._flat_reorder()
+
+    def _run_mincross(self):
+        """Run crossing minimization sweeps on the current rank arrays."""
         max_rank = max(self.ranks.keys()) if self.ranks else 0
         best_crossings = self._count_all_crossings()
         best_order = self._save_ordering()
@@ -1745,7 +1760,6 @@ class DotLayout(LayoutEngine):
                 best_crossings = c
                 best_order = self._save_ordering()
 
-        # Optional second pass (remincross)
         if self.remincross and best_crossings > 0:
             for _ in range(iterations):
                 for r in range(1, max_rank + 1):
@@ -1763,14 +1777,214 @@ class DotLayout(LayoutEngine):
 
         self._restore_ordering(best_order)
 
-        # Enforce flat-edge ordering: tails left of heads
-        self._flat_reorder()
+    def _skeleton_mincross(self):
+        """Skeleton-based cluster ordering matching Graphviz mincross.
 
-        # Recursively run mincross within each cluster (Graphviz
-        # mincross_clust), then enforce cluster contiguity.
-        self._cluster_group_ordering()
-        self._mincross_within_clusters()
-        self._cluster_group_ordering()  # restore contiguity after
+        1. Build skeleton: replace each top-level cluster with one virtual
+           rank-leader node per rank it spans.
+        2. Run mincross on the reduced graph.
+        3. Expand: splice real cluster nodes at the skeleton position,
+           run mincross within each cluster, recurse into children.
+        4. Clean up skeleton nodes.
+        """
+        node_sets = {cl.name: set(cl.nodes) for cl in self._clusters}
+
+        # Build parent map
+        parent_of: dict[str, str | None] = {}
+        for cl in self._clusters:
+            best, best_sz = None, float("inf")
+            for other in self._clusters:
+                if other.name == cl.name:
+                    continue
+                if node_sets[cl.name] < node_sets[other.name]:
+                    if len(node_sets[other.name]) < best_sz:
+                        best, best_sz = other.name, len(node_sets[other.name])
+            parent_of[cl.name] = best
+
+        children_of: dict[str | None, list[str]] = {}
+        for cn, par in parent_of.items():
+            children_of.setdefault(par, []).append(cn)
+
+        top_clusters = children_of.get(None, [])
+        if not top_clusters:
+            self._run_mincross()
+            return
+
+        cl_by_name = {cl.name: cl for cl in self._clusters}
+
+        # ── Build skeletons for ALL clusters (all levels) ──
+        skeleton_nodes: dict[str, dict[int, str]] = {}
+        skeleton_edges: list[LayoutEdge] = []
+
+        def _build_skeleton(cl_name: str):
+            """Create rank-leader virtual nodes for a cluster."""
+            cl_node_set = node_sets[cl_name]
+            # Only use DIRECT nodes (not in child clusters)
+            child_nodes: set[str] = set()
+            for child in children_of.get(cl_name, []):
+                child_nodes.update(node_sets[child])
+            direct = cl_node_set - child_nodes
+
+            cl_ranks = sorted(set(
+                self.lnodes[n].rank for n in cl_node_set if n in self.lnodes
+            ))
+            if not cl_ranks:
+                return
+
+            rank_leaders: dict[int, str] = {}
+            prev_leader = None
+            for r in cl_ranks:
+                vn_name = f"_skel_{cl_name}_{r}"
+                vn = LayoutNode(node=None, rank=r, virtual=True,
+                                width=4.0, height=4.0)
+                self.lnodes[vn_name] = vn
+                rank_leaders[r] = vn_name
+                if prev_leader is not None:
+                    se = LayoutEdge(
+                        edge=None, tail_name=prev_leader, head_name=vn_name,
+                        minlen=1, weight=self._CL_CROSS, virtual=True,
+                    )
+                    skeleton_edges.append(se)
+                    self.ledges.append(se)
+                prev_leader = vn_name
+            skeleton_nodes[cl_name] = rank_leaders
+
+            # Build child skeletons first (depth-first)
+            for child in children_of.get(cl_name, []):
+                _build_skeleton(child)
+
+        for cl_name in top_clusters:
+            _build_skeleton(cl_name)
+
+        # ── Collapse: replace clusters with skeletons, top-down ──
+        # For each cluster (deepest first), hide its direct nodes and
+        # child skeleton nodes, replace with this cluster's skeleton.
+        # Process deepest children first so their skeletons are in place
+        # before the parent collapses.
+
+        # Compute depth for ordering
+        depth_of: dict[str, int] = {}
+        for cl_name in skeleton_nodes:
+            d, cur = 0, cl_name
+            while parent_of.get(cur) is not None:
+                d += 1
+                cur = parent_of[cur]
+            depth_of[cl_name] = d
+        max_depth = max(depth_of.values()) if depth_of else 0
+
+        # Track which nodes are currently visible (not hidden)
+        hidden_by: dict[str, str] = {}  # node_name → cl_name that hid it
+
+        # Collapse from deepest to shallowest
+        for d in range(max_depth, -1, -1):
+            for cl_name, rank_leaders in skeleton_nodes.items():
+                if depth_of.get(cl_name, 0) != d:
+                    continue
+
+                # Nodes to hide: direct nodes + child cluster skeletons
+                cl_node_set = node_sets[cl_name]
+                child_skel_nodes: set[str] = set()
+                for child in children_of.get(cl_name, []):
+                    if child in skeleton_nodes:
+                        child_skel_nodes.update(skeleton_nodes[child].values())
+
+                to_hide = set()
+                for n in cl_node_set:
+                    if n in self.lnodes and n not in hidden_by:
+                        to_hide.add(n)
+                to_hide.update(n for n in child_skel_nodes if n not in hidden_by)
+
+                for r in sorted(rank_leaders.keys()):
+                    rank_list = self.ranks.get(r, [])
+                    new_rank = []
+                    skel_inserted = False
+                    for name in rank_list:
+                        if name in to_hide:
+                            hidden_by[name] = cl_name
+                            if not skel_inserted:
+                                new_rank.append(rank_leaders[r])
+                                skel_inserted = True
+                        else:
+                            new_rank.append(name)
+                    if not skel_inserted and r in rank_leaders:
+                        new_rank.append(rank_leaders[r])
+                    self.ranks[r] = new_rank
+                    for i, name in enumerate(self.ranks[r]):
+                        self.lnodes[name].order = i
+
+        # ── Run mincross on fully collapsed graph ──
+        self._run_mincross()
+
+        # ── Expand: shallowest to deepest ──
+        for d in range(0, max_depth + 1):
+            for cl_name in skeleton_nodes:
+                if depth_of.get(cl_name, 0) != d:
+                    continue
+                rank_leaders = skeleton_nodes[cl_name]
+
+                for r, skel_name in rank_leaders.items():
+                    rank_list = self.ranks.get(r, [])
+                    try:
+                        skel_pos = rank_list.index(skel_name)
+                    except ValueError:
+                        continue
+
+                    # Nodes to restore: those hidden by this cluster at rank r
+                    restore = [n for n, hider in hidden_by.items()
+                               if hider == cl_name and n in self.lnodes
+                               and self.lnodes[n].rank == r]
+                    restore.sort(key=lambda n: self.lnodes[n].order)
+
+                    if restore:
+                        rank_list[skel_pos:skel_pos + 1] = restore
+                    else:
+                        rank_list.pop(skel_pos)
+                    self.ranks[r] = rank_list
+                    for i, name in enumerate(rank_list):
+                        self.lnodes[name].order = i
+
+                # Un-hide these nodes
+                for n in list(hidden_by):
+                    if hidden_by[n] == cl_name:
+                        del hidden_by[n]
+
+                # Local mincross within this cluster
+                cl_node_set = node_sets[cl_name]
+                cl_ranks = sorted(set(
+                    self.lnodes[n].rank for n in cl_node_set
+                    if n in self.lnodes
+                ))
+                if len(cl_ranks) >= 2:
+                    min_r, max_r = min(cl_ranks), max(cl_ranks)
+                    for _ in range(4):
+                        improved = False
+                        for r in range(min_r + 1, max_r + 1):
+                            if r in self.ranks:
+                                if self._cluster_median_order(r, r - 1, cl_node_set):
+                                    improved = True
+                                self._cluster_transpose(r, cl_node_set)
+                        for r in range(max_r - 1, min_r - 1, -1):
+                            if r in self.ranks:
+                                if self._cluster_median_order(r, r + 1, cl_node_set):
+                                    improved = True
+                                self._cluster_transpose(r, cl_node_set)
+                        if not improved:
+                            break
+
+        # ── Clean up skeleton nodes and edges ──
+        for cl_name, rank_leaders in skeleton_nodes.items():
+            for r, skel_name in rank_leaders.items():
+                if r in self.ranks and skel_name in self.ranks[r]:
+                    self.ranks[r].remove(skel_name)
+                self.lnodes.pop(skel_name, None)
+
+        skel_edge_set = set(id(se) for se in skeleton_edges)
+        self.ledges = [le for le in self.ledges if id(le) not in skel_edge_set]
+
+        for r, rank_nodes in self.ranks.items():
+            for i, name in enumerate(rank_nodes):
+                if name in self.lnodes:
+                    self.lnodes[name].order = i
 
     def _flat_reorder(self):
         """Enforce left-to-right ordering for flat (same-rank) edges.
