@@ -1425,17 +1425,47 @@ class DotLayout(LayoutEngine):
     def _phase1_rank(self):
         self._break_cycles()
         self._classify_edges()
+        # Inject rank=same constraints as zero-length high-weight edges
+        # BEFORE running NS so the solver respects them natively
+        # (matching Graphviz collapse_sets).
+        self._inject_same_rank_edges()
         if self.newrank or self.clusterrank == "none":
-            # Global ranking: all nodes in one pass (ignores cluster boundaries)
             self._network_simplex_rank()
         else:
-            # Per-cluster ranking: rank cluster nodes independently, then merge
             self._cluster_aware_rank()
         self._apply_rank_constraints()
         self._compact_ranks()
         self._add_virtual_nodes()
         self._build_ranks()
         self._classify_flat_edges()
+
+    def _inject_same_rank_edges(self):
+        """Add zero-length high-weight edges between rank=same nodes.
+
+        This ensures the network simplex solver assigns them the same rank
+        rather than relying on a post-hoc fixup that can violate other
+        edge constraints.  Mirrors Graphviz ``rank.c:collapse_sets()``.
+        """
+        for kind, node_names in self._rank_constraints:
+            if kind != "same" or len(node_names) < 2:
+                continue
+            # Chain consecutive pairs with bidirectional zero-length edges
+            for i in range(len(node_names) - 1):
+                a, b = node_names[i], node_names[i + 1]
+                if a not in self.lnodes or b not in self.lnodes:
+                    continue
+                # Forward: a → b, minlen=0, weight=1000
+                self.ledges.append(LayoutEdge(
+                    edge=None, tail_name=a, head_name=b,
+                    minlen=0, weight=1000, virtual=True,
+                    constraint=True,
+                ))
+                # Backward: b → a, minlen=0, weight=1000
+                self.ledges.append(LayoutEdge(
+                    edge=None, tail_name=b, head_name=a,
+                    minlen=0, weight=1000, virtual=True,
+                    constraint=True,
+                ))
 
     def _classify_flat_edges(self):
         """Post-ranking pass: mark same-rank edges as flat."""
