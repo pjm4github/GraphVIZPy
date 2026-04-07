@@ -1717,11 +1717,90 @@ class DotLayout(LayoutEngine):
 
         self._restore_ordering(best_order)
 
+        # Enforce flat-edge ordering: tails left of heads
+        self._flat_reorder()
+
         # Recursively run mincross within each cluster (Graphviz
         # mincross_clust), then enforce cluster contiguity.
         self._cluster_group_ordering()
         self._mincross_within_clusters()
         self._cluster_group_ordering()  # restore contiguity after
+
+    def _flat_reorder(self):
+        """Enforce left-to-right ordering for flat (same-rank) edges.
+
+        For each rank, flat edges with weight > 0 establish an ordering
+        constraint: tail must be left of head.  This is implemented as
+        a topological sort on the flat-edge graph within each rank.
+        Mirrors Graphviz ``mincross.c:flat_reorder()``.
+        """
+        # Collect flat edges per rank
+        flat_by_rank: dict[int, list[tuple[str, str]]] = {}
+        for le in self.ledges:
+            if le.virtual:
+                continue
+            t = self.lnodes.get(le.tail_name)
+            h = self.lnodes.get(le.head_name)
+            if t and h and t.rank == h.rank and le.weight > 0:
+                flat_by_rank.setdefault(t.rank, []).append(
+                    (le.tail_name, le.head_name))
+
+        for rank_val, flat_edges in flat_by_rank.items():
+            rank_nodes = self.ranks.get(rank_val)
+            if not rank_nodes or len(rank_nodes) < 2:
+                continue
+
+            # Build adjacency for topological sort
+            in_degree: dict[str, int] = {}
+            adj: dict[str, list[str]] = {}
+            rank_set = set(rank_nodes)
+            for t, h in flat_edges:
+                if t not in rank_set or h not in rank_set:
+                    continue
+                adj.setdefault(t, []).append(h)
+                in_degree[h] = in_degree.get(h, 0) + 1
+                in_degree.setdefault(t, in_degree.get(t, 0))
+
+            # Nodes with flat-edge constraints
+            constrained = set(in_degree.keys())
+            if not constrained:
+                continue
+
+            # Topological sort (Kahn's algorithm) on constrained nodes
+            queue = [n for n in rank_nodes if n in constrained
+                     and in_degree.get(n, 0) == 0]
+            topo_order: list[str] = []
+            while queue:
+                u = queue.pop(0)
+                topo_order.append(u)
+                for v in adj.get(u, []):
+                    in_degree[v] -= 1
+                    if in_degree[v] == 0:
+                        queue.append(v)
+
+            if len(topo_order) != len(constrained):
+                # Cycle in flat edges — skip (cycle should have been
+                # broken by _break_cycles, but flat edges may create new
+                # cycles if they were added after cycle breaking)
+                continue
+
+            # Merge: constrained nodes in topo order, unconstrained keep
+            # their relative positions
+            unconstrained = [n for n in rank_nodes if n not in constrained]
+            # Interleave: place constrained nodes at their original
+            # positions, preserving unconstrained order
+            new_order: list[str] = []
+            ci = 0  # index into topo_order
+            for n in rank_nodes:
+                if n in constrained:
+                    new_order.append(topo_order[ci])
+                    ci += 1
+                else:
+                    new_order.append(n)
+
+            for i, name in enumerate(new_order):
+                self.lnodes[name].order = i
+            self.ranks[rank_val] = new_order
 
     def _cluster_group_ordering(self):
         """Reorder nodes within each rank so that cluster members are contiguous.
@@ -2066,6 +2145,11 @@ class DotLayout(LayoutEngine):
         # Y coordinates following Graphviz position.c set_ycoords().
         self._set_ycoords()
 
+        # Insert virtual label nodes for labeled flat edges (Graphviz
+        # position.c flat_edges).  If any were inserted, re-run Y coords.
+        if self._insert_flat_label_nodes():
+            self._set_ycoords()
+
         # X coordinates: network simplex on auxiliary constraint graph
         # (matching Graphviz position.c create_aux_edges + rank)
         if not self._ns_x_position():
@@ -2075,6 +2159,94 @@ class DotLayout(LayoutEngine):
 
         self._center_ranks()
         self._apply_rankdir()
+
+    def _insert_flat_label_nodes(self) -> bool:
+        """Insert virtual label nodes for labeled same-rank edges.
+
+        For each labeled flat edge whose endpoints are not adjacent in
+        the rank ordering, a virtual node is inserted into the rank
+        above, sized to hold the label.  This reserves vertical space
+        and allows ``_ns_x_position`` to add separation constraints.
+
+        Returns True if any label nodes were inserted (caller should
+        re-run ``_set_ycoords``).
+
+        Mirrors Graphviz ``flat.c:flat_edges()`` + ``flat_node()``.
+        """
+        inserted = False
+
+        for le in self.ledges:
+            if le.virtual or not le.label:
+                continue
+            t = self.lnodes.get(le.tail_name)
+            h = self.lnodes.get(le.head_name)
+            if not t or not h or t.rank != h.rank:
+                continue
+
+            # Check if endpoints are adjacent
+            if abs(t.order - h.order) == 1:
+                # Adjacent: store label width as ED_dist on the edge for
+                # the separation constraint in _ns_x_position
+                le._flat_label_dist = self._estimate_label_size(
+                    le.label, 14.0)[0]
+                continue
+
+            # Non-adjacent: insert a virtual label node in rank above
+            target_rank = t.rank - 1
+            if target_rank < 0:
+                # Need to create rank -1 (shift all ranks up)
+                # For simplicity, place it at rank 0 and shift existing
+                # ranks up — this is rare, skip for now
+                continue
+
+            if target_rank not in self.ranks:
+                self.ranks[target_rank] = []
+
+            # Compute label dimensions
+            try:
+                fs = float(le.edge.attributes.get("fontsize", "14"))
+            except (ValueError, AttributeError):
+                fs = 14.0
+            lw, lh = self._estimate_label_size(le.label, fs)
+
+            # Create virtual label node
+            vn_name = f"_flatlabel_{le.tail_name}_{le.head_name}_{id(le)}"
+            vn = LayoutNode(name=vn_name)
+            vn.virtual = True
+            vn.width = lw
+            vn.height = lh
+            vn.rank = target_rank
+
+            # Insert into rank at midpoint between tail and head order
+            mid_order = (t.order + h.order) // 2
+            rank_nodes = self.ranks[target_rank]
+            insert_pos = min(mid_order, len(rank_nodes))
+            rank_nodes.insert(insert_pos, vn_name)
+
+            # Reassign orders
+            for i, name in enumerate(rank_nodes):
+                self.lnodes[name].order = i
+
+            self.lnodes[vn_name] = vn
+            vn.order = insert_pos
+
+            # Store reference: edge → label node for NS constraints
+            le._flat_label_vnode = vn_name
+
+            # Create virtual edges from label node to endpoints
+            # (these help the crossing minimization and NS positioning)
+            from gvpy.engines.dot.dot_layout import LayoutEdge
+            ve1 = LayoutEdge(edge=None, tail_name=vn_name,
+                             head_name=le.tail_name, minlen=0, weight=1)
+            ve1.virtual = True
+            ve2 = LayoutEdge(edge=None, tail_name=vn_name,
+                             head_name=le.head_name, minlen=0, weight=1)
+            ve2.virtual = True
+            self.ledges.extend([ve1, ve2])
+
+            inserted = True
+
+        return inserted
 
     def _set_ycoords(self):
         """Assign Y coordinates to each rank following Graphviz set_ycoords.
@@ -2340,6 +2512,54 @@ class DotLayout(LayoutEngine):
                 min_dist = int(ln_l.width / 2.0 + ln_r.width / 2.0
                                + self.nodesep)
                 aux_edges.append((left, right, max(1, min_dist), 0))
+
+        # ── 1b. Flat-edge separation constraints ──────────
+        # Unlabeled non-adjacent flat edges: ensure minimum separation.
+        # Labeled adjacent flat edges: include label width in separation.
+        # Label virtual nodes: two edges from label node to endpoints.
+        for le in self.ledges:
+            if le.virtual or not le.constraint:
+                continue
+            t_ln = self.lnodes.get(le.tail_name)
+            h_ln = self.lnodes.get(le.head_name)
+            if not t_ln or not h_ln or t_ln.rank != h_ln.rank:
+                continue
+
+            # Determine left/right based on order
+            if t_ln.order < h_ln.order:
+                left_name, right_name = le.tail_name, le.head_name
+                left_ln, right_ln = t_ln, h_ln
+            else:
+                left_name, right_name = le.head_name, le.tail_name
+                left_ln, right_ln = h_ln, t_ln
+
+            # Adjacent labeled: add label width to existing separation
+            label_dist = getattr(le, '_flat_label_dist', 0)
+            if label_dist > 0:
+                min_dist = int(left_ln.width / 2 + right_ln.width / 2
+                               + self.nodesep + label_dist)
+                aux_edges.append((left_name, right_name,
+                                  max(1, min_dist), le.weight))
+            elif not le.label:
+                # Unlabeled non-adjacent: minimum separation
+                min_dist = int(le.minlen * self.nodesep
+                               + left_ln.width / 2 + right_ln.width / 2)
+                if min_dist > 0:
+                    aux_edges.append((left_name, right_name,
+                                      max(1, min_dist), le.weight))
+
+            # Label virtual node: separation edges
+            vn_name = getattr(le, '_flat_label_vnode', None)
+            if vn_name and vn_name in self.lnodes:
+                vn = self.lnodes[vn_name]
+                aux_nodes.append(vn_name)
+                m0 = int(le.minlen * self.nodesep / 2)
+                # Left endpoint → label node
+                sep_l = max(1, m0 + int(left_ln.width / 2 + vn.width / 2))
+                aux_edges.append((left_name, vn_name, sep_l, le.weight))
+                # Label node → right endpoint
+                sep_r = max(1, m0 + int(vn.width / 2 + right_ln.width / 2))
+                aux_edges.append((vn_name, right_name, sep_r, le.weight))
 
         # ── 2. Alignment edges (make_edge_pairs) ──────────
         # For each real edge, create a slack node that pulls tail and head
