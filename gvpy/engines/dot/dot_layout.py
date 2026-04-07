@@ -2773,6 +2773,25 @@ class DotLayout(LayoutEngine):
     # ── Phase 4: Edge routing ────────────────────
 
     def _phase4_routing(self):
+        # Pre-compute rank bounding info for obstacle-aware routing
+        self._rank_ht1: dict[int, float] = {}  # bottom half-height per rank
+        self._rank_ht2: dict[int, float] = {}  # top half-height per rank
+        for ln in self.lnodes.values():
+            r = ln.rank
+            hh = ln.height / 2.0
+            self._rank_ht1[r] = max(self._rank_ht1.get(r, 0), hh)
+            self._rank_ht2[r] = max(self._rank_ht2.get(r, 0), hh)
+
+        # Compute graph-wide left/right bounds with padding
+        if self.lnodes:
+            all_x = [ln.x for ln in self.lnodes.values()]
+            all_hw = [ln.width / 2 for ln in self.lnodes.values()]
+            self._left_bound = min(x - w for x, w in zip(all_x, all_hw)) - 16
+            self._right_bound = max(x + w for x, w in zip(all_x, all_hw)) + 16
+        else:
+            self._left_bound = -16
+            self._right_bound = 16
+
         # Route regular (non-virtual, non-chain) edges
         for le in self.ledges:
             if le.virtual:
@@ -2787,10 +2806,12 @@ class DotLayout(LayoutEngine):
                 le.points = self._flat_edge_route(le, tail, head)
             elif self.splines == "ortho":
                 le.points = self._ortho_route(le, tail, head)
-            else:
+            elif self.splines == "line":
                 p1 = self._edge_start_point(le, tail, head)
                 p2 = self._edge_end_point(le, head, tail)
                 le.points = [p1, p2]
+            else:
+                le.points = self._route_regular_edge(le, tail, head)
             self._compute_label_pos(le)
 
         # Route chain edges through virtual nodes
@@ -3093,6 +3114,107 @@ class DotLayout(LayoutEngine):
             (ln.x + hw + loop, ln.y + loop),
             (ln.x + hw, ln.y),
         ]
+
+    def _maximal_bbox(self, ln: LayoutNode) -> tuple[float, float, float, float]:
+        """Compute the available bounding box around a node for edge routing.
+
+        X extent: halfway to each neighbor in the same rank (or to graph
+        bounds if no neighbor).  Y extent: the rank's height band.
+        Mirrors Graphviz ``dotsplines.c:maximal_bbox()``.
+        """
+        r = ln.rank
+        rank_nodes = self.ranks.get(r, [])
+        idx = ln.order
+
+        # X extent: halfway to neighbors
+        left_x = self._left_bound
+        right_x = self._right_bound
+        if idx > 0:
+            left_ln = self.lnodes[rank_nodes[idx - 1]]
+            left_x = (left_ln.x + left_ln.width / 2 + ln.x - ln.width / 2) / 2
+        if idx < len(rank_nodes) - 1:
+            right_ln = self.lnodes[rank_nodes[idx + 1]]
+            right_x = (ln.x + ln.width / 2 + right_ln.x - right_ln.width / 2) / 2
+
+        # Y extent: rank band
+        top_y = ln.y - self._rank_ht2.get(r, ln.height / 2)
+        bot_y = ln.y + self._rank_ht1.get(r, ln.height / 2)
+
+        return (left_x, top_y, right_x, bot_y)
+
+    def _rank_box(self, r: int) -> tuple[float, float, float, float]:
+        """Inter-rank corridor between rank r and rank r+1.
+
+        Full graph width, from bottom of rank r nodes to top of rank r+1.
+        Mirrors Graphviz ``dotsplines.c:rank_box()``.
+        """
+        # rank r nodes' Y center
+        r_nodes = self.ranks.get(r, [])
+        r1_nodes = self.ranks.get(r + 1, [])
+        if r_nodes:
+            r_y = self.lnodes[r_nodes[0]].y
+        else:
+            r_y = r * self.ranksep
+        if r1_nodes:
+            r1_y = self.lnodes[r1_nodes[0]].y
+        else:
+            r1_y = (r + 1) * self.ranksep
+
+        top_y = r_y + self._rank_ht1.get(r, 18)     # bottom edge of rank r
+        bot_y = r1_y - self._rank_ht2.get(r + 1, 18) # top edge of rank r+1
+
+        return (self._left_bound, top_y, self._right_bound, bot_y)
+
+    def _route_regular_edge(self, le: LayoutEdge, tail: LayoutNode,
+                             head: LayoutNode) -> list[tuple[float, float]]:
+        """Route an edge between nodes on different ranks using corridor boxes.
+
+        Builds a sequence of bounding boxes (tail node → inter-rank
+        corridors → head node) and fits a cubic Bezier through the
+        corridor center line.  Mirrors the box-corridor approach of
+        Graphviz ``dotsplines.c:make_regular_edge()``.
+        """
+        p1 = self._edge_start_point(le, tail, head)
+        p2 = self._edge_end_point(le, head, tail)
+
+        # For edges spanning exactly 1 rank, build a 3-box corridor
+        # and route a smooth bezier through it.
+        rank_diff = abs(head.rank - tail.rank)
+
+        if rank_diff == 1:
+            # Simple: tail-box → inter-rank → head-box
+            # Control points are at the inter-rank corridor center
+            mid_y = (p1[1] + p2[1]) / 2.0
+
+            le.spline_type = "bezier"
+            return [
+                p1,
+                (p1[0], mid_y),
+                (p2[0], mid_y),
+                p2,
+            ]
+
+        # Multi-rank spanning: use virtual node chain waypoints if available
+        # (chain edges are handled separately, but some edges may not have
+        # virtual nodes if they were too short for the chain).
+        # Build intermediate waypoints at each inter-rank crossing.
+        waypoints = [p1]
+        lower_r = min(tail.rank, head.rank)
+        upper_r = max(tail.rank, head.rank)
+
+        # Interpolate X linearly between tail and head at each rank crossing
+        for r in range(lower_r, upper_r):
+            t = (r - lower_r + 0.5) / rank_diff
+            ix = p1[0] + t * (p2[0] - p1[0])
+            # Y at the inter-rank midpoint
+            rbox = self._rank_box(r)
+            iy = (rbox[1] + rbox[3]) / 2.0
+            waypoints.append((ix, iy))
+
+        waypoints.append(p2)
+
+        # The _to_bezier will convert these to a smooth cubic Bezier
+        return waypoints
 
     def _flat_edge_route(self, le: LayoutEdge, tail: LayoutNode,
                          head: LayoutNode) -> list[tuple[float, float]]:
