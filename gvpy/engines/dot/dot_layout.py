@@ -2057,26 +2057,14 @@ class DotLayout(LayoutEngine):
 
     # ── Phase 3: Coordinate assignment ───────────
 
+    _CL_OFFSET = 8.0  # Graphviz CL_OFFSET constant (points)
+
     def _phase3_position(self):
         if not self.lnodes:
             return
 
-        # Y coordinates: ranksep is the gap between node boundaries, not centers.
-        # Compute the max half-height per rank, then place ranks with gaps.
-        max_rank = max((ln.rank for ln in self.lnodes.values()), default=0)
-        rank_half_h: dict[int, float] = {}
-        for ln in self.lnodes.values():
-            r = ln.rank
-            rank_half_h[r] = max(rank_half_h.get(r, 0), ln.height / 2.0)
-
-        rank_y: dict[int, float] = {0: 0.0}
-        for r in range(1, max_rank + 1):
-            prev_bottom = rank_y.get(r - 1, 0) + rank_half_h.get(r - 1, 18)
-            cur_top = rank_half_h.get(r, 18)
-            rank_y[r] = prev_bottom + self.ranksep + cur_top
-
-        for name, ln in self.lnodes.items():
-            ln.y = rank_y.get(ln.rank, ln.rank * self.ranksep)
+        # Y coordinates following Graphviz position.c set_ycoords().
+        self._set_ycoords()
 
         # X coordinates: network simplex on auxiliary constraint graph
         # (matching Graphviz position.c create_aux_edges + rank)
@@ -2087,6 +2075,147 @@ class DotLayout(LayoutEngine):
 
         self._center_ranks()
         self._apply_rankdir()
+
+    def _set_ycoords(self):
+        """Assign Y coordinates to each rank following Graphviz set_ycoords.
+
+        Computes two sets of per-rank half-heights:
+        - ``pht1/pht2``: primary (node-only) half-heights
+        - ``ht1/ht2``: half-heights expanded by cluster margins and labels
+
+        The inter-rank gap is ``max(pht-gap + ranksep, ht-gap + CL_OFFSET)``.
+        """
+        max_rank = max((ln.rank for ln in self.lnodes.values()), default=0)
+        min_rank = min((ln.rank for ln in self.lnodes.values()), default=0)
+
+        # Step 1: primary half-heights from nodes
+        pht1: dict[int, float] = {}  # bottom half (toward higher rank index)
+        pht2: dict[int, float] = {}  # top half (toward lower rank index)
+        for r in range(min_rank, max_rank + 1):
+            pht1[r] = 0.0
+            pht2[r] = 0.0
+
+        for ln in self.lnodes.values():
+            r = ln.rank
+            hh = ln.height / 2.0
+            pht1[r] = max(pht1.get(r, 0), hh)
+            pht2[r] = max(pht2.get(r, 0), hh)
+
+        # Start with cluster-aware heights = primary heights
+        ht1 = dict(pht1)
+        ht2 = dict(pht2)
+
+        # Step 2: expand ht1/ht2 for cluster boundaries
+        if self._clusters:
+            node_sets = {cl.name: set(cl.nodes) for cl in self._clusters}
+
+            # Find each node's innermost cluster
+            sorted_cls = sorted(self._clusters,
+                                key=lambda c: len(c.nodes), reverse=True)
+            node_cluster: dict[str, "LayoutCluster"] = {}
+            cl_by_name = {cl.name: cl for cl in self._clusters}
+            for cl in sorted_cls:
+                for n in cl.nodes:
+                    if n in self.lnodes:
+                        node_cluster[n] = cl
+
+            # Per-cluster ht1/ht2 (boundary half-heights)
+            cl_ht1: dict[str, float] = {}
+            cl_ht2: dict[str, float] = {}
+
+            for name, ln in self.lnodes.items():
+                if ln.virtual:
+                    continue
+                cl = node_cluster.get(name)
+                if cl is None:
+                    continue
+                margin = cl.margin if cl.margin > 0 else self._CL_OFFSET
+                hh = ln.height / 2.0 + margin
+
+                # Cluster's min rank → ht2 (top boundary)
+                cl_ranks = [self.lnodes[n].rank for n in cl.nodes
+                            if n in self.lnodes]
+                if not cl_ranks:
+                    continue
+                cl_min_r = min(cl_ranks)
+                cl_max_r = max(cl_ranks)
+
+                if ln.rank == cl_min_r:
+                    cl_ht2[cl.name] = max(cl_ht2.get(cl.name, 0), hh)
+                if ln.rank == cl_max_r:
+                    cl_ht1[cl.name] = max(cl_ht1.get(cl.name, 0), hh)
+
+            # Step 3: propagate cluster heights through nesting (clust_ht)
+            parent_of: dict[str, str | None] = {}
+            for cl in self._clusters:
+                best, best_sz = None, float("inf")
+                for other in self._clusters:
+                    if other.name == cl.name:
+                        continue
+                    if node_sets[cl.name] < node_sets[other.name]:
+                        if len(node_sets[other.name]) < best_sz:
+                            best, best_sz = other.name, len(node_sets[other.name])
+                parent_of[cl.name] = best
+
+            children_of: dict[str | None, list[str]] = {}
+            for cn, par in parent_of.items():
+                children_of.setdefault(par, []).append(cn)
+
+            def _clust_ht(cl_name: str):
+                cl = cl_by_name[cl_name]
+                cl_ranks = [self.lnodes[n].rank for n in cl.nodes
+                            if n in self.lnodes]
+                if not cl_ranks:
+                    return
+                cl_min_r = min(cl_ranks)
+                cl_max_r = max(cl_ranks)
+                margin = cl.margin if cl.margin > 0 else self._CL_OFFSET
+
+                h1 = cl_ht1.get(cl_name, 0)
+                h2 = cl_ht2.get(cl_name, 0)
+
+                for child_name in children_of.get(cl_name, []):
+                    _clust_ht(child_name)
+                    child = cl_by_name[child_name]
+                    child_ranks = [self.lnodes[n].rank for n in child.nodes
+                                   if n in self.lnodes]
+                    if not child_ranks:
+                        continue
+                    child_min_r = min(child_ranks)
+                    child_max_r = max(child_ranks)
+                    if child_max_r == cl_max_r:
+                        h1 = max(h1, cl_ht1.get(child_name, 0) + margin)
+                    if child_min_r == cl_min_r:
+                        h2 = max(h2, cl_ht2.get(child_name, 0) + margin)
+
+                # Add cluster label height
+                if cl.label:
+                    label_h = 14.0  # approximate label height
+                    h2 += label_h
+
+                cl_ht1[cl_name] = h1
+                cl_ht2[cl_name] = h2
+
+                # Propagate to global rank table
+                ht1[cl_max_r] = max(ht1.get(cl_max_r, 0), h1)
+                ht2[cl_min_r] = max(ht2.get(cl_min_r, 0), h2)
+
+            for top_cl in children_of.get(None, []):
+                _clust_ht(top_cl)
+
+        # Step 4: assign Y coordinates
+        rank_y: dict[int, float] = {}
+        rank_y[min_rank] = ht1.get(min_rank, 0)
+
+        for r in range(min_rank + 1, max_rank + 1):
+            # Node-driven gap
+            d0 = pht2.get(r, 0) + pht1.get(r - 1, 0) + self.ranksep
+            # Cluster-driven gap
+            d1 = ht2.get(r, 0) + ht1.get(r - 1, 0) + self._CL_OFFSET
+            rank_y[r] = rank_y[r - 1] + max(d0, d1)
+
+        for ln in self.lnodes.values():
+            ln.y = rank_y.get(ln.rank, ln.rank * self.ranksep)
 
     def _simple_x_position(self):
         # Count edges incident to each node to estimate routing channel space
