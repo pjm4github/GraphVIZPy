@@ -1717,10 +1717,11 @@ class DotLayout(LayoutEngine):
 
         self._restore_ordering(best_order)
 
-        # Enforce cluster grouping: nodes in the same cluster must be
-        # contiguous within each rank.  This prevents sibling clusters
-        # from interleaving and producing overlapping bounding boxes.
+        # Recursively run mincross within each cluster (Graphviz
+        # mincross_clust), then enforce cluster contiguity.
         self._cluster_group_ordering()
+        self._mincross_within_clusters()
+        self._cluster_group_ordering()  # restore contiguity after
 
     def _cluster_group_ordering(self):
         """Reorder nodes within each rank so that cluster members are contiguous.
@@ -1798,6 +1799,150 @@ class DotLayout(LayoutEngine):
             for i, name in enumerate(rank_nodes):
                 self.lnodes[name].order = i
             self.ranks[rank_val] = rank_nodes
+
+    def _mincross_within_clusters(self):
+        """Recursively run crossing minimization within each cluster.
+
+        Mirrors Graphviz ``mincross_clust()``: for each cluster, restrict
+        the median/transpose sweeps to the cluster's node subset within
+        its rank range.  Processes depth-first so inner clusters are
+        optimized before their parents.
+        """
+        if not self._clusters:
+            return
+
+        node_sets = {cl.name: set(cl.nodes) for cl in self._clusters}
+
+        # Build parent map
+        parent_of: dict[str, str | None] = {}
+        for cl in self._clusters:
+            best, best_sz = None, float("inf")
+            for other in self._clusters:
+                if other.name == cl.name:
+                    continue
+                if node_sets[cl.name] < node_sets[other.name]:
+                    if len(node_sets[other.name]) < best_sz:
+                        best, best_sz = other.name, len(node_sets[other.name])
+            parent_of[cl.name] = best
+
+        children_of: dict[str | None, list[str]] = {}
+        for cn, par in parent_of.items():
+            children_of.setdefault(par, []).append(cn)
+
+        def _mincross_clust(cl_name: str):
+            """Run mincross within a cluster, then recurse into children."""
+            cl_nodes = node_sets[cl_name]
+            if len(cl_nodes) < 2:
+                # Recurse into children even for small clusters
+                for child in children_of.get(cl_name, []):
+                    _mincross_clust(child)
+                return
+
+            # Find the rank range this cluster spans
+            cl_ranks = set()
+            for n in cl_nodes:
+                if n in self.lnodes:
+                    cl_ranks.add(self.lnodes[n].rank)
+            if not cl_ranks:
+                return
+
+            min_r, max_r = min(cl_ranks), max(cl_ranks)
+
+            # Run median + transpose sweeps restricted to this cluster's
+            # nodes within each rank
+            for _ in range(4):
+                improved = False
+                for r in range(min_r + 1, max_r + 1):
+                    if r not in self.ranks:
+                        continue
+                    if self._cluster_median_order(r, r - 1, cl_nodes):
+                        improved = True
+                    self._cluster_transpose(r, cl_nodes)
+                for r in range(max_r - 1, min_r - 1, -1):
+                    if r not in self.ranks:
+                        continue
+                    if self._cluster_median_order(r, r + 1, cl_nodes):
+                        improved = True
+                    self._cluster_transpose(r, cl_nodes)
+                if not improved:
+                    break
+
+            # Recurse depth-first into child clusters
+            for child in children_of.get(cl_name, []):
+                _mincross_clust(child)
+
+        # Start from top-level clusters
+        for top_cl in children_of.get(None, []):
+            _mincross_clust(top_cl)
+
+    def _cluster_median_order(self, rank: int, adj_rank: int,
+                               cl_nodes: set[str]) -> bool:
+        """Reorder cluster nodes within a rank by median neighbor position.
+
+        Only reorders nodes that belong to ``cl_nodes``; other nodes stay
+        in place.  Returns True if any reordering occurred.
+        """
+        rank_nodes = self.ranks.get(rank, [])
+        if not rank_nodes:
+            return False
+
+        adj_set = set(self.ranks.get(adj_rank, []))
+        cl_in_rank = [(i, n) for i, n in enumerate(rank_nodes) if n in cl_nodes]
+        if len(cl_in_rank) < 2:
+            return False
+
+        # Compute medians for cluster nodes only
+        medians: dict[str, float] = {}
+        for _, name in cl_in_rank:
+            positions = []
+            for le in self.ledges:
+                neighbor = None
+                if le.tail_name == name and le.head_name in adj_set:
+                    neighbor = le.head_name
+                elif le.head_name == name and le.tail_name in adj_set:
+                    neighbor = le.tail_name
+                if neighbor is not None:
+                    positions.append(self.lnodes[neighbor].order)
+            if positions:
+                positions.sort()
+                m = len(positions) // 2
+                medians[name] = positions[m] if len(positions) % 2 else \
+                    (positions[m - 1] + positions[m]) / 2.0
+            else:
+                medians[name] = self.lnodes[name].order
+
+        # Sort cluster nodes by median while keeping their positions
+        # (the slot indices they occupy in the rank)
+        slots = [i for i, _ in cl_in_rank]
+        cl_names_sorted = sorted([n for _, n in cl_in_rank],
+                                  key=lambda n: medians[n])
+        changed = False
+        for slot, name in zip(slots, cl_names_sorted):
+            if rank_nodes[slot] != name:
+                changed = True
+            rank_nodes[slot] = name
+            self.lnodes[name].order = slot
+
+        return changed
+
+    def _cluster_transpose(self, rank: int, cl_nodes: set[str]):
+        """Adjacent-swap transpose restricted to cluster nodes."""
+        nodes = self.ranks.get(rank, [])
+        if len(nodes) < 2:
+            return
+        improved = True
+        while improved:
+            improved = False
+            for i in range(len(nodes) - 1):
+                if nodes[i] not in cl_nodes or nodes[i + 1] not in cl_nodes:
+                    continue
+                c_before = self._count_crossings_for_pair(nodes[i], nodes[i + 1])
+                c_after = self._count_crossings_for_pair(nodes[i + 1], nodes[i])
+                if c_after < c_before:
+                    nodes[i], nodes[i + 1] = nodes[i + 1], nodes[i]
+                    self.lnodes[nodes[i]].order = i
+                    self.lnodes[nodes[i + 1]].order = i + 1
+                    improved = True
 
     def _order_by_weighted_median(self, rank: int, adj_rank: int):
         nodes = self.ranks.get(rank, [])
