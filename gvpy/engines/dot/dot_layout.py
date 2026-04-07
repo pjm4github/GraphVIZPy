@@ -1126,6 +1126,13 @@ class DotLayout(LayoutEngine):
             if tail_name not in self.lnodes or head_name not in self.lnodes:
                 continue
             ml = min(int(edge.attributes.get("minlen", "1")), 100)
+            # Edge label ranks: labeled edges with minlen=1 get minlen=2
+            # to reserve a rank slot for the label.  Only applies to
+            # cross-rank edges (flat edges are handled separately).
+            # Graphviz also halves ranksep to compensate, but we skip
+            # that since our ranksep handling differs.
+            if edge.attributes.get("label") and ml == 1:
+                ml = 2
             wt = min(int(edge.attributes.get("weight", "1")), 1000)
             cstr = edge.attributes.get("constraint", "true").lower()
             has_constraint = cstr not in ("false", "none", "no", "0")
@@ -2145,6 +2152,10 @@ class DotLayout(LayoutEngine):
         # Y coordinates following Graphviz position.c set_ycoords().
         self._set_ycoords()
 
+        # Expand leaves: ensure degree-1 nodes have proper spacing
+        # (Graphviz position.c expand_leaves).
+        self._expand_leaves()
+
         # Insert virtual label nodes for labeled flat edges (Graphviz
         # position.c flat_edges).  If any were inserted, re-run Y coords.
         if self._insert_flat_label_nodes():
@@ -2159,6 +2170,33 @@ class DotLayout(LayoutEngine):
 
         self._center_ranks()
         self._apply_rankdir()
+
+    def _expand_leaves(self):
+        """Ensure degree-1 (leaf) nodes have proper separation.
+
+        In Graphviz, leaf nodes may have been collapsed during ranking
+        and are re-inserted here with proper width.  In our implementation
+        leaf nodes are never collapsed, but we ensure they have at least
+        ``nodesep`` separation from their sole neighbor by adjusting their
+        width if needed.  This prevents leaf nodes from being packed too
+        tightly against their parent.
+
+        Mirrors Graphviz ``position.c:expand_leaves()``.
+        """
+        # Build degree map
+        degree: dict[str, int] = {}
+        for le in self.ledges:
+            if le.virtual:
+                continue
+            degree[le.tail_name] = degree.get(le.tail_name, 0) + 1
+            degree[le.head_name] = degree.get(le.head_name, 0) + 1
+
+        for name, ln in self.lnodes.items():
+            if ln.virtual:
+                continue
+            if degree.get(name, 0) == 1:
+                # Leaf node: ensure minimum width for spacing
+                ln.width = max(ln.width, self.nodesep * 2)
 
     def _insert_flat_label_nodes(self) -> bool:
         """Insert virtual label nodes for labeled same-rank edges.
@@ -2663,6 +2701,42 @@ class DotLayout(LayoutEngine):
                     right_cl = siblings_sorted[i + 1]
                     aux_edges.append((cl_rn[left_cl], cl_ln[right_cl],
                                       max(1, margin), 0))
+
+            # Keep out other nodes: push non-cluster nodes outside
+            # cluster boundaries (Graphviz pos_clusters keepout_othernodes).
+            all_cluster_nodes: set[str] = set()
+            for cl in self._clusters:
+                all_cluster_nodes.update(cl.nodes)
+
+            for rank_val, rank_nodes in self.ranks.items():
+                for cl in self._clusters:
+                    cl_nodes_in_rank = [n for n in rank_nodes
+                                        if n in node_sets.get(cl.name, set())
+                                        and n in self.lnodes]
+                    if not cl_nodes_in_rank:
+                        continue
+                    cl_orders = [self.lnodes[n].order for n in cl_nodes_in_rank]
+                    cl_min_order = min(cl_orders)
+                    cl_max_order = max(cl_orders)
+                    margin = int(cl.margin)
+
+                    # First non-cluster node to the left
+                    if cl_min_order > 0:
+                        left_name = rank_nodes[cl_min_order - 1]
+                        if left_name not in node_sets.get(cl.name, set()):
+                            left_ln = self.lnodes[left_name]
+                            sep = max(1, margin + int(left_ln.width / 2))
+                            aux_edges.append((left_name, cl_ln[cl.name],
+                                              sep, 0))
+
+                    # First non-cluster node to the right
+                    if cl_max_order < len(rank_nodes) - 1:
+                        right_name = rank_nodes[cl_max_order + 1]
+                        if right_name not in node_sets.get(cl.name, set()):
+                            right_ln = self.lnodes[right_name]
+                            sep = max(1, margin + int(right_ln.width / 2))
+                            aux_edges.append((cl_rn[cl.name], right_name,
+                                              sep, 0))
 
         if not aux_edges:
             return False

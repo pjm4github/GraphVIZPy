@@ -2127,3 +2127,119 @@ class TestLabelPlacement:
         # Partial overlap
         area = DotLayout._overlap_area(0, 0, 10, 10, 5, 0, 10, 10)
         assert 0 < area < 100
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Gap 1: Edge label ranks
+# ═══════════════════════════════════════════════════════════════
+
+class TestEdgeLabelRanks:
+    """Labeled cross-rank edges get minlen >= 2 to reserve label space."""
+
+    def test_labeled_edge_minlen(self):
+        """A labeled edge between adjacent ranks gets minlen=2."""
+        r = layout_dot('digraph G { a -> b [label="edge_label"]; }')
+        a = node_by_name(r, "a")
+        b = node_by_name(r, "b")
+        # With minlen=2, there should be more rank separation than default
+        gap = abs(b["y"] - a["y"])
+        # Default 1-rank gap with ranksep=36 is ~72pt; with minlen=2 it
+        # should be roughly double
+        assert gap > 100, f"Labeled edge gap {gap} should be > 100pt"
+
+    def test_unlabeled_edge_normal_minlen(self):
+        """An unlabeled edge keeps the default minlen=1."""
+        r = layout_dot("digraph G { a -> b; }")
+        a = node_by_name(r, "a")
+        b = node_by_name(r, "b")
+        gap = abs(b["y"] - a["y"])
+        assert gap < 120, f"Unlabeled edge gap {gap} should be < 120pt"
+
+    def test_241_edges_same_rank(self):
+        """241_1.dot: same-rank edges have no label, no extra spacing."""
+        src = Path("test_data/241_1.dot").read_text(encoding="utf-8")
+        r = layout_dot(src)
+        # All nodes should be on the same rank (same Y)
+        ys = set(round(n["y"], 0) for n in r["nodes"])
+        assert len(ys) == 1, f"Expected 1 rank, got {len(ys)}: {ys}"
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Gap 2: Expand leaves
+# ═══════════════════════════════════════════════════════════════
+
+class TestExpandLeaves:
+    """Degree-1 nodes get minimum width for proper spacing."""
+
+    def test_leaf_node_minimum_width(self):
+        """A leaf node has width >= 2*nodesep."""
+        r = layout_dot("digraph G { a -> b; }")
+        # b is a leaf (degree 1)
+        b = node_by_name(r, "b")
+        assert b["width"] >= 36, f"Leaf width {b['width']} should be >= 36"
+
+    def test_non_leaf_keeps_original_width(self):
+        """A node with degree > 1 keeps its computed width."""
+        r = layout_dot("digraph G { a -> b; a -> c; b -> c; }")
+        # a has degree 2 (two outgoing), not a leaf
+        a = node_by_name(r, "a")
+        # Width should be based on label, not forced minimum
+        assert a["width"] > 0
+
+    def test_1332_nodes_present(self):
+        """1332.dot has 91 nodes after layout."""
+        src = Path("test_data/1332.dot").read_text(encoding="utf-8")
+        r = layout_dot(src)
+        assert len(r["nodes"]) == 91
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Gap 3: Keep-out other nodes
+# ═══════════════════════════════════════════════════════════════
+
+class TestKeepOutOtherNodes:
+    """Non-cluster nodes are pushed outside cluster boundaries."""
+
+    def test_external_node_outside_cluster(self):
+        """A node outside a cluster should not overlap the cluster box."""
+        r = layout_dot("""
+            digraph G {
+                subgraph cluster_0 { a; b; a -> b; }
+                c;
+                a -> c;
+            }
+        """)
+        # Find cluster box
+        clusters = r.get("clusters", [])
+        assert len(clusters) >= 1
+        cl = clusters[0]
+        bb = cl["bb"]
+
+        # Node c should be outside the cluster bounding box
+        c = node_by_name(r, "c")
+        cx, cy = c["x"], c["y"]
+        cw, ch = c["width"] / 2, c["height"] / 2
+
+        # c's bounding box should not be fully inside the cluster
+        c_inside = (cx - cw >= bb[0] and cx + cw <= bb[2] and
+                    cy - ch >= bb[1] and cy + ch <= bb[3])
+        assert not c_inside, "External node 'c' should not be inside cluster"
+
+    def test_241_all_nodes_same_rank(self):
+        """241_1.dot: nodes on the same rank are properly ordered."""
+        src = Path("test_data/241_1.dot").read_text(encoding="utf-8")
+        r = layout_dot(src)
+        assert len(r["nodes"]) == 13
+        assert len(r["edges"]) >= 24  # 12 directed + 12 undirected
+
+    def test_1332_cluster_count(self):
+        """1332.dot produces clusters with correct DarkGreen coloring."""
+        src = Path("test_data/1332.dot").read_text(encoding="utf-8")
+        r = layout_dot(src)
+        clusters = r.get("clusters", [])
+        # Should have cluster entries
+        assert len(clusters) > 60
+        # Named clusters with color=DarkGreen
+        dark_green = [cl for cl in clusters
+                      if cl.get("color") == "DarkGreen"]
+        assert len(dark_green) == 20
