@@ -517,17 +517,21 @@ class Graph(NodeMixin, EdgeMixin, SubgraphMixin, AttrMixin,
             self.attr_dict_n = {}
             self.attr_dict_e = {}
         else:
-            # For simplicity, let's just reference the enclosed_node's dict.
-            # A more faithful approach might do dtview/dtcopy, etc.
+            # Each subgraph gets its own copy of attribute dicts so that
+            # child attribute assignments don't overwrite parent values.
+            # Node/edge defaults are inherited (copied) from the parent so
+            # that e.g. ``node [shape=record]`` at the parent level applies
+            # to children, but children can override without affecting the
+            # parent.
             if not hasattr(self.parent, "attr_dict_g"):
                 self.parent.attr_dict_g = {}
             if not hasattr(self.parent, "attr_dict_n"):
                 self.parent.attr_dict_n = {}
             if not hasattr(self.parent, "attr_dict_e"):
                 self.parent.attr_dict_e = {}
-            self.attr_dict_g = self.parent.attr_dict_g
-            self.attr_dict_n = self.parent.attr_dict_n
-            self.attr_dict_e = self.parent.attr_dict_e
+            self.attr_dict_g = {}  # graph attrs are per-subgraph
+            self.attr_dict_n = dict(self.parent.attr_dict_n)
+            self.attr_dict_e = dict(self.parent.attr_dict_e)
 
         # Our own 'AgAttrRecord' for storing the enclosed_node's string values
         self.attr_record = {}

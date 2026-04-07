@@ -477,6 +477,15 @@ def main():
     for source_name, source in sources:
         graph = read_graph(source)
 
+        # Honor layout= graph attribute if no -K flag was given
+        if not args.engine:
+            layout_attr = graph.get_graph_attr("layout")
+            if layout_attr and layout_attr in (
+                "dot", "neato", "fdp", "sfdp", "circo", "twopi",
+                "osage", "patchwork",
+            ):
+                engine_name = layout_attr
+
         # Apply attribute overrides
         for spec in args.G:
             k, v = _parse_attr(spec)

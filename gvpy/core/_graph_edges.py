@@ -92,9 +92,29 @@ class EdgeMixin:
             agerr(Agerrlevel.AGWARN, f"Failed to create edge from '{tail_name}' to '{head_name}'.")
             return None
 
+        # Determine the owner graph for the edge:
+        # If both endpoints have a parent (i.e. they belong to some subgraph), find their lowest common subgraph.
+        if tail.parent is not None and head.parent is not None:
+            lcs = self.lowest_common_subgraph(tail, head)
+            edge_graph = lcs if lcs is not None else self
+        else:
+            # At least one node belongs directly to the current graph.
+            edge_graph = self
+
         key = (tail_name, head_name, edge_name)
-        if key in self.edges:
-            return self.edges[key]
+        # Check both the current subgraph AND the target edge_graph for
+        # existing edges to avoid overwriting parallel edges.
+        existing_in = self.edges.get(key) or edge_graph.edges.get(key)
+        if existing_in is not None:
+            if edge_name is not None:
+                return existing_in
+            # Auto-generate unique name for multi-edges
+            i = 1
+            while ((tail_name, head_name, f"_e{i}") in self.edges or
+                   (tail_name, head_name, f"_e{i}") in edge_graph.edges):
+                i += 1
+            edge_name = f"_e{i}"
+            key = (tail_name, head_name, edge_name)
 
         tail_in_subgraph = tail.compound_node_data.is_compound
         head_in_subgraph = head.compound_node_data.is_compound
@@ -111,15 +131,6 @@ class EdgeMixin:
         if edge_id is None:
             agerr(Agerrlevel.AGWARN, f"Failed to allocate ID for edge from '{tail_name}' to '{head_name}'.")
             return None
-
-        # Determine the owner graph for the edge:
-        # If both endpoints have a parent (i.e. they belong to some subgraph), find their lowest common subgraph.
-        if tail.parent is not None and head.parent is not None:
-            lcs = self.lowest_common_subgraph(tail, head)
-            edge_graph = lcs if lcs is not None else self
-        else:
-            # At least one node belongs directly to the current graph.
-            edge_graph = self
 
         new_edge = Edge(graph=edge_graph, name=edge_name, tail=tail, head=head, id_=edge_id, key=edge_name)
         edge_graph.edges[key] = new_edge

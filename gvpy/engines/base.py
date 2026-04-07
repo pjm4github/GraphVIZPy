@@ -82,7 +82,7 @@ class LayoutEngine(ABC):
         "fontname", "fontsize", "fontcolor", "stylesheet",
         "tooltip", "URL", "href", "target", "id", "class",
         "comment", "colorscheme", "gradientangle",
-        "_label_pos_x", "_label_pos_y",
+        "_label_pos_x", "_label_pos_y", "rankdir",
     )
 
     def __init__(self, graph: "Graph"):

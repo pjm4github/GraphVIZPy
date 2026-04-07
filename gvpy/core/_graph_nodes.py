@@ -27,6 +27,16 @@ class NodeMixin:
         if n_name in self.nodes:
             return_node = self.nodes[n_name]
         elif create:
+            # Check the root graph first — if the node already exists there,
+            # reuse the same object so attributes aren't lost when a node
+            # created in a child subgraph is later referenced at a parent level.
+            from .graph import get_root_graph
+            root = get_root_graph(self)
+            existing = root.nodes.get(n_name) if root is not self else None
+            if existing is not None:
+                self.nodes[n_name] = existing
+                return existing
+
             node_id = self.disc.map(self.clos, ObjectType.AGNODE, n_name, createflag=create)
             # node_id = agmapnametoid(self, ObjectType.AGNODE, n_name, createflag=True)
             if node_id is None:

@@ -174,8 +174,10 @@ class TwopiLayout(LayoutEngine):
         self._count_leaves(root)
 
         # Assign angular spans (top-down)
+        # Graphviz starts the first child at angle π (west/left), so
+        # the root's theta is set to π so children radiate from the left.
         root_ln = self.lnodes[root]
-        root_ln.theta = 0.0
+        root_ln.theta = math.pi
         root_ln.span = 2 * math.pi
         self._assign_angles(root)
 

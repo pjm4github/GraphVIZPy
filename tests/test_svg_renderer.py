@@ -102,7 +102,7 @@ class TestSvgClusters:
             }
         """)
         assert 'class="cluster"' in svg
-        assert 'stroke-dasharray' in svg
+        assert '<rect' in svg
 
     def test_cluster_label(self):
         """Cluster labels are rendered."""

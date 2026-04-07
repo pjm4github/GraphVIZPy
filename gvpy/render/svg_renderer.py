@@ -165,17 +165,19 @@ def _render_cluster(cl: dict) -> str:
     if "invis" in style:
         return ""
 
-    fill = cl.get("fillcolor") or cl.get("bgcolor") or _DEF_CLUSTER_FILL
-    stroke = cl.get("pencolor") or cl.get("color") or _DEF_CLUSTER_STROKE
+    fill = cl.get("fillcolor") or cl.get("bgcolor") or "none"
+    if fill == "transparent":
+        fill = "none"
+    stroke = cl.get("pencolor") or cl.get("color") or "black"
     try:
         pw = float(cl.get("penwidth", "1"))
     except ValueError:
         pw = 1.0
-    dash = ' stroke-dasharray="5,2"' if "dashed" in style or not style else ""
+    dash = ""
+    if "dashed" in style:
+        dash = ' stroke-dasharray="5,2"'
     if "dotted" in style:
         dash = ' stroke-dasharray="2,2"'
-    if "solid" in style:
-        dash = ""
     if "bold" in style:
         pw = max(pw, 2.0)
     sw = f' stroke-width="{pw}"' if pw != 1.0 else ""
@@ -228,6 +230,222 @@ def _render_cluster(cl: dict) -> str:
 
 # ── Node ─────────────────────────────────────────
 
+# ── Record shape parsing and rendering ────────────
+
+def _parse_record_label(label: str) -> dict:
+    """Parse a record label into a tree following the Graphviz grammar.
+
+    Grammar::
+
+        rlabel  = field ( '|' field )*
+        field   = fieldId | '{' rlabel '}'
+        fieldId = [ '<' portname '>' ] [ text ]
+
+    Returns a dict tree::
+
+        {"text": str, "port": str, "children": list[dict], "flipped": bool}
+
+    ``flipped`` is True when the field was wrapped in ``{}``, which
+    flips the orientation from horizontal to vertical or vice versa.
+    """
+    if not label:
+        return {"text": "", "port": "", "children": [], "flipped": False}
+
+    def _parse_rlabel(s: str) -> list[dict]:
+        """Parse an rlabel: field ( '|' field )*"""
+        fields = []
+        i = 0
+        while i <= len(s):
+            field, i = _parse_field(s, i)
+            fields.append(field)
+            if i < len(s) and s[i] == "|":
+                i += 1  # skip separator
+            else:
+                break
+        return fields
+
+    def _parse_field(s: str, i: int) -> tuple[dict, int]:
+        """Parse a single field: fieldId or '{' rlabel '}'"""
+        # Skip whitespace
+        while i < len(s) and s[i] == " ":
+            i += 1
+        if i >= len(s):
+            return {"text": "", "port": "", "children": [], "flipped": False}, i
+
+        if s[i] == "{":
+            # Flipped sub-fields
+            i += 1  # skip '{'
+            # Find matching '}'
+            level = 1
+            start = i
+            while i < len(s) and level > 0:
+                if s[i] == "{":
+                    level += 1
+                elif s[i] == "}":
+                    level -= 1
+                elif s[i] == "\\":
+                    i += 1  # skip escaped char
+                i += 1
+            inner = s[start:i - 1]
+            children = _parse_rlabel(inner)
+            return {"text": "", "port": "", "children": children,
+                    "flipped": True}, i
+
+        # fieldId: [ '<' portname '>' ] [ text ]
+        port = ""
+        text = ""
+        if i < len(s) and s[i] == "<":
+            j = s.index(">", i + 1) if ">" in s[i + 1:] else len(s)
+            port = s[i + 1:j]
+            i = j + 1
+
+        # Read text until |, {, or end
+        while i < len(s) and s[i] not in ("|", "{", "}"):
+            if s[i] == "\\":
+                i += 1
+                if i < len(s):
+                    text += s[i]
+            else:
+                text += s[i]
+            i += 1
+
+        return {"text": text.strip(), "port": port, "children": [],
+                "flipped": False}, i
+
+    # If the entire label is wrapped in {}, unwrap and mark as flipped
+    stripped = label.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        # Check that these braces match (not two separate groups)
+        level = 0
+        matched = False
+        for ci, ch in enumerate(stripped):
+            if ch == "{":
+                level += 1
+            elif ch == "}":
+                level -= 1
+            if ch == "\\":
+                continue
+            if level == 0 and ci == len(stripped) - 1:
+                matched = True
+        if matched:
+            children = _parse_rlabel(stripped[1:-1])
+            return {"text": "", "port": "", "children": children,
+                    "flipped": True}
+
+    # Not wrapped — parse as rlabel at top level
+    children = _parse_rlabel(stripped)
+    if len(children) == 1:
+        return children[0]
+    return {"text": "", "port": "", "children": children, "flipped": False}
+
+
+def _render_record(root: dict, x: float, y: float, w: float, h: float,
+                   horizontal: bool, stroke: str, fill: str,
+                   font_family: str, font_size: float, font_color: str,
+                   penwidth: float, rounded: bool = False) -> list[str]:
+    """Render a parsed record label tree as SVG.
+
+    Parameters
+    ----------
+    root : dict
+        Parsed record tree from ``_parse_record_label()``.
+    horizontal : bool
+        Base orientation.  For ``rankdir=TB/BT`` the default is True
+        (fields left-to-right).  For ``rankdir=LR/RL`` it's False
+        (fields top-to-bottom).  Each ``{...}`` in the label flips it.
+    """
+    lines = []
+    sw = f' stroke-width="{penwidth}"' if penwidth != 1.0 else ""
+
+    # Outer rectangle
+    rx = ' rx="4" ry="4"' if rounded else ""
+    lines.append(
+        f'<rect x="{x:.2f}" y="{y:.2f}" width="{w:.2f}" '
+        f'height="{h:.2f}"{rx} fill="{fill}" stroke="{stroke}"{sw}/>')
+
+    # Determine effective orientation for this node
+    # If root is flipped, flip the base orientation
+    effective_h = not horizontal if root.get("flipped") else horizontal
+
+    if root.get("children"):
+        _render_fields(root["children"], x, y, w, h, effective_h,
+                       stroke, font_family, font_size, font_color,
+                       penwidth, lines)
+    elif root.get("text") or root.get("port"):
+        text = root.get("text") or " "
+        tx = x + w / 2
+        ty = y + h / 2 + font_size * 0.35
+        lines.append(
+            f'<text x="{tx:.2f}" y="{ty:.2f}" '
+            f'text-anchor="middle" font-family="{font_family}" '
+            f'font-size="{font_size}" fill="{font_color}">'
+            f'{escape(text)}</text>')
+
+    return lines
+
+
+def _render_fields(fields: list[dict], x: float, y: float,
+                   w: float, h: float, horizontal: bool,
+                   stroke: str, font_family: str, font_size: float,
+                   font_color: str, penwidth: float,
+                   lines: list[str]):
+    """Render a list of record fields within the given rectangle."""
+    n = len(fields)
+    if n == 0:
+        return
+    sw = f' stroke-width="{penwidth}"' if penwidth != 1.0 else ""
+
+    if horizontal:
+        cell_w = w / n
+        for i, field in enumerate(fields):
+            cx = x + i * cell_w
+            # Vertical divider between fields
+            if i > 0:
+                lines.append(
+                    f'<line x1="{cx:.2f}" y1="{y:.2f}" '
+                    f'x2="{cx:.2f}" y2="{y + h:.2f}" '
+                    f'stroke="{stroke}"{sw}/>')
+            if field.get("children"):
+                # Flipped sub-fields: flip orientation
+                effective = not horizontal if field.get("flipped") else horizontal
+                _render_fields(field["children"], cx, y, cell_w, h,
+                               effective, stroke, font_family, font_size,
+                               font_color, penwidth, lines)
+            else:
+                text = field.get("text") or " "
+                tx = cx + cell_w / 2
+                ty = y + h / 2 + font_size * 0.35
+                lines.append(
+                    f'<text x="{tx:.2f}" y="{ty:.2f}" '
+                    f'text-anchor="middle" font-family="{font_family}" '
+                    f'font-size="{font_size}" fill="{font_color}">'
+                    f'{escape(text)}</text>')
+    else:
+        cell_h = h / n
+        for i, field in enumerate(fields):
+            cy = y + i * cell_h
+            # Horizontal divider between fields
+            if i > 0:
+                lines.append(
+                    f'<line x1="{x:.2f}" y1="{cy:.2f}" '
+                    f'x2="{x + w:.2f}" y2="{cy:.2f}" '
+                    f'stroke="{stroke}"{sw}/>')
+            if field.get("children"):
+                effective = not horizontal if field.get("flipped") else horizontal
+                _render_fields(field["children"], x, cy, w, cell_h,
+                               effective, stroke, font_family, font_size,
+                               font_color, penwidth, lines)
+            else:
+                text = field.get("text") or " "
+                tx = x + w / 2
+                ty = cy + cell_h / 2 + font_size * 0.35
+                lines.append(
+                    f'<text x="{tx:.2f}" y="{ty:.2f}" '
+                    f'text-anchor="middle" font-family="{font_family}" '
+                    f'font-size="{font_size}" fill="{font_color}">'
+                    f'{escape(text)}</text>')
+
+
 def _render_node(node: dict) -> str:
     x, y = node["x"], node["y"]
     w, h = node["width"], node["height"]
@@ -259,9 +477,24 @@ def _render_node(node: dict) -> str:
     if tooltip:
         lines.append(f'<title>{escape(tooltip)}</title>')
 
-    if shape in ("box", "rect", "rectangle", "record", "Mrecord"):
-        rx = ' rx="4"' if shape == "Mrecord" else ""
-        rnd = ' rx="8" ry="8"' if "rounded" in style else rx
+    if shape in ("record", "Mrecord"):
+        # Record shape: parse label into fields, render with dividers
+        label_text = node.get("label", name)
+        fields = _parse_record_label(label_text)
+        is_rounded = shape == "Mrecord" or "rounded" in style
+        # TB/BT => horizontal (fields left-to-right), LR/RL => vertical
+        rankdir = node.get("_rankdir", "TB")
+        rec_horizontal = rankdir in ("TB", "BT")
+        record_lines = _render_record(
+            fields, x - hw, y - hh, w, h,
+            horizontal=rec_horizontal,
+            stroke=stroke, fill=fill,
+            font_family=font_family, font_size=font_size,
+            font_color=font_color, penwidth=penwidth,
+            rounded=is_rounded)
+        lines.extend(record_lines)
+    elif shape in ("box", "rect", "rectangle", "square"):
+        rnd = ' rx="8" ry="8"' if "rounded" in style else ""
         lines.append(
             f'<rect x="{x - hw:.2f}" y="{y - hh:.2f}" '
             f'width="{w:.2f}" height="{h:.2f}"{rnd} {base}/>'
@@ -307,8 +540,8 @@ def _render_node(node: dict) -> str:
         lines.append(
             f'<ellipse cx="{x:.2f}" cy="{y:.2f}" rx="{hw:.2f}" ry="{hh:.2f}" {base}/>')
 
-    # Label
-    if shape != "point":
+    # Label (skip for record shapes — text already rendered by field renderer)
+    if shape not in ("point", "record", "Mrecord"):
         label = escape(node.get("label", name))
         lines.append(
             f'<text x="{x:.2f}" y="{y + font_size * 0.35:.2f}" '

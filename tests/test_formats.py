@@ -879,10 +879,12 @@ class TestGxlRoundtrip:
 
     def test_roundtrip_complex(self, complex_graph):
         """GXL roundtrip preserves complex nested structures."""
+        from gvpy.core.graph import gather_all_edges
         gxl = write_gxl(complex_graph)
         g2 = read_gxl(gxl)
         assert len(g2.nodes) == len(complex_graph.nodes)
-        assert len(g2.edges) == len(complex_graph.edges)
+        # Edges may live at different subgraph levels; compare totals
+        assert len(gather_all_edges(g2)) == len(gather_all_edges(complex_graph))
         g2.close()
 
 

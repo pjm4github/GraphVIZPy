@@ -97,7 +97,7 @@ _GRAPH_ORDER = [
     "beautify", "smoothing", "quadtree", "repulsiveforce", "label_scheme",
     "levels", "levelsgap", "oneblock", "rotation", "inputscale",
     "diredgeconstraints", "overlap_scaling", "overlap_shrink", "voro_margin",
-    "showboxes", "scale",
+    "scale",
 ]
 
 _NODE_ORDER = [
@@ -106,7 +106,7 @@ _NODE_ORDER = [
     "fixedsize", "group", "pin", "labelloc", "image", "imagepos", "imagescale",
     "orientation", "sides", "distortion", "skew", "regular", "peripheries",
     "margin", "nojustify", "gradientangle", "colorscheme",
-    "K", "area", "root", "ordering", "showboxes", "z",
+    "K", "area", "root", "ordering", "z",
     "tooltip", "URL", "href", "target", "id", "class", "comment",
 ]
 
@@ -120,7 +120,6 @@ _EDGE_ORDER = [
     "labelfontname", "labelfontsize", "labelfontcolor",
     "labelangle", "labeldistance", "labelfloat",
     "decorate", "nojustify", "fillcolor", "colorscheme",
-    "showboxes",
     "tooltip", "URL", "href", "target", "id", "class", "comment",
     "edgeURL", "edgehref", "edgetarget", "edgetooltip",
     "headURL", "headhref", "headtarget", "headtooltip",
@@ -206,7 +205,12 @@ def _make_widget(attr_name: str, attr_type: str, default: str) -> QWidget:
         w.setSpecialValueText("(default)")
         w.setMaximumHeight(22)
         try:
-            w.setValue(int(default) if default else 0)
+            if default:
+                w.setValue(int(default))
+            else:
+                # No default → start at minimum so the widget shows "(default)"
+                # and _get_widget_value returns None (no command-line flag).
+                w.setValue(w.minimum())
         except ValueError:
             pass
         return w
@@ -277,6 +281,7 @@ class LayoutWizard(QMainWindow):
         self.resize(1400, 800)
         self._current_file: str | None = None
         self._last_svg: str = ""
+        self._last_output: str = ""
 
         # Build attribute lookup: {(scope, name): (type, default, engines, desc)}
         self._attr_info: dict[tuple[str, str], tuple[str, str, set, str]] = {}
@@ -383,6 +388,77 @@ class LayoutWizard(QMainWindow):
         engine_row.addWidget(self._engine_combo, stretch=1)
         param_vlayout.addLayout(engine_row)
 
+        # Output Options panel
+        out_group = QGroupBox("Output Options")
+        out_layout = QFormLayout()
+        out_layout.setContentsMargins(4, 6, 4, 4)
+        out_layout.setSpacing(3)
+
+        self._out_format = QComboBox()
+        self._out_format.addItems(["svg", "json", "dot", "json0", "gxl"])
+        self._out_format.setToolTip("Output format (-T)")
+        self._out_format.setMaximumHeight(24)
+        out_layout.addRow("-T format:", self._out_format)
+
+        self._out_file = QLineEdit()
+        self._out_file.setPlaceholderText("(preview only)")
+        self._out_file.setToolTip("Write output to file (-o). Leave empty for preview only.")
+        self._out_file.setMaximumHeight(22)
+        out_layout.addRow("-o file:", self._out_file)
+
+        self._out_auto = QCheckBox()
+        self._out_auto.setToolTip("Auto-name output: input.FORMAT (-O)")
+        out_layout.addRow("-O auto:", self._out_auto)
+
+        self._out_verbose = QCheckBox()
+        self._out_verbose.setToolTip("Print layout summary to stderr (-v)")
+        out_layout.addRow("-v verbose:", self._out_verbose)
+
+        self._out_no_layout = QCheckBox()
+        self._out_no_layout.setToolTip("Skip layout, use existing pos attributes (-n)")
+        out_layout.addRow("-n no layout:", self._out_no_layout)
+
+        self._out_scale = QDoubleSpinBox()
+        self._out_scale.setRange(0, 100)
+        self._out_scale.setSingleStep(0.5)
+        self._out_scale.setValue(0)
+        self._out_scale.setSpecialValueText("(none)")
+        self._out_scale.setToolTip("Scale output coordinates (-s)")
+        self._out_scale.setMaximumHeight(22)
+        out_layout.addRow("-s scale:", self._out_scale)
+
+        self._out_invert_y = QCheckBox()
+        self._out_invert_y.setToolTip("Invert Y axis (-y)")
+        out_layout.addRow("-y invert Y:", self._out_invert_y)
+
+        self._out_bundle = QCheckBox()
+        self._out_bundle.setToolTip("Apply mingle edge bundling after layout (--bundle)")
+        out_layout.addRow("--bundle:", self._out_bundle)
+
+        self._out_max_svg = QSpinBox()
+        self._out_max_svg.setRange(0, 100000)
+        self._out_max_svg.setSingleStep(100)
+        self._out_max_svg.setValue(5000)
+        self._out_max_svg.setSpecialValueText("(unlimited)")
+        self._out_max_svg.setToolTip(
+            "Max SVG size in KB for preview. Larger files skip preview "
+            "to avoid hanging. 0 = unlimited.")
+        self._out_max_svg.setMaximumHeight(22)
+        out_layout.addRow("Max SVG KB:", self._out_max_svg)
+
+        out_group.setLayout(out_layout)
+        param_vlayout.addWidget(out_group)
+
+        # Connect output option changes
+        self._out_format.currentTextChanged.connect(self._update_command)
+        self._out_file.textChanged.connect(self._update_command)
+        self._out_auto.stateChanged.connect(self._update_command)
+        self._out_verbose.stateChanged.connect(self._update_command)
+        self._out_no_layout.stateChanged.connect(self._update_command)
+        self._out_scale.valueChanged.connect(self._update_command)
+        self._out_invert_y.stateChanged.connect(self._update_command)
+        self._out_bundle.stateChanged.connect(self._update_command)
+
         # Tabbed attribute panels
         tabs = QTabWidget()
         tabs.setTabPosition(QTabWidget.TabPosition.North)
@@ -423,13 +499,23 @@ class LayoutWizard(QMainWindow):
         splitter.setSizes([380, 500, 320])
         main_layout.addWidget(splitter, stretch=1)
 
-        # Bottom bar
+        # Bottom bar — editable command line with Reset and Run
         bottom = QHBoxLayout()
         bottom.addWidget(QLabel("Cmd:"))
         self._cmd_line = QLineEdit()
-        self._cmd_line.setReadOnly(True)
         self._cmd_line.setFont(QFont("Consolas", 9))
+        self._cmd_line.setToolTip(
+            "Editable command line. Edit directly then press Enter to sync.\n"
+            "Press Run (Ctrl+Enter) to execute.\n"
+            "Press Reset to rebuild from control panel settings.")
+        self._cmd_line.returnPressed.connect(self._parse_command_to_controls)
+        self._cmd_line.editingFinished.connect(self._parse_command_to_controls)
+        self._updating_from_cmd = False  # prevent recursive updates
         bottom.addWidget(self._cmd_line, stretch=1)
+        reset_btn = QPushButton("Reset")
+        reset_btn.setToolTip("Rebuild command line from control panel settings")
+        reset_btn.clicked.connect(self._rebuild_command)
+        bottom.addWidget(reset_btn)
         run_btn = QPushButton("Run")
         run_btn.setDefault(True)
         run_btn.clicked.connect(self._run_layout)
@@ -544,13 +630,235 @@ class LayoutWizard(QMainWindow):
 
         return g_flags, n_flags, e_flags
 
-    def _update_command(self):
+    def _rebuild_command(self):
+        """Rebuild the entire command line from control panel settings."""
+        if self._updating_from_cmd:
+            return
         fname = self._current_file or "input.gv"
         g_flags, n_flags, e_flags = self._build_overrides()
-        engine_flag = f"-K{self._engine_name} " if self._engine_name != "dot" else ""
-        parts = ["python", "gvcli.py", engine_flag + fname,
-                 "-Tsvg"] + g_flags + n_flags + e_flags
+
+        parts = ["python", "gvcli.py"]
+
+        # Engine
+        if self._engine_name != "dot":
+            parts.append(f"-K{self._engine_name}")
+
+        parts.append(fname)
+
+        # Output format
+        fmt = self._out_format.currentText()
+        parts.append(f"-T{fmt}")
+
+        # Output file
+        out_file = self._out_file.text().strip()
+        if out_file:
+            parts.append(f"-o {out_file}")
+
+        # Output flags
+        if self._out_auto.isChecked():
+            parts.append("-O")
+        if self._out_verbose.isChecked():
+            parts.append("-v")
+        if self._out_no_layout.isChecked():
+            parts.append("-n")
+        scale = self._out_scale.value()
+        if scale > 0:
+            parts.append(f"-s {scale}")
+        if self._out_invert_y.isChecked():
+            parts.append("-y")
+        if self._out_bundle.isChecked():
+            parts.append("--bundle")
+
+        parts.extend(g_flags + n_flags + e_flags)
         self._cmd_line.setText(" ".join(parts))
+
+    def _update_command(self):
+        """Rebuild command line when a control panel widget changes."""
+        if self._updating_from_cmd:
+            return
+        self._rebuild_command()
+
+    def _parse_command_to_controls(self):
+        """Parse the edited command line back into control panel widgets.
+
+        Called when the user presses Enter or leaves the cmd line field.
+        Widgets that change flash briefly to draw attention.
+        """
+        text = self._cmd_line.text().strip()
+        if not text:
+            return
+
+        self._updating_from_cmd = True
+        try:
+            self._do_parse_cmd(text)
+        finally:
+            self._updating_from_cmd = False
+
+    def _do_parse_cmd(self, text: str):
+        """Parse command text and sync controls."""
+        import shlex
+        try:
+            tokens = shlex.split(text)
+        except ValueError:
+            tokens = text.split()
+
+        # Extract known flags
+        cmd_flags: dict[str, str] = {}
+        cmd_bool: set[str] = set()
+        i = 0
+        while i < len(tokens):
+            tok = tokens[i]
+            if tok.startswith("-T") and len(tok) > 2:
+                cmd_flags["T"] = tok[2:]
+            elif tok.startswith("-K") and len(tok) > 2:
+                cmd_flags["K"] = tok[2:]
+            elif tok.startswith("-o") and len(tok) > 2:
+                cmd_flags["o"] = tok[2:]
+            elif tok == "-o" and i + 1 < len(tokens):
+                i += 1
+                cmd_flags["o"] = tokens[i]
+            elif tok.startswith("-s") and len(tok) > 2:
+                cmd_flags["s"] = tok[2:]
+            elif tok == "-s" and i + 1 < len(tokens):
+                i += 1
+                cmd_flags["s"] = tokens[i]
+            elif tok == "-O":
+                cmd_bool.add("O")
+            elif tok == "-v":
+                cmd_bool.add("v")
+            elif tok == "-n":
+                cmd_bool.add("n")
+            elif tok == "-y":
+                cmd_bool.add("y")
+            elif tok == "--bundle":
+                cmd_bool.add("bundle")
+            elif tok.startswith("-G") and "=" in tok:
+                k, v = tok[2:].split("=", 1)
+                cmd_flags[f"G:{k}"] = v
+            elif tok.startswith("-N") and "=" in tok:
+                k, v = tok[2:].split("=", 1)
+                cmd_flags[f"N:{k}"] = v
+            elif tok.startswith("-E") and "=" in tok:
+                k, v = tok[2:].split("=", 1)
+                cmd_flags[f"E:{k}"] = v
+            i += 1
+
+        changed_widgets: list[QWidget] = []
+
+        # Sync output format
+        fmt = cmd_flags.get("T", "svg")
+        if self._out_format.currentText() != fmt:
+            idx = self._out_format.findText(fmt)
+            if idx >= 0:
+                self._out_format.setCurrentIndex(idx)
+                changed_widgets.append(self._out_format)
+
+        # Sync engine
+        eng = cmd_flags.get("K", "dot")
+        if eng != self._engine_name:
+            for i in range(self._engine_combo.count()):
+                if self._engine_combo.itemData(i) == eng:
+                    self._engine_combo.setCurrentIndex(i)
+                    changed_widgets.append(self._engine_combo)
+                    break
+
+        # Sync output file
+        ofile = cmd_flags.get("o", "")
+        if self._out_file.text().strip() != ofile:
+            self._out_file.setText(ofile)
+            changed_widgets.append(self._out_file)
+
+        # Sync checkboxes
+        for flag, widget in [("O", self._out_auto), ("v", self._out_verbose),
+                              ("n", self._out_no_layout), ("y", self._out_invert_y),
+                              ("bundle", self._out_bundle)]:
+            new_val = flag in cmd_bool
+            if widget.isChecked() != new_val:
+                widget.setChecked(new_val)
+                changed_widgets.append(widget)
+
+        # Sync scale
+        try:
+            new_scale = float(cmd_flags.get("s", "0"))
+        except ValueError:
+            new_scale = 0.0
+        if abs(self._out_scale.value() - new_scale) > 0.001:
+            self._out_scale.setValue(new_scale)
+            changed_widgets.append(self._out_scale)
+
+        # Sync -G/-N/-E attribute widgets
+        scope_map = {"G": "graph", "N": "node", "E": "edge"}
+        for key, val in cmd_flags.items():
+            if ":" not in key:
+                continue
+            prefix, attr_name = key.split(":", 1)
+            scope = scope_map.get(prefix)
+            if not scope:
+                continue
+            for s, a, widget, default in self._feature_widgets:
+                if s == scope and a == attr_name:
+                    if self._set_widget_value(widget, val, default):
+                        changed_widgets.append(widget)
+                    break
+
+        # Flash changed widgets
+        if changed_widgets:
+            self._flash_widgets(changed_widgets)
+
+    @staticmethod
+    def _set_widget_value(widget: QWidget, val: str, default: str) -> bool:
+        """Set a widget's value from a string. Returns True if changed."""
+        if isinstance(widget, QComboBox):
+            old = widget.currentText()
+            idx = widget.findText(val)
+            if idx >= 0 and widget.currentIndex() != idx:
+                widget.setCurrentIndex(idx)
+                return True
+            elif widget.isEditable() and old != val:
+                widget.setCurrentText(val)
+                return True
+        elif isinstance(widget, QCheckBox):
+            new_checked = val.lower() in ("true", "1", "yes")
+            if widget.isChecked() != new_checked:
+                widget.setChecked(new_checked)
+                return True
+        elif isinstance(widget, QDoubleSpinBox):
+            try:
+                new_val = float(val)
+                if abs(widget.value() - new_val) > 0.001:
+                    widget.setValue(new_val)
+                    return True
+            except ValueError:
+                pass
+        elif isinstance(widget, QSpinBox):
+            try:
+                new_val = int(val)
+                if widget.value() != new_val:
+                    widget.setValue(new_val)
+                    return True
+            except ValueError:
+                pass
+        elif isinstance(widget, QLineEdit):
+            if widget.text() != val:
+                widget.setText(val)
+                return True
+        return False
+
+    def _flash_widgets(self, widgets: list[QWidget]):
+        """Briefly flash widgets yellow to draw attention to changes."""
+        from PyQt6.QtCore import QTimer
+
+        for w in widgets:
+            w.setStyleSheet("background-color: #ffffaa;")
+
+        def _clear():
+            for w in widgets:
+                try:
+                    w.setStyleSheet("")
+                except RuntimeError:
+                    pass  # widget may have been deleted
+
+        QTimer.singleShot(1200, _clear)
 
     # ── Layout execution ─────────────────────────
 
@@ -560,14 +868,40 @@ class LayoutWizard(QMainWindow):
             self.statusBar().showMessage("No DOT source to layout.")
             return
 
+        # Show wait cursor while running layout
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            self._do_run_layout(source)
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def _status(self, msg: str, pct: int = -1):
+        """Update status bar with message and optional progress percentage."""
+        if pct >= 0:
+            self.statusBar().showMessage(f"[{pct}%] {msg}")
+        else:
+            self.statusBar().showMessage(msg)
+        QApplication.processEvents()  # force UI repaint
+
+    def _do_run_layout(self, source: str):
+        import time
+        t0 = time.time()
+
+        self._status(f"[{self._engine_name}] Parsing DOT source...", 0)
+
         try:
             graph = read_gv(source)
         except GVParseError as e:
-            self.statusBar().showMessage(f"Parse error: {e}")
+            self._status(f"Parse error: {e}")
             return
         except Exception as e:
-            self.statusBar().showMessage(f"Error: {e}")
+            self._status(f"Error: {e}")
             return
+
+        nn = len(graph.nodes)
+        ne = len(graph.edges)
+        self._status(f"[{self._engine_name}] Parsed: {nn} nodes, {ne} edges. "
+                     f"Applying overrides...", 5)
 
         g_flags, n_flags, e_flags = self._build_overrides()
 
@@ -593,32 +927,117 @@ class LayoutWizard(QMainWindow):
                     if k not in edge.attributes:
                         edge.agset(k, v)
 
+        # Skip layout if -n is checked
+        if self._out_no_layout.isChecked():
+            self._status("No-layout mode: skipping layout.")
+            return
+
+        self._status(f"[{self._engine_name}] Running layout engine "
+                     f"({nn} nodes, {ne} edges)...", 10)
+
         try:
             EngineClass = get_engine(self._engine_name)
             engine = EngineClass(graph)
             result = engine.layout()
         except NotImplementedError as e:
-            self.statusBar().showMessage(
-                f"Engine '{self._engine_name}' not implemented: {e}")
+            self._status(f"Engine '{self._engine_name}' not implemented: {e}")
             return
         except Exception as e:
-            self.statusBar().showMessage(f"Layout error: {e}")
+            self._status(f"Layout error: {e}")
             return
 
-        svg_text = render_svg(result)
-        self._last_svg = svg_text
+        t_layout = time.time() - t0
+        self._status(f"[{self._engine_name}] Layout complete ({t_layout:.1f}s). "
+                     f"Post-processing...", 60)
 
-        svg_bytes = QByteArray(svg_text.encode("utf-8"))
-        self._svg_widget.load(svg_bytes)
-        # Force the widget to resize to fill available space and repaint
-        self._svg_widget.updateGeometry()
-        self._svg_widget.repaint()
+        # Edge bundling
+        if self._out_bundle.isChecked():
+            self._status(f"[{self._engine_name}] Bundling edges...", 65)
+            from gvpy.tools.mingle import MingleBundler
+            result = MingleBundler.bundle_result(result)
 
+        # Scale
+        scale = self._out_scale.value()
+        if scale > 0 and scale != 1.0:
+            from gvcli import _apply_scale
+            _apply_scale(result, scale)
+
+        # Invert Y
+        if self._out_invert_y.isChecked():
+            from gvcli import _apply_invert_y
+            _apply_invert_y(result)
+
+        self._status(f"[{self._engine_name}] Rendering output...", 75)
+
+        # Render to selected format
+        fmt = self._out_format.currentText()
+        import json
+        if fmt == "svg":
+            output_text = render_svg(result)
+        elif fmt == "dot":
+            from gvpy.grammar.gv_writer import write_gv
+            output_text = write_gv(graph)
+        elif fmt == "json0":
+            from gvpy.render.json_io import write_json0
+            output_text = write_json0(graph)
+        elif fmt == "gxl":
+            from gvpy.render.gxl_io import write_gxl
+            output_text = write_gxl(graph)
+        else:
+            output_text = json.dumps(result, indent=2)
+
+        self._last_svg = output_text if fmt == "svg" else ""
+        self._last_output = output_text
+
+        # Write to file if -o is set
+        out_file = self._out_file.text().strip()
+        if out_file:
+            self._status(f"[{self._engine_name}] Writing to {out_file}...", 85)
+            from pathlib import Path
+            Path(out_file).write_text(output_text, encoding="utf-8")
+
+        # Auto-name if -O
+        if self._out_auto.isChecked() and self._current_file:
+            from pathlib import Path
+            ext = {"svg": ".svg", "json": ".json", "dot": ".gv",
+                   "json0": ".json", "gxl": ".gxl"}.get(fmt, f".{fmt}")
+            auto_path = Path(self._current_file).with_suffix(ext)
+            auto_path.write_text(output_text, encoding="utf-8")
+            self._status(f"[{self._engine_name}] Written to {auto_path}", 90)
+
+        # SVG preview
         n = len(result["nodes"])
         e = len(result["edges"])
         c = len(result.get("clusters", []))
-        self.statusBar().showMessage(
-            f"[{self._engine_name}] Layout complete: {n} nodes, {e} edges, {c} clusters")
+        t_total = time.time() - t0
+
+        if fmt == "svg":
+            svg_kb = len(output_text) // 1024
+            max_kb = self._out_max_svg.value()
+            if max_kb > 0 and svg_kb > max_kb:
+                self._status(
+                    f"[{self._engine_name}] Done ({t_total:.1f}s) — "
+                    f"{n} nodes, {e} edges — SVG too large ({svg_kb} KB > "
+                    f"{max_kb} KB limit), preview skipped."
+                    f"{' Written to ' + out_file if out_file else ''}")
+                return
+
+            self._status(f"[{self._engine_name}] Loading SVG preview "
+                         f"({svg_kb} KB)...", 95)
+            svg_bytes = QByteArray(output_text.encode("utf-8"))
+            self._svg_widget.load(svg_bytes)
+            self._svg_widget.updateGeometry()
+            self._svg_widget.repaint()
+
+            self._status(
+                f"[{self._engine_name}] Done ({t_total:.1f}s) — "
+                f"{n} nodes, {e} edges, {c} clusters — {svg_kb} KB SVG"
+                f"{' → ' + out_file if out_file else ''}", 100)
+        else:
+            self._status(
+                f"[{self._engine_name}] Done ({t_total:.1f}s) — "
+                f"{n} nodes, {e} edges — format: {fmt}"
+                f"{' → ' + out_file if out_file else ''}", 100)
 
     # ── File operations ──────────────────────────
 
@@ -637,10 +1056,32 @@ class LayoutWizard(QMainWindow):
             text = path.read_text(encoding="latin-1")
         self._editor.setPlainText(text)
         self._current_file = str(path)
+
+        # Honor layout= attribute in the DOT source
+        self._detect_layout_engine(text)
+
         self.setWindowTitle(
             f"GraphvizPy — Layout Wizard [{self._engine_name}] — {path.name}")
         self._update_command()
         self._run_layout()
+
+    def _detect_layout_engine(self, dot_text: str):
+        """Scan DOT source for a layout= graph attribute and switch the
+        engine combo to match.  Only changes the engine if the attribute
+        is found and valid; otherwise the current selection is kept."""
+        import re
+        m = re.search(r'\blayout\s*=\s*"?(\w+)"?', dot_text)
+        if not m:
+            return
+        engine = m.group(1).lower()
+        valid = {"dot", "neato", "fdp", "sfdp", "circo", "twopi",
+                 "osage", "patchwork"}
+        if engine not in valid:
+            return
+        for i in range(self._engine_combo.count()):
+            if self._engine_combo.itemData(i) == engine:
+                self._engine_combo.setCurrentIndex(i)
+                break
 
     def _on_save_source(self):
         path, _ = QFileDialog.getSaveFileName(

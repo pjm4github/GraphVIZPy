@@ -262,7 +262,8 @@ class LayoutEdge:
 class LayoutCluster:
     name: str
     label: str = ""
-    nodes: list = field(default_factory=list)
+    nodes: list = field(default_factory=list)       # recursive (all descendants)
+    direct_nodes: list = field(default_factory=list) # direct children only
     bb: tuple = (0.0, 0.0, 0.0, 0.0)
     margin: float = 8.0
     attrs: dict = field(default_factory=dict)  # visual attributes from subgraph
@@ -763,6 +764,8 @@ class DotLayout(LayoutEngine):
         self._apply_fixed_positions()
         self._apply_size()
         self._compute_cluster_boxes()
+        self._separate_sibling_clusters()
+        self._compute_cluster_boxes()  # recompute after separation
         self._phase4_routing()
         if self.concentrate:
             self._concentrate_edges()
@@ -1153,13 +1156,22 @@ class DotLayout(LayoutEngine):
         if self.clusterrank != "none":
             self._scan_clusters(self.graph)
 
+    def _all_nodes_recursive(self, sub) -> list[str]:
+        """Collect all node names from a subgraph and its descendants."""
+        names = [n for n in sub.nodes if n in self.lnodes]
+        for child in sub.subgraphs.values():
+            names.extend(self._all_nodes_recursive(child))
+        return names
+
     def _scan_clusters(self, g: Graph):
         for sub_name, sub in g.subgraphs.items():
             if sub_name.startswith("cluster"):
-                node_names = [n for n in sub.nodes if n in self.lnodes]
+                node_names = self._all_nodes_recursive(sub)
+                direct_names = [n for n in sub.nodes if n in self.lnodes]
                 label = sub.get_graph_attr("label") or ""
                 margin_str = sub.get_graph_attr("margin")
-                margin = float(margin_str) * 72.0 if margin_str else 8.0
+                # margin is in points (not inches)
+                margin = float(margin_str) if margin_str else 8.0
                 # Collect visual attributes for rendering
                 cl_attrs = {}
                 for attr in ("color", "fillcolor", "bgcolor", "pencolor",
@@ -1172,7 +1184,7 @@ class DotLayout(LayoutEngine):
                         cl_attrs[attr] = val
                 self._clusters.append(LayoutCluster(
                     name=sub_name, label=label, nodes=node_names,
-                    margin=margin, attrs=cl_attrs,
+                    direct_nodes=direct_names, margin=margin, attrs=cl_attrs,
                 ))
             self._scan_clusters(sub)
 
@@ -1187,6 +1199,116 @@ class DotLayout(LayoutEngine):
             max_x = max(ln.x + ln.width / 2 for ln in members) + cl.margin
             max_y = max(ln.y + ln.height / 2 for ln in members) + cl.margin
             cl.bb = (min_x, min_y, max_x, max_y)
+
+    def _separate_sibling_clusters(self):
+        """Push apart sibling clusters whose bounding boxes overlap.
+
+        Builds a cluster hierarchy, identifies sibling groups, and shifts
+        nodes so that sibling clusters occupy non-overlapping regions.
+        After shifting, ``_compute_cluster_boxes`` should be called again.
+        """
+        if not self._clusters:
+            return
+
+        # Build parent map: for each cluster, find the smallest containing cluster
+        cl_by_name: dict[str, "LayoutCluster"] = {cl.name: cl for cl in self._clusters}
+        node_sets = {cl.name: set(cl.nodes) for cl in self._clusters}
+        parent_of: dict[str, str | None] = {}
+
+        for cl in self._clusters:
+            best_parent = None
+            best_size = float("inf")
+            for other in self._clusters:
+                if other.name == cl.name:
+                    continue
+                if node_sets[cl.name] < node_sets[other.name]:
+                    if len(node_sets[other.name]) < best_size:
+                        best_parent = other.name
+                        best_size = len(node_sets[other.name])
+            parent_of[cl.name] = best_parent
+
+        # Group siblings (same parent)
+        children_of: dict[str | None, list[str]] = {}
+        for cl_name, par in parent_of.items():
+            children_of.setdefault(par, []).append(cl_name)
+
+        # Only separate leaf-level sibling clusters (those with no children).
+        # This avoids cascading shifts from parent-level separations.
+        gap = 8.0
+
+        # Only separate leaf-level sibling clusters (those with no children)
+        # to avoid cascading shifts from parent-level separation.
+        has_children = set()
+        for par in parent_of.values():
+            if par is not None:
+                has_children.add(par)
+
+        is_lr = self.rankdir in ("LR", "RL")
+        for _parent, siblings in children_of.items():
+            leaf_sibs = [s for s in siblings if s not in has_children]
+            if len(leaf_sibs) < 2:
+                continue
+            sib_cls = [cl_by_name[s] for s in leaf_sibs if cl_by_name[s].bb]
+            if len(sib_cls) < 2:
+                continue
+
+            if is_lr:
+                sib_cls.sort(key=lambda c: c.bb[1])
+                for i in range(len(sib_cls) - 1):
+                    c1 = sib_cls[i]
+                    c2 = sib_cls[i + 1]
+                    overlap_val = c1.bb[3] + gap - c2.bb[1]
+                    if overlap_val > 0:
+                        for sib in sib_cls[i + 1:]:
+                            for name in node_sets.get(sib.name, set()):
+                                if name in self.lnodes:
+                                    self.lnodes[name].y += overlap_val
+            else:
+                sib_cls.sort(key=lambda c: c.bb[0])
+                for i in range(len(sib_cls) - 1):
+                    c1 = sib_cls[i]
+                    c2 = sib_cls[i + 1]
+                    overlap_val = c1.bb[2] + gap - c2.bb[0]
+                    if overlap_val > 0:
+                        for sib in sib_cls[i + 1:]:
+                            for name in node_sets.get(sib.name, set()):
+                                if name in self.lnodes:
+                                    self.lnodes[name].x += overlap_val
+
+    def _shift_cluster_nodes_y(self, cl, dy: float, node_sets: dict,
+                                subsequent: list, prior: list):
+        """Shift nodes exclusively in subsequent siblings by dy.
+
+        Nodes shared with prior (already positioned) siblings are not moved.
+        """
+        prior_nodes: set[str] = set()
+        for p in prior:
+            prior_nodes.update(node_sets.get(p.name, set()))
+
+        nodes_to_shift: set[str] = set()
+        for sib in subsequent:
+            nodes_to_shift.update(node_sets.get(sib.name, set()))
+        nodes_to_shift -= prior_nodes
+
+        for name in nodes_to_shift:
+            if name in self.lnodes:
+                self.lnodes[name].y += dy
+
+    def _shift_cluster_nodes_x(self, cl, dx: float, node_sets: dict,
+                                subsequent: list, prior: list):
+        """Shift nodes exclusively in subsequent siblings by dx."""
+        prior_nodes: set[str] = set()
+        for p in prior:
+            prior_nodes.update(node_sets.get(p.name, set()))
+
+        nodes_to_shift: set[str] = set()
+        for sib in subsequent:
+            nodes_to_shift.update(node_sets.get(sib.name, set()))
+        nodes_to_shift -= prior_nodes
+
+        for name in nodes_to_shift:
+            if name in self.lnodes:
+                self.lnodes[name].x += dx
 
     # ── Node sizing ──────────────────────────────
 
@@ -1249,27 +1371,48 @@ class DotLayout(LayoutEngine):
         """Compute width and height for a record shape label.
 
         Record labels use | to separate fields and {} to flip orientation.
-        Example: "a|{b|c}|d" has 3 top-level fields; the middle one has 2 sub-fields.
+        For TB/BT the base orientation is horizontal (fields left-to-right).
+        For LR/RL the base orientation is vertical (fields top-to-bottom).
+        Each {} flips the orientation.
         """
-        fields = _parse_record_fields(label)
-        if not fields:
-            return self._MIN_WIDTH, self._MIN_HEIGHT
+        from gvpy.render.svg_renderer import _parse_record_label
+        tree = _parse_record_label(label)
+        # Always compute in TB coordinates (horizontal=True).  The layout
+        # engine works internally in TB space; _apply_rankdir swaps x/y
+        # and w/h at the end for LR/RL/BT.
+        w, h = self._measure_record_tree(tree, True, fontsize, char_w)
+        return max(w, self._MIN_WIDTH), max(h, self._MIN_HEIGHT)
 
-        # Total width = sum of field widths + padding between fields
-        total_w = 0.0
-        max_h = fontsize * 1.2 + self._V_PAD
-        for f in fields:
-            text = f["text"]
-            fw = len(text) * char_w + self._FIELD_PAD * 2
-            fw = max(fw, 20.0)  # minimum field width
-            total_w += fw
-            if f["children"]:
-                # Vertical sub-fields: height = sum of children heights
-                child_h = len(f["children"]) * (fontsize * 1.2 + 4.0)
-                max_h = max(max_h, child_h + self._V_PAD)
+    def _measure_record_tree(self, node: dict, horizontal: bool,
+                             fontsize: float, char_w: float) -> tuple[float, float]:
+        """Recursively measure a record tree node, returning (width, height)."""
+        cell_h = fontsize * 1.4 + 4.0  # height of a single text cell
+        min_cell_w = 20.0
 
-        total_w += self._H_PAD
-        return total_w, max_h
+        effective_h = not horizontal if node.get("flipped") else horizontal
+
+        if not node.get("children"):
+            # Leaf node: size based on text
+            text = node.get("text", "")
+            w = max(len(text) * char_w + self._FIELD_PAD * 2, min_cell_w)
+            return w, cell_h
+
+        # Measure all children
+        child_sizes = [
+            self._measure_record_tree(c, effective_h, fontsize, char_w)
+            for c in node["children"]
+        ]
+
+        if effective_h:
+            # Horizontal: children laid out left-to-right
+            total_w = sum(cw for cw, _ in child_sizes)
+            max_h = max(ch for _, ch in child_sizes)
+            return total_w, max_h
+        else:
+            # Vertical: children laid out top-to-bottom
+            max_w = max(cw for cw, _ in child_sizes)
+            total_h = sum(ch for _, ch in child_sizes)
+            return max_w, total_h
 
     # ── Phase 1: Rank assignment ─────────────────
 
@@ -1294,6 +1437,23 @@ class DotLayout(LayoutEngine):
         ranking space. Nodes not in any cluster are ranked globally.
         """
         if not self._clusters:
+            self._network_simplex_rank()
+            return
+
+        # When clusters are deeply nested (max depth > 2), the per-cluster
+        # ranking + offset merging produces poor results because most edges
+        # become "inter-cluster". Fall back to global ranking which handles
+        # deeply nested structures correctly.
+        max_depth = max(
+            (n.count("/") + 1 if "/" in n else 1)
+            for cl in self._clusters for n in cl.nodes
+        ) if self._clusters else 0
+        # Also fall back when many clusters share nodes (nested hierarchy)
+        nodes_in_multiple = sum(
+            1 for n in self.lnodes
+            if sum(1 for cl in self._clusters if n in cl.nodes) > 1
+        )
+        if nodes_in_multiple > len(self.lnodes) * 0.3:
             self._network_simplex_rank()
             return
 
@@ -1559,6 +1719,88 @@ class DotLayout(LayoutEngine):
 
         self._restore_ordering(best_order)
 
+        # Enforce cluster grouping: nodes in the same cluster must be
+        # contiguous within each rank.  This prevents sibling clusters
+        # from interleaving and producing overlapping bounding boxes.
+        self._cluster_group_ordering()
+
+    def _cluster_group_ordering(self):
+        """Reorder nodes within each rank so that cluster members are contiguous.
+
+        Assigns each cluster a fixed slot index via DFS of the cluster tree.
+        Nodes are sorted by their cluster's slot, keeping the entire cluster
+        hierarchy grouped.
+        """
+        if not self._clusters:
+            return
+
+        node_sets = {cl.name: set(cl.nodes) for cl in self._clusters}
+
+        # Build parent map
+        parent_of: dict[str, str | None] = {}
+        for cl in self._clusters:
+            best_parent = None
+            best_size = float("inf")
+            for other in self._clusters:
+                if other.name == cl.name:
+                    continue
+                if node_sets[cl.name] < node_sets[other.name]:
+                    if len(node_sets[other.name]) < best_size:
+                        best_parent = other.name
+                        best_size = len(node_sets[other.name])
+            parent_of[cl.name] = best_parent
+
+        children_of: dict[str | None, list[str]] = {}
+        for cl_name, par in parent_of.items():
+            children_of.setdefault(par, []).append(cl_name)
+
+        # DFS to assign a fixed slot index to each cluster.
+        # Sibling order: sort by the median rank of their nodes so that
+        # clusters with lower-ranked nodes come first.
+        cluster_slot: dict[str, int] = {}
+        slot_counter = [0]
+
+        def assign_slots(parent: str | None):
+            kids = children_of.get(parent, [])
+            # Sort siblings by median rank of their nodes
+            def median_rank(cl_name):
+                ranks = [self.lnodes[n].rank for n in node_sets.get(cl_name, set())
+                         if n in self.lnodes]
+                if not ranks:
+                    return 0
+                ranks.sort()
+                return ranks[len(ranks) // 2]
+            kids.sort(key=median_rank)
+            for kid in kids:
+                cluster_slot[kid] = slot_counter[0]
+                slot_counter[0] += 1
+                assign_slots(kid)
+
+        assign_slots(None)
+
+        # Map each node to its innermost (smallest) cluster
+        sorted_cls = sorted(self._clusters, key=lambda c: len(c.nodes), reverse=True)
+        node_cluster: dict[str, str] = {}
+        for cl in sorted_cls:
+            for n in cl.nodes:
+                if n in self.lnodes:
+                    node_cluster[n] = cl.name
+
+        # Reorder each rank
+        for rank_val, rank_nodes in self.ranks.items():
+            if len(rank_nodes) < 2:
+                continue
+
+            def sort_key(name):
+                cl = node_cluster.get(name, "")
+                slot = cluster_slot.get(cl, 999999)
+                return (slot, self.lnodes[name].order)
+
+            rank_nodes.sort(key=sort_key)
+            for i, name in enumerate(rank_nodes):
+                self.lnodes[name].order = i
+            self.ranks[rank_val] = rank_nodes
+
     def _order_by_weighted_median(self, rank: int, adj_rank: int):
         nodes = self.ranks.get(rank, [])
         if not nodes:
@@ -1693,20 +1935,93 @@ class DotLayout(LayoutEngine):
         for name, ln in self.lnodes.items():
             ln.y = rank_y.get(ln.rank, ln.rank * self.ranksep)
 
-        # X coordinates: try network simplex, fall back to simple placement
-        if not self._ns_x_position():
-            self._simple_x_position()
+        # X coordinates: simple placement with median improvement
+        self._simple_x_position()
+        self._median_x_improvement()
 
         self._center_ranks()
         self._apply_rankdir()
 
     def _simple_x_position(self):
+        # Count edges incident to each node to estimate routing channel space
+        edge_count: dict[str, int] = {}
+        for le in self.ledges:
+            edge_count[le.tail_name] = edge_count.get(le.tail_name, 0) + 1
+            edge_count[le.head_name] = edge_count.get(le.head_name, 0) + 1
+
+        # Build innermost cluster map for inter-cluster spacing
+        node_cluster: dict[str, str] = {}
+        if self._clusters:
+            for cl in sorted(self._clusters, key=lambda c: len(c.nodes), reverse=True):
+                for n in cl.nodes:
+                    if n in self.lnodes:
+                        node_cluster[n] = cl.name
+        cluster_gap = self.nodesep * 2  # extra gap between different clusters
+
         for rank_val, rank_nodes in self.ranks.items():
             x = 0.0
+            prev_cluster = None
             for name in rank_nodes:
                 ln = self.lnodes[name]
+                cur_cluster = node_cluster.get(name, "")
+
+                # Add inter-cluster gap when crossing cluster boundaries
+                if prev_cluster is not None and cur_cluster != prev_cluster:
+                    x += cluster_gap
+
                 ln.x = x + ln.width / 2.0
-                x += ln.width + self.nodesep
+                # Add routing channel space proportional to edge count
+                ec = edge_count.get(name, 0)
+                channel_space = min(ec * 8.0, 80.0)  # up to 80pt extra
+                x += ln.width + self.nodesep + channel_space
+                prev_cluster = cur_cluster
+
+    def _median_x_improvement(self):
+        """Iteratively adjust X positions toward median of connected neighbors.
+
+        Similar to the Graphviz median heuristic: for each node, compute
+        the median X of its connected neighbors in adjacent ranks and shift
+        toward it, subject to separation constraints.
+        """
+        # Build adjacency: for each node, connected nodes in adjacent ranks
+        adj: dict[str, list[str]] = {}
+        for le in self.ledges:
+            adj.setdefault(le.tail_name, []).append(le.head_name)
+            adj.setdefault(le.head_name, []).append(le.tail_name)
+
+        for _iteration in range(8):
+            moved = False
+            for rank_val in sorted(self.ranks.keys()):
+                rank_nodes = self.ranks[rank_val]
+                for idx, name in enumerate(rank_nodes):
+                    ln = self.lnodes[name]
+                    neighbors = adj.get(name, [])
+                    if not neighbors:
+                        continue
+                    # Median X of neighbors
+                    neighbor_xs = sorted(self.lnodes[n].x for n in neighbors
+                                         if n in self.lnodes)
+                    if not neighbor_xs:
+                        continue
+                    mid = len(neighbor_xs) // 2
+                    median_x = neighbor_xs[mid]
+
+                    # Compute allowed range from separation constraints
+                    min_x = -1e9
+                    max_x = 1e9
+                    if idx > 0:
+                        left = self.lnodes[rank_nodes[idx - 1]]
+                        min_x = left.x + left.width / 2.0 + self.nodesep + ln.width / 2.0
+                    if idx < len(rank_nodes) - 1:
+                        right = self.lnodes[rank_nodes[idx + 1]]
+                        max_x = right.x - right.width / 2.0 - self.nodesep - ln.width / 2.0
+
+                    target = max(min_x, min(max_x, median_x))
+                    if abs(target - ln.x) > 0.5:
+                        ln.x = target
+                        moved = True
+            if not moved:
+                break
 
     def _ns_x_position(self) -> bool:
         """Use network simplex for X-coordinate assignment. Returns False on failure."""
@@ -1735,16 +2050,25 @@ class DotLayout(LayoutEngine):
                 if grp:
                     node_groups[name] = grp
 
-        # Alignment edges: connected nodes pulled toward vertical alignment
+        # Alignment edges: connected nodes in adjacent ranks pulled toward
+        # vertical alignment.  Only include edges spanning 1 rank to avoid
+        # the solver spreading nodes too far apart when trying to align
+        # distant pairs.
         for le in self.ledges:
-            if le.tail_name in self.lnodes and le.head_name in self.lnodes:
-                w = le.weight * 2
-                # Boost same-group edges for vertical alignment
-                t_grp = node_groups.get(le.tail_name, "")
-                h_grp = node_groups.get(le.head_name, "")
-                if t_grp and t_grp == h_grp:
-                    w = max(w, 200)
-                aux_edges.append((le.tail_name, le.head_name, 0, w))
+            t_ln = self.lnodes.get(le.tail_name)
+            h_ln = self.lnodes.get(le.head_name)
+            if not t_ln or not h_ln:
+                continue
+            rank_span = abs(t_ln.rank - h_ln.rank)
+            if rank_span > 1:
+                continue
+            w = max(le.weight, 1)
+            # Boost same-group edges for vertical alignment
+            t_grp = node_groups.get(le.tail_name, "")
+            h_grp = node_groups.get(le.head_name, "")
+            if t_grp and t_grp == h_grp:
+                w = max(w, 200)
+            aux_edges.append((le.tail_name, le.head_name, 0, w))
 
         if not aux_edges:
             return False
@@ -2119,12 +2443,13 @@ class DotLayout(LayoutEngine):
         if self.compound:
             self._clip_compound_edges()
 
-        # Convert to Bezier curves if splines mode requests it
+        # Convert to Bezier curves if splines mode requests it.
+        # Skip edges already marked as bezier (e.g. from _flat_edge_route).
         use_bezier = self.splines in ("", "spline", "curved", "true")
         if use_bezier:
             all_edges = [le for le in self.ledges if not le.virtual] + self._chain_edges
             for le in all_edges:
-                if le.points and len(le.points) >= 2:
+                if le.points and len(le.points) >= 2 and le.spline_type != "bezier":
                     le.points = self._to_bezier(le.points)
                     le.spline_type = "bezier"
 
@@ -2399,45 +2724,70 @@ class DotLayout(LayoutEngine):
                          head: LayoutNode) -> list[tuple[float, float]]:
         """Route an edge between two nodes on the same rank.
 
-        Uses an arc above or below the nodes to avoid crossing through
-        other same-rank nodes.  Port of Graphviz lib/dotgen/flat.c.
+        Uses an arc above or below the nodes.  When ports specify a
+        direction (e.g. ``n`` = north), the arc goes in that direction.
+        Otherwise arcs default above the nodes with staggering based on
+        distance and edge index.
         """
         p1 = self._edge_start_point(le, tail, head)
         p2 = self._edge_end_point(le, head, tail)
 
-        # For same-rank edges, route as a curved arc above or below
-        dx = p2[0] - p1[0]
-        mid_x = (p1[0] + p2[0]) / 2.0
-        mid_y = (p1[1] + p2[1]) / 2.0
+        dx = abs(p2[0] - p1[0])
 
-        # Determine arc direction: if head is right of tail, arc above (negative Y)
-        # Count existing flat edges to stagger arcs
+        # If no ports are specified and nodes are adjacent in the ordering,
+        # use a straight line (like Graphviz does for directed same-rank edges)
+        if not le.tailport and not le.headport:
+            t_order = tail.order
+            h_order = head.order
+            if abs(t_order - h_order) == 1:
+                # Adjacent nodes: straight bezier (control points on the line)
+                le.spline_type = "bezier"
+                return [
+                    p1,
+                    ((2 * p1[0] + p2[0]) / 3, p1[1]),
+                    ((p1[0] + 2 * p2[0]) / 3, p2[1]),
+                    p2,
+                ]
+
+        # Determine arc direction from ports
+        port_dir = None  # -1 = above (north), +1 = below (south)
+        for port in (le.tailport, le.headport):
+            if port:
+                compass = port.split(":")[-1] if ":" in port else port
+                if compass in ("n", "nw", "ne"):
+                    port_dir = -1
+                    break
+                elif compass in ("s", "sw", "se"):
+                    port_dir = 1
+                    break
+
+        # Count prior flat edges between the same node pair (parallel edges)
         arc_index = 0
         for other in self.ledges:
             if other is le or other.virtual:
                 continue
-            ot = self.lnodes.get(other.tail_name)
-            oh = self.lnodes.get(other.head_name)
-            if ot and oh and ot.rank == oh.rank == tail.rank:
-                if other.tail_name == le.tail_name and other.head_name == le.head_name:
-                    break
+            if (other.tail_name == le.tail_name and other.head_name == le.head_name):
                 arc_index += 1
+                break  # found a parallel edge, this one is the second
 
-        # Arc height proportional to distance, staggered for parallel edges
-        arc_height = max(abs(dx) * 0.3, 25.0) + arc_index * 15.0
+        # Arc height: proportional to distance for short spans, capped for
+        # long spans.  Graphviz keeps long port-to-port arcs relatively flat.
+        arc_height = max(dx * 0.22, 20.0) + arc_index * 12.0
+        arc_height = min(arc_height, 60.0)  # cap height
 
-        # Alternate above/below for crossing avoidance
-        if arc_index % 2 == 0:
-            arc_y = mid_y - arc_height  # above
+        if port_dir is not None:
+            arc_y = p1[1] + port_dir * arc_height
         else:
-            arc_y = mid_y + arc_height  # below
+            # Default: arc above (negative Y in SVG = up)
+            arc_y = min(p1[1], p2[1]) - arc_height
 
-        # Return 4-point cubic Bézier: start, ctrl1, ctrl2, end
+        # Cubic Bézier: start, ctrl1, ctrl2, end
+        # Control points are directly above/below start and end
         le.spline_type = "bezier"
         return [
             p1,
-            (p1[0] + dx * 0.25, arc_y),
-            (p1[0] + dx * 0.75, arc_y),
+            (p1[0], arc_y),
+            (p2[0], arc_y),
             p2,
         ]
 
@@ -2518,6 +2868,8 @@ class DotLayout(LayoutEngine):
                     val = ln.node.attributes.get(attr)
                     if val:
                         entry[attr] = val
+            # Pass rankdir so the renderer knows record field orientation
+            entry["_rankdir"] = self.rankdir
             if name in self._record_ports:
                 entry["record_ports"] = self._record_ports[name]
             nodes_json.append(entry)
