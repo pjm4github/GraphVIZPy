@@ -3451,37 +3451,146 @@ class DotLayout(LayoutEngine):
 
     @staticmethod
     def _to_bezier(pts: list[tuple]) -> list[tuple]:
-        """Convert a polyline to cubic Bezier control points (Catmull-Rom).
+        """Convert a polyline to smooth cubic Bezier control points.
+
+        Uses Schneider's recursive curve-fitting algorithm:
+        1. Parameterize points by chord-length fraction.
+        2. Estimate end tangents from neighboring points.
+        3. Fit a cubic Bezier via least-squares tangent scaling.
+        4. If max deviation > tolerance, split at worst point and recurse.
+
+        Mirrors Graphviz ``routespl.c:mkspline()`` / ``reallyroutespline()``.
 
         Input:  [P0, P1, ..., Pn]  (polyline waypoints)
         Output: [P0, C1, C2, P1, C3, C4, P2, ...]  (cubic Bezier segments)
         """
+        import math
+
         n = len(pts)
         if n <= 1:
             return list(pts)
         if n == 2:
-            # Single segment: gentle curve (control points at 1/3 and 2/3)
             p0, p1 = pts
             dx, dy = p1[0] - p0[0], p1[1] - p0[1]
-            c1 = (p0[0] + dx / 3, p0[1] + dy / 3)
-            c2 = (p0[0] + 2 * dx / 3, p0[1] + 2 * dy / 3)
-            return [p0, c1, c2, p1]
+            return [p0, (p0[0] + dx / 3, p0[1] + dy / 3),
+                    (p0[0] + 2 * dx / 3, p0[1] + 2 * dy / 3), p1]
 
-        # Catmull-Rom to cubic Bezier conversion
-        # Extend endpoints by mirroring
-        ext = [pts[0]] + list(pts) + [pts[-1]]
-        result = [ext[1]]  # Start with first real point
-        for i in range(1, len(ext) - 2):
-            p_prev = ext[i - 1]
-            p_curr = ext[i]
-            p_next = ext[i + 1]
-            p_next2 = ext[i + 2]
-            c1 = (p_curr[0] + (p_next[0] - p_prev[0]) / 6.0,
-                  p_curr[1] + (p_next[1] - p_prev[1]) / 6.0)
-            c2 = (p_next[0] - (p_next2[0] - p_curr[0]) / 6.0,
-                  p_next[1] - (p_next2[1] - p_curr[1]) / 6.0)
-            result.extend([c1, c2, ext[i + 1]])
-        return result
+        def _dist(a, b):
+            return math.hypot(b[0] - a[0], b[1] - a[1])
+
+        def _normalize(v):
+            d = math.hypot(v[0], v[1])
+            return (v[0] / d, v[1] / d) if d > 1e-9 else (0.0, 0.0)
+
+        def _bezier_pt(p0, p1, p2, p3, t):
+            s = 1 - t
+            return (s*s*s*p0[0] + 3*s*s*t*p1[0] + 3*s*t*t*p2[0] + t*t*t*p3[0],
+                    s*s*s*p0[1] + 3*s*s*t*p1[1] + 3*s*t*t*p2[1] + t*t*t*p3[1])
+
+        def _fit_cubic(points, t_params, ev0, ev1):
+            """Schneider least-squares cubic fit with fixed tangent dirs."""
+            p0 = points[0]
+            p3 = points[-1]
+            n = len(points)
+
+            # Build normal equations for tangent scale factors
+            c00 = c01 = c10 = c11 = 0.0
+            x0 = x1 = 0.0
+            for i in range(n):
+                t = t_params[i]
+                s = 1 - t
+                b1 = 3 * s * s * t
+                b2 = 3 * s * t * t
+                a1 = (ev0[0] * b1, ev0[1] * b1)
+                a2 = (ev1[0] * b2, ev1[1] * b2)
+                c00 += a1[0]*a1[0] + a1[1]*a1[1]
+                c01 += a1[0]*a2[0] + a1[1]*a2[1]
+                c11 += a2[0]*a2[0] + a2[1]*a2[1]
+                b0 = s*s*s
+                b3 = t*t*t
+                tmp = (points[i][0] - b0*p0[0] - b3*p3[0],
+                       points[i][1] - b0*p0[1] - b3*p3[1])
+                x0 += a1[0]*tmp[0] + a1[1]*tmp[1]
+                x1 += a2[0]*tmp[0] + a2[1]*tmp[1]
+            c10 = c01
+
+            det = c00*c11 - c01*c10
+            if abs(det) < 1e-12:
+                d = _dist(p0, p3) / 3.0
+                return (p0, (p0[0]+ev0[0]*d, p0[1]+ev0[1]*d),
+                        (p3[0]+ev1[0]*d, p3[1]+ev1[1]*d), p3)
+
+            alpha0 = (x0*c11 - x1*c01) / det
+            alpha1 = (c00*x1 - c10*x0) / det
+
+            d = _dist(p0, p3)
+            eps = d * 1e-6
+            if alpha0 < eps or alpha1 < eps:
+                alpha0 = alpha1 = d / 3.0
+
+            return (p0,
+                    (p0[0]+ev0[0]*alpha0, p0[1]+ev0[1]*alpha0),
+                    (p3[0]+ev1[0]*alpha1, p3[1]+ev1[1]*alpha1),
+                    p3)
+
+        def _max_error(points, t_params, bezier):
+            """Return (max_dist, index_of_worst)."""
+            worst_d = 0.0
+            worst_i = 0
+            for i in range(len(points)):
+                bp = _bezier_pt(*bezier, t_params[i])
+                d = _dist(points[i], bp)
+                if d > worst_d:
+                    worst_d = d
+                    worst_i = i
+            return worst_d, worst_i
+
+        def _fit_recursive(points, ev0, ev1, depth=0):
+            """Recursively fit cubics, splitting at worst-fit point."""
+            n = len(points)
+            if n <= 2:
+                p0, p1 = points[0], points[-1]
+                dx, dy = p1[0]-p0[0], p1[1]-p0[1]
+                return [p0, (p0[0]+dx/3, p0[1]+dy/3),
+                        (p0[0]+2*dx/3, p0[1]+2*dy/3), p1]
+
+            # Chord-length parameterization
+            dists = [0.0]
+            for i in range(1, n):
+                dists.append(dists[-1] + _dist(points[i-1], points[i]))
+            total = dists[-1]
+            if total < 1e-9:
+                return [points[0], points[0], points[-1], points[-1]]
+            t_params = [d / total for d in dists]
+
+            bezier = _fit_cubic(points, t_params, ev0, ev1)
+            err, split_i = _max_error(points, t_params, bezier)
+
+            tolerance = 4.0  # 4pt tolerance
+            if err <= tolerance or depth > 8 or n <= 3:
+                return list(bezier)
+
+            # Split at worst point and recurse
+            split_i = max(1, min(split_i, n - 2))
+            sp = points[split_i]
+            # Tangent at split point: direction between neighbors
+            if split_i > 0 and split_i < n - 1:
+                mid_tan = _normalize((points[split_i+1][0] - points[split_i-1][0],
+                                      points[split_i+1][1] - points[split_i-1][1]))
+            else:
+                mid_tan = _normalize((points[-1][0] - points[0][0],
+                                      points[-1][1] - points[0][1]))
+            neg_tan = (-mid_tan[0], -mid_tan[1])
+
+            left = _fit_recursive(points[:split_i+1], ev0, neg_tan, depth+1)
+            right = _fit_recursive(points[split_i:], mid_tan, ev1, depth+1)
+            return left + right[1:]  # skip duplicate split point
+
+        # Estimate end tangents
+        ev0 = _normalize((pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]))
+        ev1 = _normalize((pts[-2][0] - pts[-1][0], pts[-2][1] - pts[-1][1]))
+
+        return _fit_recursive(list(pts), ev0, ev1)
 
     def _edge_start_point(self, le: LayoutEdge, tail: LayoutNode,
                           head: LayoutNode) -> tuple[float, float]:
