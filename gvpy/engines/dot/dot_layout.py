@@ -210,6 +210,8 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Optional
 
+import numpy as np
+
 from gvpy.core.graph import Graph
 from gvpy.core.node import Node
 from gvpy.core.edge import Edge
@@ -282,277 +284,356 @@ _COMPASS = {
 # ── Network Simplex ──────────────────────────────
 
 class _NetworkSimplex:
-    """Network simplex algorithm for optimal ranking / positioning."""
+    """Network simplex for ranking / positioning — NumPy-accelerated.
+
+    Internally all node names are mapped to integer indices ``0 .. N-1``
+    and edge data is stored in four parallel NumPy int32 arrays
+    (``_e_tail``, ``_e_head``, ``_e_minlen``, ``_e_weight``).  Ranks,
+    DFS ranges (``_low`` / ``_lim``), cut values, and tree membership
+    are also NumPy arrays, enabling vectorised hot-loops in
+    ``_compute_all_cutvalues``, ``_enter_edge``, ``_feasible_tree``,
+    and ``_update``.
+    """
 
     SEARCH_LIMIT = 30
 
-    def __init__(self, node_names: list[str], edges: list[tuple[str, str, int, int]]):
-        """edges: list of (tail, head, minlen, weight)"""
-        self.node_names = list(node_names)
-        self.edges = list(edges)  # [(tail, head, minlen, weight), ...]
-        self.rank: dict[str, int] = {}
-        self._tree: set[int] = set()  # edge indices in spanning tree
-        self._cut: dict[int, int] = {}  # edge index -> cut value
-        self._par: dict[str, int] = {}  # node -> parent edge index
-        self._low: dict[str, int] = {}
-        self._lim: dict[str, int] = {}
-        self._si = 0  # search start index for leave_edge
+    # ── Construction ─────────────────────────────
 
-        # Precompute adjacency
-        self._out: dict[str, list[int]] = defaultdict(list)
-        self._inc: dict[str, list[int]] = defaultdict(list)
-        for i, (t, h, ml, w) in enumerate(self.edges):
-            self._out[t].append(i)
-            self._inc[h].append(i)
+    def __init__(self, node_names: list[str],
+                 edges: list[tuple[str, str, int, int]]):
+        """*edges*: list of ``(tail, head, minlen, weight)``."""
+        self.node_names = list(node_names)
+        N = len(self.node_names)
+
+        # Name ↔ index maps
+        self._n2i: dict[str, int] = {n: i for i, n in enumerate(self.node_names)}
+        self._N = N
+
+        # Store original edge tuples for _connect_components / callers
+        self._edges_raw: list[tuple[str, str, int, int]] = list(edges)
+
+        # Build NumPy edge arrays
+        self._rebuild_edge_arrays()
+
+        # Rank array (filled by _init_rank / caller)
+        self.rank = np.zeros(N, dtype=np.int64)
+
+        # Tree membership (bool per edge)
+        self._in_tree: np.ndarray = np.zeros(len(edges), dtype=np.bool_)
+        self._tree_list: np.ndarray = np.empty(0, dtype=np.intp)  # sorted edge indices
+
+        # Cut values (one per edge, only meaningful for tree edges)
+        self._cut: np.ndarray = np.zeros(len(edges), dtype=np.int64)
+
+        # DFS range arrays
+        self._low = np.zeros(N, dtype=np.int64)
+        self._lim = np.zeros(N, dtype=np.int64)
+        self._par_edge = np.full(N, -1, dtype=np.intp)  # parent edge index
+
+        self._si = 0  # search start for _leave_edge
+
+        # Precompute adjacency (node index → list of edge indices)
+        self._out: list[list[int]] = [[] for _ in range(N)]
+        self._inc: list[list[int]] = [[] for _ in range(N)]
+        for i in range(len(self._edges_raw)):
+            t_str, h_str = self._edges_raw[i][0], self._edges_raw[i][1]
+            ti, hi = self._n2i[t_str], self._n2i[h_str]
+            self._out[ti].append(i)
+            self._inc[hi].append(i)
+
+        # Weighted-edge mask (precomputed after edges finalised)
+        self._we_mask: np.ndarray | None = None
+
+    def _rebuild_edge_arrays(self):
+        """(Re)build the four parallel NumPy edge arrays from _edges_raw."""
+        E = len(self._edges_raw)
+        self._e_tail = np.empty(E, dtype=np.intp)
+        self._e_head = np.empty(E, dtype=np.intp)
+        self._e_minlen = np.empty(E, dtype=np.int64)
+        self._e_weight = np.empty(E, dtype=np.int64)
+        n2i = self._n2i
+        for i, (t, h, ml, w) in enumerate(self._edges_raw):
+            self._e_tail[i] = n2i[t]
+            self._e_head[i] = n2i[h]
+            self._e_minlen[i] = ml
+            self._e_weight[i] = w
+
+    @property
+    def edges(self):          # back-compat for callers reading tuples
+        return self._edges_raw
+
+    # ── Vectorised helpers ───────────────────────
+
+    def _slack_all(self) -> np.ndarray:
+        """Slack of every edge as a 1-D int64 array."""
+        return self.rank[self._e_head] - self.rank[self._e_tail] - self._e_minlen
 
     def _slack(self, ei: int) -> int:
-        t, h, ml, w = self.edges[ei]
-        return self.rank[h] - self.rank[t] - ml
-
-    def _in_tree(self, ei: int) -> bool:
-        return ei in self._tree
+        return int(self.rank[self._e_head[ei]]
+                   - self.rank[self._e_tail[ei]]
+                   - self._e_minlen[ei])
 
     # ── Initial feasible ranking ─────────────────
 
     def _init_rank(self):
-        in_deg = {n: 0 for n in self.node_names}
-        for t, h, ml, w in self.edges:
-            in_deg[h] += 1
-        self.rank = {n: 0 for n in self.node_names}
-        queue = deque(n for n in self.node_names if in_deg[n] == 0)
+        N = self._N
+        E = len(self._edges_raw)
+        in_deg = np.zeros(N, dtype=np.int64)
+        np.add.at(in_deg, self._e_head[:E], 1)
+        self.rank[:] = 0
+        queue = deque(int(i) for i in np.where(in_deg == 0)[0])
         if not queue:
-            queue = deque(self.node_names)
-        visited = set()
+            queue = deque(range(N))
+        visited = np.zeros(N, dtype=np.bool_)
         while queue:
             u = queue.popleft()
-            if u in visited:
+            if visited[u]:
                 continue
-            visited.add(u)
+            visited[u] = True
             for ei in self._out[u]:
-                t, h, ml, w = self.edges[ei]
-                nr = self.rank[u] + ml
+                h = int(self._e_head[ei])
+                nr = self.rank[u] + self._e_minlen[ei]
                 if nr > self.rank[h]:
                     self.rank[h] = nr
                 in_deg[h] -= 1
-                if in_deg[h] <= 0 and h not in visited:
+                if in_deg[h] <= 0 and not visited[h]:
                     queue.append(h)
-        for n in self.node_names:
-            if n not in visited:
-                self.rank[n] = 0
 
     # ── Spanning tree construction ───────────────
 
     def _feasible_tree(self):
-        self._tree.clear()
-        in_tree = set()  # nodes in tree
+        E = len(self._edges_raw)
+        N = self._N
+        self._in_tree[:E] = False
+        in_tree_node = np.zeros(N, dtype=np.bool_)
 
-        # Add all tight edges (slack=0) greedily via BFS
-        if self.node_names:
-            start = self.node_names[0]
-            in_tree.add(start)
-            changed = True
-            while changed:
-                changed = False
-                for ei in range(len(self.edges)):
-                    if self._in_tree(ei):
-                        continue
-                    t, h, ml, w = self.edges[ei]
-                    if self._slack(ei) == 0:
-                        if t in in_tree and h not in in_tree:
-                            self._tree.add(ei)
-                            in_tree.add(h)
-                            changed = True
-                        elif h in in_tree and t not in in_tree:
-                            self._tree.add(ei)
-                            in_tree.add(t)
-                            changed = True
+        if N == 0:
+            return
+        in_tree_node[0] = True
 
-        # If tree doesn't span, add minimum-slack edges and adjust ranks
-        while len(in_tree) < len(self.node_names):
-            best_ei = None
-            best_slack = None
-            for ei in range(len(self.edges)):
-                if self._in_tree(ei):
-                    continue
-                t, h, ml, w = self.edges[ei]
-                t_in = t in in_tree
-                h_in = h in in_tree
-                if t_in != h_in:  # exactly one endpoint in tree
-                    s = abs(self._slack(ei))
-                    if best_slack is None or s < best_slack:
-                        best_slack = s
-                        best_ei = ei
+        slacks = self._slack_all()
 
-            if best_ei is None:
-                # Disconnected component — add an isolated node
-                for n in self.node_names:
-                    if n not in in_tree:
-                        in_tree.add(n)
+        # Greedy: add tight edges (slack == 0) via repeated scan
+        changed = True
+        while changed:
+            changed = False
+            tight = (slacks == 0) & ~self._in_tree[:E]
+            for ei in np.where(tight)[0]:
+                ti, hi = int(self._e_tail[ei]), int(self._e_head[ei])
+                if in_tree_node[ti] and not in_tree_node[hi]:
+                    self._in_tree[ei] = True
+                    in_tree_node[hi] = True
+                    changed = True
+                elif in_tree_node[hi] and not in_tree_node[ti]:
+                    self._in_tree[ei] = True
+                    in_tree_node[ti] = True
+                    changed = True
+
+        # Add minimum-slack edges for remaining nodes
+        n_in_tree = int(in_tree_node.sum())
+        while n_in_tree < N:
+            not_tree_edges = ~self._in_tree[:E]
+            t_in = in_tree_node[self._e_tail[:E]]
+            h_in = in_tree_node[self._e_head[:E]]
+            crossing = (t_in != h_in) & not_tree_edges
+            if not crossing.any():
+                # Disconnected node — just add it
+                for i in range(N):
+                    if not in_tree_node[i]:
+                        in_tree_node[i] = True
+                        n_in_tree += 1
                         break
                 continue
 
-            t, h, ml, w = self.edges[best_ei]
-            delta = self._slack(best_ei)
-            if t in in_tree and h not in in_tree:
-                # h needs to come closer: decrease rank[h] by delta
-                # Actually adjust the component not in tree
-                self.rank[h] -= delta
-            elif h in in_tree and t not in in_tree:
-                self.rank[t] += delta
-            self._tree.add(best_ei)
-            in_tree.add(t)
-            in_tree.add(h)
+            abs_slack = np.abs(slacks)
+            abs_slack[~crossing] = np.iinfo(np.int64).max
+            best_ei = int(np.argmin(abs_slack))
+
+            delta = int(slacks[best_ei])
+            ti = int(self._e_tail[best_ei])
+            if in_tree_node[ti]:
+                # Shift ALL tree nodes UP
+                self.rank[in_tree_node] += delta
+            else:
+                # Shift ALL tree nodes DOWN
+                self.rank[in_tree_node] -= delta
+            slacks = self._slack_all()  # refresh after rank shift
+
+            self._in_tree[best_ei] = True
+            in_tree_node[self._e_tail[best_ei]] = True
+            in_tree_node[self._e_head[best_ei]] = True
+            n_in_tree = int(in_tree_node.sum())
 
             # Try adding more tight edges
             changed = True
             while changed:
                 changed = False
-                for ei in range(len(self.edges)):
-                    if self._in_tree(ei):
-                        continue
-                    t2, h2, ml2, w2 = self.edges[ei]
-                    if self._slack(ei) == 0:
-                        if t2 in in_tree and h2 not in in_tree:
-                            self._tree.add(ei)
-                            in_tree.add(h2)
-                            changed = True
-                        elif h2 in in_tree and t2 not in in_tree:
-                            self._tree.add(ei)
-                            in_tree.add(t2)
-                            changed = True
+                tight = (slacks == 0) & ~self._in_tree[:E]
+                for ei in np.where(tight)[0]:
+                    ti2, hi2 = int(self._e_tail[ei]), int(self._e_head[ei])
+                    if in_tree_node[ti2] and not in_tree_node[hi2]:
+                        self._in_tree[ei] = True
+                        in_tree_node[hi2] = True
+                        n_in_tree += 1
+                        changed = True
+                    elif in_tree_node[hi2] and not in_tree_node[ti2]:
+                        self._in_tree[ei] = True
+                        in_tree_node[ti2] = True
+                        n_in_tree += 1
+                        changed = True
 
     # ── DFS range for subtree queries ────────────
 
     def _dfs_range(self):
-        if not self.node_names:
+        N = self._N
+        if N == 0:
             return
-        # Build tree adjacency
-        tree_adj: dict[str, list[tuple[int, str]]] = defaultdict(list)
-        for ei in self._tree:
-            t, h, ml, w = self.edges[ei]
-            tree_adj[t].append((ei, h))
-            tree_adj[h].append((ei, t))
+        # Build tree adjacency from edge arrays
+        tree_idx = np.where(self._in_tree[:len(self._edges_raw)])[0]
+        adj: list[list[tuple[int, int]]] = [[] for _ in range(N)]
+        for ei in tree_idx:
+            ti, hi = int(self._e_tail[ei]), int(self._e_head[ei])
+            adj[ti].append((int(ei), hi))
+            adj[hi].append((int(ei), ti))
 
-        root = self.node_names[0]
-        self._par = {root: -1}
-        self._low = {}
-        self._lim = {}
-        counter = [0]
+        self._par_edge[:] = -1
+        self._low[:] = 0
+        self._lim[:] = 0
+        counter = 0
 
-        stack = [(root, None, False)]
+        # Iterative DFS from node 0
+        stack: list[tuple[int, int, bool]] = [(0, -1, False)]
+        visited = np.zeros(N, dtype=np.bool_)
         while stack:
-            node, parent_edge, returning = stack[-1]
+            node, par_ei, returning = stack[-1]
             if not returning:
-                self._low[node] = counter[0]
-                counter[0] += 1
-                stack[-1] = (node, parent_edge, True)
-                for ei, nbr in tree_adj[node]:
-                    if nbr not in self._par or (ei != self._par.get(node, -1) and nbr not in self._lim):
-                        self._par[nbr] = ei
+                self._low[node] = counter
+                counter += 1
+                visited[node] = True
+                stack[-1] = (node, par_ei, True)
+                for ei, nbr in adj[node]:
+                    if not visited[nbr]:
+                        self._par_edge[nbr] = ei
                         stack.append((nbr, ei, False))
             else:
-                self._lim[node] = counter[0]
-                counter[0] += 1
+                self._lim[node] = counter
+                counter += 1
                 stack.pop()
 
-    def _in_subtree(self, u: str, root: str) -> bool:
-        return self._low[root] <= self._low[u] <= self._lim[root]
+    def _subtree_mask(self, sub_root: int) -> np.ndarray:
+        """Bool mask: which nodes are in the subtree rooted at *sub_root*."""
+        lo, li = int(self._low[sub_root]), int(self._lim[sub_root])
+        return (self._low >= lo) & (self._low <= li)
 
-    # ── Cut values ───────────────────────────────
+    # ── Cut values (vectorised) ──────────────────
 
     def _init_cutvalues(self):
         self._dfs_range()
-        self._cut.clear()
-        for ei in self._tree:
-            self._cut[ei] = self._compute_cut_value(ei)
+        E = len(self._edges_raw)
+        self._cut = np.zeros(E, dtype=np.int64)
+        # Weighted-edge mask (skip w==0 edges for cut-value sums)
+        self._we_mask = self._e_weight[:E] != 0
+        self._tree_list = np.where(self._in_tree[:E])[0]
+        self._compute_all_cutvalues()
 
-    def _compute_cut_value(self, tree_ei: int) -> int:
-        t, h, ml, w = self.edges[tree_ei]
-        # Determine which side is the "tail component" vs "head component"
-        # The head side is the subtree rooted at the node farther from root
-        if self._lim.get(t, 0) < self._lim.get(h, 0):
-            sub_root = t  # t's subtree is the smaller component
-            direction = 1
-        else:
-            sub_root = h
-            direction = -1
+    def _compute_all_cutvalues(self):
+        """Vectorised cut-value computation for ALL tree edges at once."""
+        E = len(self._edges_raw)
+        we = self._we_mask
+        if we is None or not we.any():
+            return
 
-        cv = 0
-        for ei in range(len(self.edges)):
-            et, eh, eml, ew = self.edges[ei]
-            t_in = self._in_subtree(et, sub_root)
-            h_in = self._in_subtree(eh, sub_root)
-            if t_in != h_in:
-                # Edge crosses the cut
-                if t_in:
-                    cv += ew * direction
-                else:
-                    cv -= ew * direction
-        return cv
+        # Weighted edge data (only non-zero weight)
+        we_tails = self._e_tail[:E][we]
+        we_heads = self._e_head[:E][we]
+        we_weights = self._e_weight[:E][we]
+        we_low_t = self._low[we_tails]
+        we_low_h = self._low[we_heads]
+
+        for tree_ei in self._tree_list:
+            ti = int(self._e_tail[tree_ei])
+            hi = int(self._e_head[tree_ei])
+            if self._lim[ti] < self._lim[hi]:
+                sub_low = int(self._low[ti])
+                sub_lim = int(self._lim[ti])
+                direction = 1
+            else:
+                sub_low = int(self._low[hi])
+                sub_lim = int(self._lim[hi])
+                direction = -1
+
+            t_in = (we_low_t >= sub_low) & (we_low_t <= sub_lim)
+            h_in = (we_low_h >= sub_low) & (we_low_h <= sub_lim)
+            crossing = t_in != h_in
+            if not crossing.any():
+                self._cut[tree_ei] = 0
+                continue
+            signs = np.where(t_in[crossing], direction, -direction)
+            self._cut[tree_ei] = int(np.dot(signs, we_weights[crossing]))
 
     # ── Pivot operations ─────────────────────────
 
-    def _leave_edge(self) -> Optional[int]:
-        best = None
-        best_cv = 0
-        count = 0
-        tree_list = list(self._tree)
-        n = len(tree_list)
+    def _leave_edge(self) -> int | None:
+        tl = self._tree_list
+        n = len(tl)
         if n == 0:
             return None
+        # Gather cut values for tree edges
+        cvs = self._cut[tl]
+        neg = cvs < 0
+        if not neg.any():
+            return None
+        # Respect SEARCH_LIMIT: pick the first (up to SEARCH_LIMIT)
+        # negative cut value starting from _si
         start = self._si % n
-        for offset in range(n):
-            idx = (start + offset) % n
-            ei = tree_list[idx]
-            cv = self._cut.get(ei, 0)
-            if cv < best_cv:
-                best_cv = cv
-                best = ei
-                count += 1
-                if count >= self.SEARCH_LIMIT:
-                    self._si = (start + offset + 1) % n
-                    return best
-        self._si = 0
-        return best
+        order = np.roll(np.arange(n), -start)
+        neg_positions = order[neg[order]]
+        if len(neg_positions) == 0:
+            return None
+        # Pick the most negative among the first SEARCH_LIMIT candidates
+        candidates = neg_positions[:self.SEARCH_LIMIT]
+        best_local = candidates[np.argmin(cvs[candidates])]
+        self._si = (int(best_local) + 1) % n
+        return int(tl[best_local])
 
-    def _enter_edge(self, leaving_ei: int) -> Optional[int]:
-        t, h, ml, w = self.edges[leaving_ei]
-        if self._lim.get(t, 0) < self._lim.get(h, 0):
-            sub_root = t
-        else:
-            sub_root = h
+    def _enter_edge(self, leaving_ei: int) -> int | None:
+        ti = int(self._e_tail[leaving_ei])
+        hi = int(self._e_head[leaving_ei])
+        sub_root = ti if self._lim[ti] < self._lim[hi] else hi
+        sub_low = int(self._low[sub_root])
+        sub_lim = int(self._lim[sub_root])
 
-        best = None
-        best_slack = None
-        for ei in range(len(self.edges)):
-            if self._in_tree(ei):
-                continue
-            et, eh, eml, ew = self.edges[ei]
-            t_in = self._in_subtree(et, sub_root)
-            h_in = self._in_subtree(eh, sub_root)
-            if t_in != h_in:
-                s = self._slack(ei)
-                if s >= 0 and (best_slack is None or s < best_slack):
-                    best_slack = s
-                    best = ei
-        return best
+        E = len(self._edges_raw)
+        t_low = self._low[self._e_tail[:E]]
+        h_low = self._low[self._e_head[:E]]
+        t_in = (t_low >= sub_low) & (t_low <= sub_lim)
+        h_in = (h_low >= sub_low) & (h_low <= sub_lim)
+        crossing = (t_in != h_in) & ~self._in_tree[:E]
+        if not crossing.any():
+            return None
+        slacks = self._slack_all()
+        feasible = crossing & (slacks >= 0)
+        if not feasible.any():
+            return None
+        candidates = np.where(feasible)[0]
+        return int(candidates[np.argmin(slacks[candidates])])
 
     def _update(self, leaving_ei: int, entering_ei: int):
-        # Adjust ranks
         delta = self._slack(entering_ei)
         if delta != 0:
-            et, eh, eml, ew = self.edges[leaving_ei]
-            if self._lim.get(et, 0) < self._lim.get(eh, 0):
-                sub_root = et
-            else:
-                sub_root = eh
-            for n in self.node_names:
-                if self._in_subtree(n, sub_root):
-                    self.rank[n] -= delta
+            ti = int(self._e_tail[leaving_ei])
+            hi = int(self._e_head[leaving_ei])
+            sub_root = ti if self._lim[ti] < self._lim[hi] else hi
+            mask = self._subtree_mask(sub_root)
+
+            # Determine shift direction from entering edge
+            ent_t = int(self._e_tail[entering_ei])
+            shift = delta if mask[ent_t] else -delta
+            self.rank[mask] += shift
 
         # Exchange tree edges
-        self._tree.discard(leaving_ei)
-        self._tree.add(entering_ei)
+        self._in_tree[leaving_ei] = False
+        self._in_tree[entering_ei] = True
 
         # Recompute DFS ranges and cut values
         self._init_cutvalues()
@@ -560,27 +641,37 @@ class _NetworkSimplex:
     # ── Normalize ────────────────────────────────
 
     def _normalize(self):
-        if not self.rank:
-            return
-        min_r = min(self.rank.values())
-        if min_r != 0:
-            for n in self.rank:
-                self.rank[n] -= min_r
+        if self._N > 0:
+            self.rank -= self.rank.min()
 
     # ── Main entry point ─────────────────────────
 
-    def solve(self, max_iter: int = 200) -> dict[str, int]:
+    def solve(self, max_iter: int = 200,
+              initial_ranks: dict[str, int] | None = None) -> dict[str, int]:
         if not self.node_names:
             return {}
-        self._init_rank()
-        if len(self.node_names) <= 1:
+        if initial_ranks:
+            for n, i in self._n2i.items():
+                self.rank[i] = initial_ranks.get(n, 0)
+            # Light feasibility fixup (2 passes)
+            E = len(self._edges_raw)
+            for _pass in range(2):
+                needed = self.rank[self._e_tail[:E]] + self._e_minlen[:E]
+                violations = self.rank[self._e_head[:E]] < needed
+                if violations.any():
+                    for ei in np.where(violations)[0]:
+                        h = int(self._e_head[ei])
+                        self.rank[h] = max(int(self.rank[h]),
+                                           int(needed[ei]))
+        else:
+            self._init_rank()
+        if self._N <= 1:
             self._normalize()
-            return dict(self.rank)
-        # Connect disconnected components with zero-weight edges
+            return {n: int(self.rank[i]) for n, i in self._n2i.items()}
         self._connect_components()
-        if not self.edges:
+        if not self._edges_raw:
             self._normalize()
-            return dict(self.rank)
+            return {n: int(self.rank[i]) for n, i in self._n2i.items()}
         self._feasible_tree()
         self._init_cutvalues()
         for _ in range(max_iter):
@@ -592,40 +683,47 @@ class _NetworkSimplex:
                 break
             self._update(leaving, entering)
         self._normalize()
-        return dict(self.rank)
+        return {n: int(self.rank[i]) for n, i in self._n2i.items()}
 
     def _connect_components(self):
         """Add zero-weight edges between disconnected components."""
-        adj: dict[str, set[str]] = defaultdict(set)
-        for t, h, ml, w in self.edges:
-            adj[t].add(h)
-            adj[h].add(t)
-        visited = set()
-        components = []
-        for n in self.node_names:
-            if n in visited:
+        N = self._N
+        adj: list[set[int]] = [set() for _ in range(N)]
+        for t, h in zip(self._e_tail, self._e_head):
+            adj[int(t)].add(int(h))
+            adj[int(h)].add(int(t))
+        visited = np.zeros(N, dtype=np.bool_)
+        components: list[list[int]] = []
+        for start in range(N):
+            if visited[start]:
                 continue
-            comp = []
-            queue = deque([n])
+            comp: list[int] = []
+            queue = deque([start])
             while queue:
                 u = queue.popleft()
-                if u in visited:
+                if visited[u]:
                     continue
-                visited.add(u)
+                visited[u] = True
                 comp.append(u)
                 for v in adj[u]:
-                    if v not in visited:
+                    if not visited[v]:
                         queue.append(v)
             components.append(comp)
         # Link components with dummy edges
         for i in range(1, len(components)):
-            t = components[i - 1][0]
-            h = components[i][0]
-            dummy = (t, h, 0, 0)
-            self.edges.append(dummy)
-            idx = len(self.edges) - 1
-            self._out[t].append(idx)
-            self._inc[h].append(idx)
+            t_idx = components[i - 1][0]
+            h_idx = components[i][0]
+            t_name = self.node_names[t_idx]
+            h_name = self.node_names[h_idx]
+            self._edges_raw.append((t_name, h_name, 0, 0))
+            self._out[t_idx].append(len(self._edges_raw) - 1)
+            self._inc[h_idx].append(len(self._edges_raw) - 1)
+        # Rebuild NumPy arrays if edges were added
+        if len(components) > 1:
+            self._rebuild_edge_arrays()
+            E = len(self._edges_raw)
+            self._in_tree = np.zeros(E, dtype=np.bool_)
+            self._cut = np.zeros(E, dtype=np.int64)
 
 
 # ── Record label parsing ─────────────────────────
@@ -1255,7 +1353,8 @@ class DotLayout(LayoutEngine):
             if par is not None:
                 has_children.add(par)
 
-        is_lr = self.rankdir in ("LR", "RL")
+        # Always separate on X-axis because this runs BEFORE
+        # _apply_rankdir (coordinates are still in TB space).
         for _parent, siblings in children_of.items():
             leaf_sibs = [s for s in siblings if s not in has_children]
             if len(leaf_sibs) < 2:
@@ -1264,28 +1363,30 @@ class DotLayout(LayoutEngine):
             if len(sib_cls) < 2:
                 continue
 
-            if is_lr:
-                sib_cls.sort(key=lambda c: c.bb[1])
-                for i in range(len(sib_cls) - 1):
-                    c1 = sib_cls[i]
-                    c2 = sib_cls[i + 1]
-                    overlap_val = c1.bb[3] + gap - c2.bb[1]
-                    if overlap_val > 0:
-                        for sib in sib_cls[i + 1:]:
-                            for name in node_sets.get(sib.name, set()):
-                                if name in self.lnodes:
-                                    self.lnodes[name].y += overlap_val
-            else:
-                sib_cls.sort(key=lambda c: c.bb[0])
-                for i in range(len(sib_cls) - 1):
-                    c1 = sib_cls[i]
-                    c2 = sib_cls[i + 1]
-                    overlap_val = c1.bb[2] + gap - c2.bb[0]
-                    if overlap_val > 0:
-                        for sib in sib_cls[i + 1:]:
-                            for name in node_sets.get(sib.name, set()):
-                                if name in self.lnodes:
-                                    self.lnodes[name].x += overlap_val
+            sib_cls.sort(key=lambda c: c.bb[0])
+            for i in range(len(sib_cls) - 1):
+                c1 = sib_cls[i]
+                c2 = sib_cls[i + 1]
+                overlap_val = c1.bb[2] + gap - c2.bb[0]
+                if overlap_val > 0:
+                    # Shift all nodes in subsequent siblings rightward
+                    shift_nodes: set[str] = set()
+                    for sib in sib_cls[i + 1:]:
+                        shift_nodes.update(node_sets.get(sib.name, set()))
+                    for name in shift_nodes:
+                        if name in self.lnodes:
+                            self.lnodes[name].x += overlap_val
+                    # Recompute bboxes for shifted clusters
+                    for sib in sib_cls[i + 1:]:
+                        members = [self.lnodes[n] for n in sib.nodes
+                                   if n in self.lnodes]
+                        if members:
+                            sib.bb = (
+                                min(ln.x - ln.width/2 for ln in members) - sib.margin,
+                                min(ln.y - ln.height/2 for ln in members) - sib.margin,
+                                max(ln.x + ln.width/2 for ln in members) + sib.margin,
+                                max(ln.y + ln.height/2 for ln in members) + sib.margin,
+                            )
 
     def _shift_cluster_nodes_y(self, cl, dy: float, node_sets: dict,
                                 subsequent: list, prior: list):
@@ -1510,110 +1611,157 @@ class DotLayout(LayoutEngine):
                 le.edge_type = "normal"
 
     def _cluster_aware_rank(self):
-        """Rank nodes with cluster-aware ordering.
+        """Rank nodes using recursive bottom-up cluster ranking.
 
-        Nodes inside cluster subgraphs are ranked independently within
-        their cluster first, then cluster ranks are mapped into the global
-        ranking space. Nodes not in any cluster are ranked globally.
+        Mirrors Graphviz ``rank.c:dot1_rank()`` which recursively ranks
+        each cluster bottom-up via ``collapse_sets()`` → ``collapse_cluster()``
+        → ``dot1_rank(child)``.  Each cluster is ranked independently
+        starting from the deepest leaves of the cluster tree, then the
+        parent graph is ranked with cluster-internal edges replaced by
+        min-length constraints between cluster boundary nodes.
         """
         if not self._clusters:
             self._network_simplex_rank()
             return
 
-        # When clusters are deeply nested (max depth > 2), the per-cluster
-        # ranking + offset merging produces poor results because most edges
-        # become "inter-cluster". Fall back to global ranking which handles
-        # deeply nested structures correctly.
-        max_depth = max(
-            (n.count("/") + 1 if "/" in n else 1)
-            for cl in self._clusters for n in cl.nodes
-        ) if self._clusters else 0
-        # Also fall back when many clusters share nodes (nested hierarchy)
-        nodes_in_multiple = sum(
-            1 for n in self.lnodes
-            if sum(1 for cl in self._clusters if n in cl.nodes) > 1
-        )
-        if nodes_in_multiple > len(self.lnodes) * 0.3:
-            self._network_simplex_rank()
-            return
+        # Build cluster hierarchy from the Graph's subgraph tree
+        # so we can walk it bottom-up like the C code does.
+        cl_by_name: dict[str, "LayoutCluster"] = {
+            cl.name: cl for cl in self._clusters
+        }
+        cl_node_sets: dict[str, set[str]] = {
+            cl.name: set(cl.nodes) for cl in self._clusters
+        }
 
-        # Identify which nodes belong to each cluster
-        cluster_nodes: dict[str, set[str]] = {}
-        node_to_cluster: dict[str, str] = {}
+        # Determine parent-child relationships among clusters:
+        # A cluster P is parent of C if C.nodes ⊂ P.nodes and P is the
+        # smallest such containing cluster.
+        children_of: dict[str | None, list[str]] = {None: []}
         for cl in self._clusters:
-            cluster_nodes[cl.name] = set(cl.nodes)
-            for n in cl.nodes:
-                if n not in node_to_cluster:  # first cluster wins
-                    node_to_cluster[n] = cl.name
+            children_of[cl.name] = []
+        parent_of: dict[str, str | None] = {}
+        for cl in self._clusters:
+            best_parent: str | None = None
+            best_size = float("inf")
+            for other in self._clusters:
+                if other.name == cl.name:
+                    continue
+                if cl_node_sets[cl.name] < cl_node_sets[other.name]:
+                    if len(cl_node_sets[other.name]) < best_size:
+                        best_parent = other.name
+                        best_size = len(cl_node_sets[other.name])
+            parent_of[cl.name] = best_parent
+            children_of.setdefault(best_parent, []).append(cl.name)
 
-        # Rank each cluster independently
-        cluster_max_rank: dict[str, int] = {}
-        for cl_name, cl_members in cluster_nodes.items():
-            if not cl_members:
-                continue
-            # Get edges internal to this cluster
-            cl_edges = [(le.tail_name, le.head_name, le.minlen, le.weight)
-                        for le in self.ledges
-                        if le.constraint and le.tail_name in cl_members and le.head_name in cl_members]
-            ns = _NetworkSimplex(list(cl_members), cl_edges)
+        # Track which nodes have been ranked by a cluster pass
+        ranked_nodes: set[str] = set()
+
+        # ── Recursive bottom-up ranking (mirrors dot1_rank) ─────────
+        def _dot1_rank_cluster(cl_name: str):
+            """Rank a single cluster bottom-up: children first, then self.
+
+            This mirrors the C code path:
+              dot1_rank(g) → collapse_sets(g) → for each child cluster:
+                collapse_cluster(g, child) → dot1_rank(child)
+              then: class1 → decompose → acyclic → rank1 → expand_ranksets
+            """
+            # 1. Recursively rank all child clusters first (bottom-up)
+            for child_name in children_of.get(cl_name, []):
+                _dot1_rank_cluster(child_name)
+
+            cl = cl_by_name[cl_name]
+            cl_members = cl_node_sets[cl_name]
+
+            # 2. Collect edges internal to this cluster that involve
+            #    nodes NOT already locked by a child cluster ranking.
+            #    For nodes ranked by children, we keep their relative
+            #    ranks fixed and add constraint edges to anchor them.
+            child_ranked = ranked_nodes & cl_members
+            unranked = cl_members - ranked_nodes
+
+            # All internal edges (both endpoints in this cluster)
+            cl_edges: list[tuple[str, str, int, int]] = []
+            for le in self.ledges:
+                if not le.constraint:
+                    continue
+                if le.tail_name in cl_members and le.head_name in cl_members:
+                    cl_edges.append((
+                        le.tail_name, le.head_name, le.minlen, le.weight,
+                    ))
+
+            # If child clusters have already been ranked, anchor their
+            # nodes with high-weight edges so NS preserves their relative
+            # ranks while positioning them within the parent cluster.
+            anchor_edges: list[tuple[str, str, int, int]] = []
+            for child_name in children_of.get(cl_name, []):
+                child_nodes_sorted = sorted(
+                    (n for n in cl_by_name[child_name].nodes
+                     if n in self.lnodes and n in ranked_nodes),
+                    key=lambda n: self.lnodes[n].rank,
+                )
+                for i in range(len(child_nodes_sorted) - 1):
+                    a, b = child_nodes_sorted[i], child_nodes_sorted[i + 1]
+                    span = self.lnodes[b].rank - self.lnodes[a].rank
+                    if span >= 1:
+                        anchor_edges.append((a, b, span, 1000))
+
+            all_edges = cl_edges + anchor_edges
+            all_nodes = list(cl_members)
+
+            if not all_nodes:
+                return
+
+            # 3. Run network simplex on this cluster
+            ns = _NetworkSimplex(all_nodes, all_edges)
             ns.SEARCH_LIMIT = self.searchsize
             ranks = ns.solve(max_iter=self.nslimit1)
+
+            # 4. Apply ranks to nodes
             for n, r in ranks.items():
                 if n in self.lnodes:
                     self.lnodes[n].rank = r
-            cluster_max_rank[cl_name] = max(ranks.values()) if ranks else 0
 
-        # Rank non-cluster nodes globally
-        non_cluster = [n for n in self.lnodes if n not in node_to_cluster]
-        if non_cluster:
-            nc_edges = [(le.tail_name, le.head_name, le.minlen, le.weight)
-                        for le in self.ledges
-                        if le.constraint and le.tail_name in non_cluster and le.head_name in non_cluster]
-            ns = _NetworkSimplex(non_cluster, nc_edges)
-            ns.SEARCH_LIMIT = self.searchsize
-            ranks = ns.solve(max_iter=self.nslimit1)
-            for n, r in ranks.items():
-                if n in self.lnodes:
-                    self.lnodes[n].rank = r
+            # 5. Mark all nodes in this cluster as ranked
+            ranked_nodes.update(cl_members)
 
-        # Merge cluster ranks into global space:
-        # Assign each cluster a base rank offset based on inter-cluster edges
-        # Simple approach: offset each cluster's ranks based on edges connecting
-        # cluster nodes to non-cluster nodes
-        self._merge_cluster_ranks(cluster_nodes, node_to_cluster)
+        # ── Walk the cluster tree: rank leaf clusters first ─────────
+        # Process top-level clusters (those with no parent cluster).
+        # Each one recursively processes its children first.
+        top_level = children_of.get(None, [])
+        for cl_name in top_level:
+            _dot1_rank_cluster(cl_name)
 
-    def _merge_cluster_ranks(self, cluster_nodes: dict[str, set[str]],
-                             node_to_cluster: dict[str, str]):
-        """Adjust cluster-internal ranks to fit into global ranking space."""
-        # For each inter-cluster edge, determine the required offset
-        # between the source and target clusters/nodes
-        offsets: dict[str, int] = {}  # cluster_name -> rank offset
-
+        # ── Now rank the full graph with cluster ranks as anchors ───
+        # This is the final dot1_rank pass on the root graph.
+        # Cluster-internal relative ranks are preserved via anchor edges;
+        # inter-cluster and non-cluster edges determine global placement.
+        all_edges: list[tuple[str, str, int, int]] = []
         for le in self.ledges:
             if not le.constraint:
                 continue
-            t_cl = node_to_cluster.get(le.tail_name)
-            h_cl = node_to_cluster.get(le.head_name)
-            if t_cl == h_cl:
-                continue  # internal edge, already ranked
+            all_edges.append((
+                le.tail_name, le.head_name, le.minlen, le.weight,
+            ))
 
-            t_rank = self.lnodes[le.tail_name].rank if le.tail_name in self.lnodes else 0
-            h_rank = self.lnodes[le.head_name].rank if le.head_name in self.lnodes else 0
+        # Add anchor edges for all ranked clusters to preserve internal order
+        for cl in self._clusters:
+            nodes_sorted = sorted(
+                (n for n in cl.nodes
+                 if n in self.lnodes and n in ranked_nodes),
+                key=lambda n: self.lnodes[n].rank,
+            )
+            for i in range(len(nodes_sorted) - 1):
+                a, b = nodes_sorted[i], nodes_sorted[i + 1]
+                span = self.lnodes[b].rank - self.lnodes[a].rank
+                if span >= 1:
+                    all_edges.append((a, b, span, 1000))
 
-            # Need: (h_rank + h_offset) - (t_rank + t_offset) >= minlen
-            t_off = offsets.get(t_cl, 0) if t_cl else 0
-            h_off = offsets.get(h_cl, 0) if h_cl else 0
-            needed = (t_rank + t_off) + le.minlen - h_rank
-            if h_cl and needed > h_off:
-                offsets[h_cl] = needed
-
-        # Apply offsets to cluster nodes
-        for cl_name, offset in offsets.items():
-            if offset == 0:
-                continue
-            for n in cluster_nodes.get(cl_name, []):
-                if n in self.lnodes:
-                    self.lnodes[n].rank += offset
+        ns = _NetworkSimplex(list(self.lnodes.keys()), all_edges)
+        ns.SEARCH_LIMIT = self.searchsize
+        ranks = ns.solve(max_iter=self.nslimit1)
+        for name, r in ranks.items():
+            if name in self.lnodes:
+                self.lnodes[name].rank = r
 
     def _break_cycles(self):
         UNVISITED, IN_PROGRESS, DONE = 0, 1, 2
@@ -1752,6 +1900,43 @@ class DotLayout(LayoutEngine):
 
     _CL_CROSS = 1000  # Graphviz CL_CROSS: penalty weight for crossing cluster borders
 
+    def _mark_low_clusters(self):
+        """Label every node with its innermost cluster (C: mark_lowclusters).
+
+        Largest clusters are processed first so that smaller (more
+        deeply nested) clusters overwrite, leaving each node mapped to
+        its innermost containing cluster.
+        """
+        self._node_to_cluster: dict[str, str | None] = {}
+        if not self._clusters:
+            return
+        for cl in sorted(self._clusters,
+                         key=lambda c: len(c.nodes), reverse=True):
+            for n in cl.nodes:
+                if n in self.lnodes:
+                    self._node_to_cluster[n] = cl.name
+
+    def _left2right(self, v: str, w: str) -> bool:
+        """Return True if swapping v and w should be BLOCKED.
+
+        Mirrors Graphviz ``left2right()`` in ``mincross.c``: nodes in
+        different clusters must not be swapped during transpose, except
+        when one is a virtual (skeleton) node.
+        """
+        v_ln = self.lnodes.get(v)
+        w_ln = self.lnodes.get(w)
+        if not v_ln or not w_ln:
+            return False
+        # Virtual / skeleton nodes can always be swapped
+        if v_ln.virtual or w_ln.virtual:
+            return False
+        v_cl = self._node_to_cluster.get(v)
+        w_cl = self._node_to_cluster.get(w)
+        if v_cl == w_cl:
+            return False
+        # Both are real nodes in different clusters — block
+        return True
+
     def _phase2_ordering(self):
         if not self.ranks:
             return
@@ -1759,6 +1944,9 @@ class DotLayout(LayoutEngine):
         for rank_nodes in self.ranks.values():
             for i, name in enumerate(rank_nodes):
                 self.lnodes[name].order = i
+
+        # Build innermost-cluster map (used by _left2right)
+        self._mark_low_clusters()
 
         # ordering=out preserves input order — skip crossing minimization
         if self.ordering in ("out", "in"):
@@ -2349,7 +2537,24 @@ class DotLayout(LayoutEngine):
             else:
                 medians[name] = self.lnodes[name].order
 
-        nodes.sort(key=lambda n: medians[n])
+        if self._node_to_cluster:
+            # Group-aware sort: sort within contiguous cluster runs
+            # but never interleave nodes from different clusters.
+            # Mirrors Graphviz reorder() which respects left2right.
+            groups: list[tuple[str | None, list[str]]] = []
+            for name in nodes:
+                cl = self._node_to_cluster.get(name)
+                if groups and groups[-1][0] == cl:
+                    groups[-1][1].append(name)
+                else:
+                    groups.append((cl, [name]))
+            result: list[str] = []
+            for _, group_nodes in groups:
+                group_nodes.sort(key=lambda n: medians[n])
+                result.extend(group_nodes)
+            nodes[:] = result
+        else:
+            nodes.sort(key=lambda n: medians[n])
         for i, name in enumerate(nodes):
             self.lnodes[name].order = i
         self.ranks[rank] = nodes
@@ -2358,10 +2563,15 @@ class DotLayout(LayoutEngine):
         nodes = self.ranks.get(rank, [])
         if len(nodes) < 2:
             return
+        has_clusters = bool(self._clusters)
         improved = True
         while improved:
             improved = False
             for i in range(len(nodes) - 1):
+                # Block swaps between nodes of different clusters
+                # (Graphviz mincross.c left2right).
+                if has_clusters and self._left2right(nodes[i], nodes[i + 1]):
+                    continue
                 c_before = self._count_crossings_for_pair(nodes[i], nodes[i + 1])
                 c_after = self._count_crossings_for_pair(nodes[i + 1], nodes[i])
                 if c_after < c_before:
@@ -2450,16 +2660,17 @@ class DotLayout(LayoutEngine):
         if self._insert_flat_label_nodes():
             self._set_ycoords()
 
-        # X coordinates: network simplex on auxiliary constraint graph
-        # (matching Graphviz position.c create_aux_edges + rank)
-        if not self._ns_x_position():
-            # Fallback to simple placement if NS fails
-            self._simple_x_position()
-            self._median_x_improvement()
+        # X coordinates: simple left-to-right positioning, then
+        # median improvement, then cluster compaction + keepout.
+        self._simple_x_position()
+        self._median_x_improvement()
+        if self._clusters:
+            self._compact_clusters()
+            self._compute_cluster_boxes()
+            self._separate_sibling_clusters()
+            self._keepout_noncluster_nodes()
+        else:
             self._center_ranks()
-
-        # NS positions are already optimal — centering would break
-        # cluster alignment by shifting narrow ranks independently.
 
         self._apply_rankdir()
 
@@ -2832,6 +3043,18 @@ class DotLayout(LayoutEngine):
             _vn_counter[0] += 1
             return f"{prefix}_{_vn_counter[0]}"
 
+        # ── Pre-compute cluster maps for separation edges ──────
+        _cl_by_name: dict[str, object] = {}
+        _node_to_cl: dict[str, str] = {}
+        if self._clusters:
+            _cl_by_name = {cl.name: cl for cl in self._clusters}
+            # Innermost cluster: largest first, last write = smallest
+            for cl in sorted(self._clusters,
+                             key=lambda c: len(c.nodes), reverse=True):
+                for n in cl.nodes:
+                    if n in self.lnodes:
+                        _node_to_cl[n] = cl.name
+
         # ── 1. Separation edges (make_LR_constraints) ──────────
         for rank_val, rank_nodes in self.ranks.items():
             for i in range(len(rank_nodes) - 1):
@@ -2841,6 +3064,17 @@ class DotLayout(LayoutEngine):
                 ln_r = self.lnodes[right]
                 min_dist = int(ln_l.width / 2.0 + ln_r.width / 2.0
                                + self.nodesep)
+
+                # When adjacent nodes cross a cluster boundary, add
+                # both cluster margins so clusters don't overlap.
+                left_cl = _node_to_cl.get(left, "")
+                right_cl = _node_to_cl.get(right, "")
+                if left_cl != right_cl:
+                    if left_cl and left_cl in _cl_by_name:
+                        min_dist += int(_cl_by_name[left_cl].margin)
+                    if right_cl and right_cl in _cl_by_name:
+                        min_dist += int(_cl_by_name[right_cl].margin)
+
                 aux_edges.append((left, right, max(1, min_dist), 0))
 
         # ── 1b. Flat-edge separation constraints ──────────
@@ -2917,7 +3151,13 @@ class DotLayout(LayoutEngine):
             aux_edges.append((sn, le.tail_name, 0, w))
             aux_edges.append((sn, le.head_name, 0, w))
 
-        # ── 3. Cluster boundary edges (pos_clusters) ──────────
+        # ── 3. Cluster boundary edges ────────────────────────
+        # Skipped: containment/compaction/sibling edges introduce
+        # directed cycles when the mincross ordering isn't fully
+        # cluster-consistent, and the NS solver can't converge.
+        # Cluster separation is handled by the separation edges
+        # (section 1) which keep adjacent nodes apart, and by the
+        # simple_x_position + median baseline that runs first.
         if self._clusters:
             node_sets = {cl.name: set(cl.nodes) for cl in self._clusters}
 
@@ -2974,75 +3214,172 @@ class DotLayout(LayoutEngine):
                 aux_edges.append((cl_rn[cl.name], cl_rn[par],
                                   max(1, margin), 0))
 
-            # Separate sibling clusters: rn(left) → ln(right)
-            for _parent, siblings in children_of.items():
-                if len(siblings) < 2:
-                    continue
-                # Sort siblings by median node order to determine left→right
-                def _median_order(cn):
-                    orders = [self.lnodes[n].order for n in node_sets[cn]
-                              if n in self.lnodes]
-                    if not orders:
-                        return 0
-                    orders.sort()
-                    return orders[len(orders) // 2]
-                siblings_sorted = sorted(siblings, key=_median_order)
-                margin = int(self.nodesep)
-                for i in range(len(siblings_sorted) - 1):
-                    left_cl = siblings_sorted[i]
-                    right_cl = siblings_sorted[i + 1]
-                    aux_edges.append((cl_rn[left_cl], cl_ln[right_cl],
-                                      max(1, margin), 0))
-
-            # Keep out other nodes: push non-cluster nodes outside
-            # cluster boundaries (Graphviz pos_clusters keepout_othernodes).
-            all_cluster_nodes: set[str] = set()
-            for cl in self._clusters:
-                all_cluster_nodes.update(cl.nodes)
-
-            for rank_val, rank_nodes in self.ranks.items():
-                for cl in self._clusters:
-                    cl_nodes_in_rank = [n for n in rank_nodes
-                                        if n in node_sets.get(cl.name, set())
-                                        and n in self.lnodes]
-                    if not cl_nodes_in_rank:
-                        continue
-                    cl_orders = [self.lnodes[n].order for n in cl_nodes_in_rank]
-                    cl_min_order = min(cl_orders)
-                    cl_max_order = max(cl_orders)
-                    margin = int(cl.margin)
-
-                    # First non-cluster node to the left
-                    if cl_min_order > 0:
-                        left_name = rank_nodes[cl_min_order - 1]
-                        if left_name not in node_sets.get(cl.name, set()):
-                            left_ln = self.lnodes[left_name]
-                            sep = max(1, margin + int(left_ln.width / 2))
-                            aux_edges.append((left_name, cl_ln[cl.name],
-                                              sep, 0))
-
-                    # First non-cluster node to the right
-                    if cl_max_order < len(rank_nodes) - 1:
-                        right_name = rank_nodes[cl_max_order + 1]
-                        if right_name not in node_sets.get(cl.name, set()):
-                            right_ln = self.lnodes[right_name]
-                            sep = max(1, margin + int(right_ln.width / 2))
-                            aux_edges.append((cl_rn[cl.name], right_name,
-                                              sep, 0))
-
         if not aux_edges:
             return False
+
+        # ── Remove back edges to ensure the aux graph is acyclic ──
+        # When the mincross ordering is not perfectly cluster-consistent,
+        # containment + sibling-separation + separation edges can create
+        # directed cycles with positive total minlen, making NS infeasible.
+        # DFS-based back-edge removal breaks all cycles.
+        adj_idx: dict[str, list[int]] = defaultdict(list)
+        for idx, (t, h, ml, w) in enumerate(aux_edges):
+            adj_idx[t].append(idx)
+
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color = {n: WHITE for n in aux_nodes}
+        back_edges: set[int] = set()
+        for start in aux_nodes:
+            if color[start] != WHITE:
+                continue
+            stack = [(start, iter(adj_idx.get(start, [])))]
+            color[start] = GRAY
+            while stack:
+                node, children = stack[-1]
+                advanced = False
+                for ei in children:
+                    _, h, _, _ = aux_edges[ei]
+                    if color[h] == GRAY:
+                        back_edges.add(ei)
+                    elif color[h] == WHITE:
+                        color[h] = GRAY
+                        stack.append((h, iter(adj_idx.get(h, []))))
+                        advanced = True
+                        break
+                if not advanced:
+                    color[node] = BLACK
+                    stack.pop()
+
+        if back_edges:
+            aux_edges = [e for i, e in enumerate(aux_edges)
+                         if i not in back_edges]
 
         try:
             ns = _NetworkSimplex(aux_nodes, aux_edges)
             ns.SEARCH_LIMIT = self.searchsize
-            x_ranks = ns.solve(max_iter=self.nslimit)
+
+            # Seed NS initial ranks from current X positions (set by
+            # simple_x_position + median_x_improvement).  For cluster
+            # boundary virtual nodes, compute from member positions.
+            seed: dict[str, int] = {}
+            for name in aux_nodes:
+                if name in self.lnodes:
+                    seed[name] = int(self.lnodes[name].x)
+            if self._clusters:
+                for cl_obj in self._clusters:
+                    cn = cl_obj.name
+                    member_xs = [int(self.lnodes[n].x)
+                                 for n in cl_obj.nodes
+                                 if n in self.lnodes]
+                    if member_xs:
+                        m = int(cl_obj.margin)
+                        ln_n = cl_ln.get(cn)
+                        rn_n = cl_rn.get(cn)
+                        if ln_n:
+                            seed[ln_n] = min(member_xs) - m
+                        if rn_n:
+                            seed[rn_n] = max(member_xs) + m
+
+            ns = _NetworkSimplex(aux_nodes, aux_edges)
+            ns.SEARCH_LIMIT = self.searchsize
+            x_ranks = ns.solve(max_iter=self.nslimit,
+                               initial_ranks=seed)
             for name, xr in x_ranks.items():
                 if name in self.lnodes:
                     self.lnodes[name].x = float(xr)
             return True
         except Exception:
             return False
+
+    def _compact_clusters(self):
+        """Compact cluster nodes: shift members toward the cluster median X.
+
+        For each cluster (innermost first), compute the median X of all
+        member nodes.  Then shift each member node toward the median,
+        respecting separation constraints with non-cluster neighbours
+        in the same rank.  This reduces cross-rank spread within clusters,
+        producing tighter cluster bounding boxes similar to Graphviz's
+        NS compaction (pos_clusters ln→rn weight-128 edges).
+        """
+        if not self._clusters:
+            return
+
+        node_to_cl: dict[str, str] = {}
+        for cl in sorted(self._clusters,
+                         key=lambda c: len(c.nodes), reverse=True):
+            for n in cl.nodes:
+                if n in self.lnodes:
+                    node_to_cl[n] = cl.name  # innermost cluster
+
+        # Process clusters from innermost (smallest) to outermost
+        for cl in sorted(self._clusters, key=lambda c: len(c.nodes)):
+            members = [n for n in cl.nodes if n in self.lnodes]
+            if len(members) < 2:
+                continue
+
+            xs = [self.lnodes[n].x for n in members]
+            median_x = sorted(xs)[len(xs) // 2]
+
+            for rank_val, rank_nodes in self.ranks.items():
+                cl_in_rank = [n for n in rank_nodes if n in cl.nodes
+                              and n in self.lnodes]
+                if not cl_in_rank:
+                    continue
+
+                for name in cl_in_rank:
+                    ln = self.lnodes[name]
+                    if abs(ln.x - median_x) < 1.0:
+                        continue
+
+                    idx = rank_nodes.index(name)
+                    # Compute allowed range from neighbours
+                    min_x = -1e9
+                    max_x = 1e9
+                    if idx > 0:
+                        left = self.lnodes[rank_nodes[idx - 1]]
+                        min_x = (left.x + left.width / 2.0
+                                 + self.nodesep + ln.width / 2.0)
+                    if idx < len(rank_nodes) - 1:
+                        right = self.lnodes[rank_nodes[idx + 1]]
+                        max_x = (right.x - right.width / 2.0
+                                 - self.nodesep - ln.width / 2.0)
+
+                    target = max(min_x, min(max_x, median_x))
+                    ln.x = target
+
+    def _keepout_noncluster_nodes(self):
+        """Push non-cluster nodes outside cluster bounding boxes.
+
+        After compaction, some non-cluster nodes may overlap cluster
+        regions.  For each rank, check if non-cluster nodes fall
+        inside a cluster's X range and push them outside.
+        """
+        if not self._clusters:
+            return
+        self._compute_cluster_boxes()
+        all_cl_nodes: set[str] = set()
+        for cl in self._clusters:
+            all_cl_nodes.update(cl.nodes)
+
+        for rank_val, rank_nodes in self.ranks.items():
+            for idx, name in enumerate(rank_nodes):
+                if name in all_cl_nodes:
+                    continue
+                ln = self.lnodes[name]
+                hw = ln.width / 2.0
+                for cl in self._clusters:
+                    if not cl.bb:
+                        continue
+                    bx1, _, bx2, _ = cl.bb
+                    # Check if node overlaps cluster X range
+                    if ln.x - hw < bx2 and ln.x + hw > bx1:
+                        # Push to nearest edge
+                        dist_left = abs(ln.x - bx1)
+                        dist_right = abs(ln.x - bx2)
+                        if dist_left < dist_right:
+                            ln.x = bx1 - hw - self.nodesep
+                        else:
+                            ln.x = bx2 + hw + self.nodesep
 
     def _center_ranks(self):
         rank_widths = {}

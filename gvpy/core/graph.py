@@ -489,8 +489,12 @@ class Graph(NodeMixin, EdgeMixin, SubgraphMixin, AttrMixin,
         # Whether we've "closed" or not
         self.closed = False
 
-        # Initialize 'clos' using the Agclos class via AgIdDisc's open method
-        self.clos = self.disc.open()
+        # Initialize 'clos' — subgraphs share the root graph's closure
+        # so that IDs are unique across the hierarchy (matching Graphviz C).
+        if parent is not None:
+            self.clos = parent.clos
+        else:
+            self.clos = self.disc.open()
         # 3) Set descriptor fields
         # self.root = self
         # 4) open ID discipline

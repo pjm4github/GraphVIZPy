@@ -26,19 +26,21 @@ from gvpy.engines import get_engine as _get_engine_impl, list_engines as _list_e
 _gv_reader = None
 _gv_writer = None
 _svg_renderer = None
+_png_renderer = None
 _json_io = None
 _gxl_io = None
 
 
 def _ensure_imports():
     """Lazy-load format modules on first use."""
-    global _gv_reader, _gv_writer, _svg_renderer, _json_io, _gxl_io
+    global _gv_reader, _gv_writer, _svg_renderer, _png_renderer, _json_io, _gxl_io
     if _gv_reader is None:
         from gvpy.grammar import gv_reader, gv_writer
-        from gvpy.render import svg_renderer, json_io, gxl_io
+        from gvpy.render import svg_renderer, json_io, gxl_io, png_renderer
         _gv_reader = gv_reader
         _gv_writer = gv_writer
         _svg_renderer = svg_renderer
+        _png_renderer = png_renderer
         _json_io = json_io
         _gxl_io = gxl_io
 
@@ -70,7 +72,7 @@ def _detect_engine_from_argv0() -> str:
 # ── Format constants ──────────────────────────────
 
 _FORMAT_EXT = {
-    "json": ".json", "svg": ".svg", "dot": ".gv",
+    "json": ".json", "svg": ".svg", "png": ".png", "dot": ".gv",
     "json0": ".json", "gxl": ".gxl",
 }
 
@@ -170,6 +172,10 @@ def layout_and_render(graph, fmt, engine_name="dot",
     # Render
     if fmt == "svg":
         return _svg_renderer.render_svg(result)
+    elif fmt == "png":
+        dpi = float(graph.get_graph_attr("dpi") or
+                     graph.get_graph_attr("resolution") or "72")
+        return _png_renderer.render_png(result, dpi=dpi)
     elif fmt == "dot":
         return _gv_writer.write_gv(graph)
     elif fmt == "gxl":
@@ -355,7 +361,7 @@ DOT file examples:
     )
     p.add_argument(
         "-T", dest="format", default="json", metavar="FORMAT",
-        help="Output format: json (default), svg, dot, json0, gxl",
+        help="Output format: json (default), svg, png, dot, json0, gxl",
     )
     p.add_argument(
         "-o", dest="output", default=None, metavar="FILE",
@@ -540,17 +546,27 @@ def main():
                   f"{n} nodes, {e} edges, {s} subgraphs",
                   file=sys.stderr)
 
-        # Output destination
+        # Output destination — binary for PNG, text for everything else
+        is_binary = isinstance(output, bytes)
         if args.output:
-            Path(args.output).write_text(output, encoding="utf-8")
+            if is_binary:
+                Path(args.output).write_bytes(output)
+            else:
+                Path(args.output).write_text(output, encoding="utf-8")
         elif args.auto_output and isinstance(source, Path):
             ext = _FORMAT_EXT.get(fmt, f".{fmt}")
             out_path = Path(source).with_suffix(ext)
-            out_path.write_text(output, encoding="utf-8")
+            if is_binary:
+                out_path.write_bytes(output)
+            else:
+                out_path.write_text(output, encoding="utf-8")
             if args.verbose:
                 print(f"  → {out_path}", file=sys.stderr)
         else:
-            print(output)
+            if is_binary:
+                sys.stdout.buffer.write(output)
+            else:
+                print(output)
 
 
 if __name__ == "__main__":

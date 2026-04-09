@@ -43,6 +43,9 @@ from gvpy.render import render_svg
 # Layout a DOT file → SVG
 python gvcli.py input.gv -Tsvg -o output.svg
 
+# Layout a DOT file → PNG (requires Pillow)
+python gvcli.py input.gv -Tpng -o output.png
+
 # Use a specific layout engine
 python gvcli.py -Kcirco input.gv -Tsvg -o output.svg
 
@@ -70,7 +73,7 @@ python gvcli.py [options] [FILE ...]
 | Flag | Description |
 |------|-------------|
 | `-K ENGINE` | Layout engine: `dot`, `circo`, `neato`, `fdp`, `sfdp`, `twopi`, `osage`, `patchwork` |
-| `-T FORMAT` | Output format: `json` (default), `svg`, `dot`, `json0`, `gxl` |
+| `-T FORMAT` | Output format: `json` (default), `svg`, `png`, `dot`, `json0`, `gxl` |
 | `-o FILE` | Write output to file |
 | `-O` | Auto-name output file: `input.svg`, `input.json`, etc. |
 | `-G name=val` | Set graph attribute (e.g. `-Grankdir=LR`) |
@@ -91,6 +94,9 @@ python gvcli.py input.gv
 
 # SVG output with dot engine
 python gvcli.py input.gv -Tsvg -o output.svg
+
+# PNG output (requires Pillow)
+python gvcli.py input.gv -Tpng -o output.png
 
 # Circular layout
 python gvcli.py -Kcirco network.gv -Tsvg -o network.svg
