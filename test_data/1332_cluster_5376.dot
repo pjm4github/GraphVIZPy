@@ -1,0 +1,19 @@
+digraph test_cluster_5376 {
+  rankdir=LR
+  node [shape=Mrecord]
+  edge [fontsize=8,fontcolor=indigo]
+  subgraph cluster_5376 {
+    margin=8
+    fontsize=20
+    labeljust=r
+    color=DarkGreen
+    c5372 [label="{In|{<Out0>|<Out1>}}"]
+    c5375 [label="{{<In0>}|Out}"]
+    c5374 [label="{{<In0>|<In1>}|jamP|{<Out0>}}"]
+    c5373 [label="{{<In0>}|negate|{<Out0>}}"]
+    c5374:Out0 -> c5375:In0 []
+    c5372:Out0 -> c5374:In0 []
+    c5373:Out0 -> c5374:In1 []
+    c5372:Out1 -> c5373:In0 []
+  }
+}

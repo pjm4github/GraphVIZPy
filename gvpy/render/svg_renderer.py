@@ -217,10 +217,39 @@ def _render_cluster(cl: dict) -> str:
             f'fill="{c}" stroke="{stroke}"{sw}{dash}/>'
         )
     if label:
-        tx = x + w / 2
-        ty = y + 12
+        labeljust = cl.get("labeljust", "c")
+        labelloc = cl.get("labelloc", "t")
+        cl_margin = 8.0  # default cluster margin
+        try:
+            cl_margin = float(cl.get("margin", "8"))
+        except (ValueError, TypeError):
+            pass
+        label_pad = 4.0  # extra padding between label and border
+
+        # Vertical position: baseline y
+        # The SVG text y is the baseline.  For top placement, the
+        # baseline sits at  top_of_box + margin + font_ascent.
+        # Approximate ascent as 0.75 * font_size.
+        ascent = font_size * 0.75
+        if labelloc == "b":
+            ty = y + h - label_pad
+        else:
+            # top (default)
+            ty = y + label_pad + ascent
+
+        # Horizontal position
+        if labeljust == "l":
+            tx = x + cl_margin + label_pad
+            anchor = "start"
+        elif labeljust == "r":
+            tx = x + w - cl_margin - label_pad
+            anchor = "end"
+        else:
+            tx = x + w / 2
+            anchor = "middle"
+
         lines.append(
-            f'<text x="{tx:.2f}" y="{ty:.2f}" text-anchor="middle" '
+            f'<text x="{tx:.2f}" y="{ty:.2f}" text-anchor="{anchor}" '
             f'font-family="{font_family}" font-size="{font_size}" '
             f'fill="{font_color}">{label}</text>'
         )
@@ -384,21 +413,66 @@ def _render_record(root: dict, x: float, y: float, w: float, h: float,
     return lines
 
 
+def _measure_field(field: dict, horizontal: bool,
+                   font_size: float) -> float:
+    """Return the natural width (if horizontal) or height of a field.
+
+    Uses the same metrics as the layout engine's ``_measure_record_tree``
+    so that the renderer's proportional sizing matches the layout's total.
+    """
+    char_w = font_size * 0.52
+    field_pad = 8.0
+    min_cell = 20.0
+    cell_h = font_size * 1.4 + 4.0
+
+    effective = not horizontal if field.get("flipped") else horizontal
+
+    if not field.get("children"):
+        text = field.get("text") or ""
+        if horizontal:
+            return max(len(text) * char_w + field_pad * 2, min_cell)
+        else:
+            return cell_h
+
+    child_sizes = [
+        _measure_field(c, effective, font_size)
+        for c in field["children"]
+    ]
+    if effective:
+        # Children are horizontal → their widths sum for the parent's width
+        return sum(child_sizes) if horizontal else max(child_sizes)
+    else:
+        # Children are vertical → their heights sum for the parent's height
+        return max(child_sizes) if horizontal else sum(child_sizes)
+
+
 def _render_fields(fields: list[dict], x: float, y: float,
                    w: float, h: float, horizontal: bool,
                    stroke: str, font_family: str, font_size: float,
                    font_color: str, penwidth: float,
                    lines: list[str]):
-    """Render a list of record fields within the given rectangle."""
+    """Render a list of record fields within the given rectangle.
+
+    Fields are sized proportionally to their text content rather than
+    divided equally, matching the Graphviz C renderer.
+    """
     n = len(fields)
     if n == 0:
         return
     sw = f' stroke-width="{penwidth}"' if penwidth != 1.0 else ""
 
     if horizontal:
-        cell_w = w / n
+        # Compute natural widths and scale to fill available space
+        natural = [_measure_field(f, horizontal, font_size) for f in fields]
+        total_nat = sum(natural)
+        if total_nat > 0:
+            widths = [nw / total_nat * w for nw in natural]
+        else:
+            widths = [w / n] * n
+
+        cx = x
         for i, field in enumerate(fields):
-            cx = x + i * cell_w
+            cell_w = widths[i]
             # Vertical divider between fields
             if i > 0:
                 lines.append(
@@ -406,7 +480,6 @@ def _render_fields(fields: list[dict], x: float, y: float,
                     f'x2="{cx:.2f}" y2="{y + h:.2f}" '
                     f'stroke="{stroke}"{sw}/>')
             if field.get("children"):
-                # Flipped sub-fields: flip orientation
                 effective = not horizontal if field.get("flipped") else horizontal
                 _render_fields(field["children"], cx, y, cell_w, h,
                                effective, stroke, font_family, font_size,
@@ -420,10 +493,19 @@ def _render_fields(fields: list[dict], x: float, y: float,
                     f'text-anchor="middle" font-family="{font_family}" '
                     f'font-size="{font_size}" fill="{font_color}">'
                     f'{escape(text)}</text>')
+            cx += cell_w
     else:
-        cell_h = h / n
+        # Compute natural heights and scale to fill available space
+        natural = [_measure_field(f, horizontal, font_size) for f in fields]
+        total_nat = sum(natural)
+        if total_nat > 0:
+            heights = [nh / total_nat * h for nh in natural]
+        else:
+            heights = [h / n] * n
+
+        cy = y
         for i, field in enumerate(fields):
-            cy = y + i * cell_h
+            cell_h = heights[i]
             # Horizontal divider between fields
             if i > 0:
                 lines.append(
@@ -444,6 +526,7 @@ def _render_fields(fields: list[dict], x: float, y: float,
                     f'text-anchor="middle" font-family="{font_family}" '
                     f'font-size="{font_size}" fill="{font_color}">'
                     f'{escape(text)}</text>')
+            cy += cell_h
 
 
 def _render_node(node: dict) -> str:

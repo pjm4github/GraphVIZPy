@@ -956,6 +956,293 @@ See `pyproject.toml` for the full dependency specification.
 | Bulk file validation | 187 files | 155 pass, 32 skip |
 | **Total** | **685** | **All pass** |
 
+## Hierarchical Layout Algorithm (dot engine)
+
+This section explains how the `dot` layout engine positions nodes and clusters,
+using `test_data/aa1332.dot` (a real-world signal-processing dataflow graph) as
+a running example.  The file has `rankdir=LR` (left-to-right), so ranks run
+horizontally and the cross-rank axis is vertical.
+
+### Overview: Four Phases
+
+The Sugiyama framework lays out a directed graph in four phases:
+
+```
+Phase 1 ─ Rank Assignment     (which column does each node go in?)
+Phase 2 ─ Crossing Minimization (which row within the column?)
+Phase 3 ─ Coordinate Assignment (exact X, Y in points)
+Phase 4 ─ Edge Routing          (polyline / spline paths)
+```
+
+### Phase 1 — Rank Assignment
+
+**What is a rank?**  A rank is a vertical slice (column in LR mode) that
+groups nodes at the same depth in the directed graph.  Edges flow from lower
+ranks to higher ranks.
+
+Network simplex assigns each node an integer rank so that every edge
+`tail -> head` satisfies `rank(head) - rank(tail) >= minlen` (usually 1).
+The solver minimizes `sum(weight * length)` across all edges.
+
+For `aa1332.dot`, this produces 23 ranks (0..22).  Here are the first few:
+
+```
+ Rank 0 (x=67)     Rank 1 (x=162)   Rank 2 (x=272)   Rank 3 (x=382)
+ ┌──────────┐       ┌──────────┐     ┌──────────┐     ┌────────────────┐
+ │  c4119   │       │  c4139   │     │  c4114   │     │  c4115         │
+ │  54x50pt │       │  64x50pt │     │  54x50pt │     │  64x50pt       │
+ └──────────┘       └──────────┘     └──────────┘     └────────────────┘
+ ┌──────────┐       ┌──────────┐     ┌──────────┐     ┌────────────────┐
+ │  c4137   │       │  c4138   │     │  c4140   │     │     c4047      │
+ │  54x50pt │       │  64x50pt │     │  84x50pt │     │  103x148pt (!) │
+ └──────────┘       └──────────┘     └──────────┘     └────────────────┘
+                                                       ┌────────────────┐
+                                                       │  c4141         │
+                                                       │  56x37pt       │
+                                                       └────────────────┘
+```
+
+The **tallest node in rank 3** is `c4047` at 148pt.  This height determines the
+inter-rank spacing: every rank is separated by at least `ranksep` (default 18pt)
+plus the half-heights of the tallest nodes in adjacent ranks.
+
+### Cluster Hierarchy
+
+`aa1332.dot` has a deep cluster hierarchy.  Clusters are subgraphs whose names
+start with `cluster`.  Here is the tree (showing the green DarkGreen borders):
+
+```
+cluster_6754  (outermost green box, 90 nodes)
+├── cluster_4252  (29 nodes)
+│   ├── cluster_4117  (c4114, c4115, c4116)
+│   ├── cluster_4144
+│   │   ├── clusterc4119  (c4119)
+│   │   ├── clusterc4143  (c4143)
+│   │   └── cluster_4142  (c4137, c4138, c4139, c4140, c4141)
+│   ├── cluster_4148  (c4146, c4147)
+│   └── cluster_4250  (11 nodes)
+│       └── cluster_4246  (c4243, c4244, c4245)
+├── cluster_4257  (c4255, c4256)
+├── cluster_5378
+│   └── cluster_5376  (c5372, c5373, c5374, c5375)
+├── cluster_5383  (c5381, c5382)
+├── cluster_6382  (c6379, c6380, c6381)
+├── cluster_6409
+│   └── cluster_6407  (c6402, c6403, c6404, c6405, c6406)
+├── cluster_6413  (c6411, c6412)
+└── cluster_6752  (24 nodes)
+    ├── cluster_6726  (c6723, c6724, c6725)
+    ├── cluster_6737  (c6734, c6735, c6736)
+    └── cluster_6748  (c6745, c6746, c6747)
+```
+
+Nodes like `c4047`, `c4113`, `c4118` etc. are direct children of `cluster_4252`
+but are NOT inside any leaf cluster — they sit between the inner cluster boxes.
+
+### Phase 2 — Crossing Minimization
+
+Within each rank, nodes are ordered top-to-bottom (in LR mode) to minimize
+edge crossings.  For clustered graphs, the algorithm:
+
+1. **Collapse** each cluster into a single skeleton node
+2. Run median/transpose sweeps on the collapsed graph
+3. **Expand** each cluster, running local mincross within it
+
+For example, at rank 3 the mincross decides the top-to-bottom order is:
+`c4115, c4047, c4141`.  This order minimizes crossings with ranks 2 and 4.
+
+### Phase 3 — Coordinate Assignment (the hard part)
+
+This is where cluster containment is enforced.  Graphviz builds an
+**auxiliary constraint graph** and solves it with network simplex.
+
+#### Step 1: Y coordinates
+
+Each rank gets a Y coordinate based on the tallest node in that rank
+plus `ranksep`.  For `aa1332.dot` (LR mode, so Y is the rank axis):
+
+```
+Rank 0 at Y=0
+Rank 1 at Y = 0 + max_half_height(rank0) + ranksep + max_half_height(rank1)
+Rank 2 at Y = ...
+```
+
+The tallest node in rank 3 is `c4047` (148pt), so ranks 3-4 are spaced
+further apart than ranks 0-1 (where the tallest is 50pt).
+
+#### Step 2: Build the auxiliary constraint graph
+
+The auxiliary graph encodes ALL positioning constraints as directed edges
+with `minlen` (minimum distance) and `weight` (importance).  Network simplex
+then solves for the optimal X position of every node simultaneously.
+
+**Five types of auxiliary edges:**
+
+##### (a) Ordering edges — keep nodes in mincross order
+
+For each pair of adjacent nodes in the same rank, add an edge that
+enforces their left-to-right separation:
+
+```
+Rank 3:  c4115 ──(w=0, minlen=64)──> c4047 ──(w=0, minlen=99)──> c4141
+         "c4115 must be at least 64pt left of c4047"
+```
+
+The minlen is `half_width(left) + half_width(right) + nodesep`:
+- Between c4115 and c4047: 32 + 52 + 18 = ~102pt
+
+Weight = 0 means "enforce this constraint but don't optimize for it."
+
+##### (b) Edge alignment edges — straighten edges
+
+For each real edge (e.g., `c4140 -> c4141`), create a virtual slack
+node `sn` and two edges pulling tail and head toward alignment:
+
+```
+         sn
+        / \
+ (w=1) /   \ (w=1)
+      v     v
+   c4140   c4141
+```
+
+Both edges have minlen=0 (the slack node can be anywhere) and
+weight = edge_weight.  This pulls connected nodes toward the same
+X coordinate, straightening the edge.
+
+##### (c) Cluster containment edges — keep nodes inside clusters
+
+For each cluster, create two virtual boundary nodes `ln` (left) and
+`rn` (right).  Then for each rank within the cluster, add edges from
+`ln` to the leftmost node and from the rightmost node to `rn`:
+
+```
+cluster_4142:
+
+    ln_4142 ──(minlen=margin+hw)──> c4137    (rank 0, leftmost)
+    ln_4142 ──(minlen=margin+hw)──> c4139    (rank 1, leftmost)
+    ln_4142 ──(minlen=margin+hw)──> c4140    (rank 2, leftmost)
+    ln_4142 ──(minlen=margin+hw)──> c4141    (rank 3, leftmost)
+
+    c4137 ──(minlen=margin+hw)──> rn_4142    (rank 0, rightmost)
+    c4138 ──(minlen=margin+hw)──> rn_4142    (rank 1, rightmost)
+    c4140 ──(minlen=margin+hw)──> rn_4142    (rank 2, rightmost)
+    c4141 ──(minlen=margin+hw)──> rn_4142    (rank 3, rightmost)
+```
+
+These edges ensure no node escapes the cluster box.  Weight = 0.
+
+##### (d) Cluster compaction edges — make clusters tight
+
+```
+    ln_4142 ──(minlen=1, weight=128)──> rn_4142
+```
+
+This edge has **high weight (128)**, which strongly pulls the cluster
+boundaries together.  Network simplex will prioritize making the
+cluster narrow over straightening low-weight edges.
+
+##### (e) Hierarchy and separation edges
+
+Parent clusters contain child clusters:
+```
+    ln_4144 ──(minlen=margin)──> ln_4142     "child left inside parent left"
+    rn_4142 ──(minlen=margin)──> rn_4144     "child right inside parent right"
+```
+
+Sibling clusters are kept apart:
+```
+    rn_4142 ──(minlen=margin)──> ln_clusterc4143   "4142 left of c4143"
+```
+
+External nodes are kept outside:
+```
+    c4047 ──(minlen=margin+hw)──> ln_clusterc4047   (or reversed depending on order)
+```
+
+#### Step 3: Solve with Network Simplex
+
+The auxiliary graph is now a directed graph with ~300 nodes and ~800 edges
+(for aa1332.dot).  Network simplex finds the X position for every node
+that minimizes:
+
+```
+    total_cost = SUM over all edges e:  weight(e) * (rank(head) - rank(tail))
+```
+
+subject to: `rank(head) - rank(tail) >= minlen(e)` for every edge.
+
+**What the weights do:**
+
+| Weight | Purpose | Effect |
+|--------|---------|--------|
+| 0 | Ordering, containment, separation | "Must satisfy but don't optimize" |
+| 1 | Normal edge alignment | "Try to straighten this edge" |
+| 128 | Cluster compaction | "Strongly prefer a narrow cluster" |
+| 1000 | Group alignment | "These nodes MUST be aligned" |
+
+The solver iterates (default up to `nslimit * |nodes|` iterations):
+1. Build a spanning tree of the constraint graph
+2. For each non-tree edge, compute the "cut value" — how much the
+   solution improves by swapping it into the tree
+3. Swap the edge with the most negative cut value
+4. Repeat until no improving swap exists
+
+#### Step 4: Extract coordinates
+
+After network simplex, each node's "rank" field contains its X coordinate.
+The cluster bounding boxes come from the `ln` and `rn` positions:
+
+```
+cluster_4142.left  = X(ln_4142)
+cluster_4142.right = X(rn_4142)
+```
+
+### Phase 4 — Edge Routing
+
+Edges are routed as polylines or B-splines through the gaps between nodes.
+For edges that cross cluster boundaries (`ltail`/`lhead` attributes),
+the edge is clipped to the cluster bounding box.
+
+### Example: How cluster_4142 Gets Laid Out
+
+Here is the complete flow for the five nodes in `cluster_4142`
+(`c4137, c4138, c4139, c4140, c4141`):
+
+1. **Rank assignment**: c4137 gets rank 0, c4138/c4139 get rank 1,
+   c4140 gets rank 2, c4141 gets rank 3.
+
+2. **Mincross**: Within each rank, nodes are ordered to minimize crossings
+   with adjacent ranks.
+
+3. **Auxiliary graph**: The solver creates `ln_4142` and `rn_4142` boundary
+   nodes.  Containment edges pin all five nodes between them.  A compaction
+   edge (weight=128) pulls `ln` and `rn` together.  Hierarchy edges nest
+   `ln_4142`/`rn_4142` inside `ln_4144`/`rn_4144`.
+
+4. **Network simplex**: Solves all constraints simultaneously.  The high-weight
+   compaction edge makes cluster_4142 narrow.  The containment edges keep
+   c4137..c4141 inside.  The alignment edges pull connected nodes together.
+
+5. **Result**: cluster_4142 has a tight bounding box:
+   `bb = (32, 1036) to (418, 1170)` — width 386pt, height 134pt.
+
+### Reference Cluster Bounding Boxes
+
+For the full `aa1332.dot`, here are the reference Graphviz bounding boxes:
+
+```
+cluster_6754:  3089 x 1432pt  (outermost)
+cluster_4252:  1377 x  760pt  (largest sub-cluster)
+  cluster_4117:  285 x  66pt  (3 nodes)
+  cluster_4142:  386 x 134pt  (5 nodes)
+  cluster_4148:  204 x  54pt  (2 nodes)
+  cluster_4250:  721 x 234pt  (11 nodes)
+cluster_5378:   568 x 148pt
+cluster_6409:   620 x 208pt
+cluster_6752:  1446 x 234pt
+```
+
 ## Original Code
 
 The original Graphviz C source is from https://gitlab.com/graphviz/graphviz/

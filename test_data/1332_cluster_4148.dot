@@ -1,0 +1,14 @@
+digraph test_cluster_4148 {
+  rankdir=LR
+  node [shape=Mrecord]
+  edge [fontsize=8,fontcolor=indigo]
+  subgraph cluster_4148 {
+    margin=8
+    fontsize=20
+    labeljust=r
+    color=DarkGreen
+    c4146 [label="{In|{<Out0>}}"]
+    c4147 [label="{{<In0>}|Out}"]
+    c4146:Out0 -> c4147:In0 []
+  }
+}
