@@ -3771,6 +3771,8 @@ class DotLayout(LayoutEngine):
 
             level_set = set(aux_nodes)
             seen_align: set[tuple[str, str]] = set()
+
+            # Direct node <-> direct node / block alignment
             for n in direct:
                 for neighbor, w in adj.get(n, []):
                     target = neighbor if neighbor in level_set else node_to_block.get(neighbor)
@@ -3782,6 +3784,24 @@ class DotLayout(LayoutEngine):
                             aux_nodes.append(sn)
                             aux_edges.append((sn, n, 0, w))
                             aux_edges.append((sn, target, 0, w))
+
+            # Block <-> block alignment for edges between child clusters.
+            # This is critical when a parent cluster has NO direct nodes
+            # (all nodes are in child wrapper clusters forming a pipeline).
+            for kid in children:
+                for n in node_sets.get(kid, set()):
+                    for neighbor, w in adj.get(n, []):
+                        n_bn = node_to_block.get(n)
+                        t_bn = node_to_block.get(neighbor)
+                        if n_bn and t_bn and n_bn != t_bn:
+                            if n_bn in level_set and t_bn in level_set:
+                                key = (min(n_bn, t_bn), max(n_bn, t_bn))
+                                if key not in seen_align:
+                                    seen_align.add(key)
+                                    sn = _vnode("_sn")
+                                    aux_nodes.append(sn)
+                                    aux_edges.append((sn, n_bn, 0, w))
+                                    aux_edges.append((sn, t_bn, 0, w))
 
             if not aux_edges:
                 return
