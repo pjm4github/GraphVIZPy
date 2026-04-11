@@ -2663,7 +2663,8 @@ class DotLayout(LayoutEngine):
                 # BFS over hidden + virtual + child skeleton nodes
                 bfs_nodes = cl_hidden | cl_virtual | child_skel_set
                 bfs_order = self._cluster_build_ranks(
-                    bfs_nodes, child_skel_set, child_skel_ranks)
+                    bfs_nodes, child_skel_set, child_skel_ranks,
+                    node_sets)
 
                 # Splice BFS-ordered nodes at skeleton positions.
                 # Virtual nodes that were already in self.ranks at
@@ -3082,6 +3083,7 @@ class DotLayout(LayoutEngine):
         bfs_nodes: set[str],
         child_skel_set: set[str],
         child_skel_ranks: dict[str, dict[int, str]],
+        node_sets: dict[str, set[str]] | None = None,
     ) -> dict[int, list[str]]:
         """BFS-based initial ordering for cluster expand.
 
@@ -3187,14 +3189,31 @@ class DotLayout(LayoutEngine):
                    and not (n in self.lnodes and self.lnodes[n].virtual
                             and not n.startswith("_skel_"))]
 
-        # C walks nlist backward for clusters.  The nlist was built
-        # during initial ranking (decompose DFS) which follows DOT
-        # file order via agfstnode/agnxtnode.  We approximate this
-        # by using graph.nodes insertion order (DOT file order),
-        # then reversing for the backward walk.
+        # C mincross.c:1288-1298: walks nlist backward for clusters.
+        # The nlist was built by decompose DFS during initial ranking.
+        # We approximate by using DOT file node insertion order reversed
+        # (matching agfstnode/agnxtnode backward walk).
+        # For skeleton nodes, use the first real member of the child
+        # cluster in DOT file order as a proxy for nlist position.
         dot_order = {name: i for i, name in enumerate(self.graph.nodes)}
-        sources.sort(key=lambda n: dot_order.get(n, len(dot_order)),
-                     reverse=True)
+        _ns = node_sets or {}
+
+        def _source_sort_key(n):
+            """Sort key approximating C's nlist backward walk order.
+            Real nodes use DOT file position.  Skeleton nodes use
+            first-member DOT order of their child cluster, with
+            cluster name as tiebreaker for determinism."""
+            if n in dot_order:
+                return (dot_order[n], n)
+            child = skel_to_child.get(n)
+            if child and child in _ns:
+                members = sorted(dot_order[m] for m in _ns[child]
+                                 if m in dot_order)
+                if members:
+                    return (members[0], child)
+            return (len(dot_order), n)
+
+        sources.sort(key=_source_sort_key, reverse=True)
 
         # BFS (FIFO queue matching C's LIST_PUSH_BACK / LIST_POP_FRONT)
         # C mincross.c:1305-1320 build_ranks BFS loop
