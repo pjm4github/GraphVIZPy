@@ -522,9 +522,15 @@ class Node(Agobj):   # from core/core.c
         """
         if to_list:
             if isinstance(self.outedges, set):
-                self.outedges = sorted(self.outedges, key=lambda e: e.key)
+                self.outedges = sorted(self.outedges,
+                    key=lambda e: (e.tail.name if e.tail else "",
+                                   e.head.name if e.head else "",
+                                   e.name or ""))
             if isinstance(self.inedges, set):
-                self.inedges = sorted(self.inedges, key=lambda e: e.key)
+                self.inedges = sorted(self.inedges,
+                    key=lambda e: (e.tail.name if e.tail else "",
+                                   e.head.name if e.head else "",
+                                   e.name or ""))
         else:
             # Convert to sets
             if isinstance(self.outedges, list):
@@ -812,10 +818,16 @@ class Node(Agobj):   # from core/core.c
             # else, convert node.inedges to a list
             if outedge:
                 if isinstance(self.outedges, set):
-                    self.outedges = sorted(self.outedges, key=lambda e: e.key)
+                    self.outedges = sorted(self.outedges,
+                        key=lambda e: (e.tail.name if e.tail else "",
+                                       e.head.name if e.head else "",
+                                       e.name or ""))
             else:
                 if isinstance(self.inedges, set):
-                    self.inedges = sorted(self.inedges, key=lambda e: e.key)
+                    self.inedges = sorted(self.inedges,
+                        key=lambda e: (e.tail.name if e.tail else "",
+                                       e.head.name if e.head else "",
+                                       e.name or ""))
         else:
             # Convert to set
             if outedge:
