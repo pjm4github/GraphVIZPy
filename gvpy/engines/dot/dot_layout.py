@@ -3160,7 +3160,36 @@ class DotLayout(LayoutEngine):
                 prev_sn = sn
 
         # 1b. Process each node's outgoing edges (class2.c:174-282).
-        # Iterate in DOT file order (approximating agfstnode/agnxtnode).
+        # C iterates agfstnode(g)/agnxtnode(g,n) for node order, then
+        # agfstout(g,n)/agnxtout(g,e) for per-node edge order.
+        # agfstout returns edges in the subgraph's edge dictionary
+        # order — matching self.graph.edges insertion order for
+        # original edges.
+        #
+        # Build per-node outgoing edge index matching agfstout order.
+        # Walk the graph's edge dictionary recursively (subgraphs
+        # first, matching how edges appear in the DOT file).
+        node_out_edges: dict[str, list] = defaultdict(list)
+
+        def _collect_out_edges(g):
+            """Collect per-node outgoing edges in DOT definition order
+            (matching agfstout/agnxtout for the subgraph)."""
+            for key, edge in g.edges.items():
+                tail_name = key[0]
+                if tail_name in bfs_nodes:
+                    node_out_edges[tail_name].append(edge)
+            for sub in g.subgraphs.values():
+                _collect_out_edges(sub)
+        _collect_out_edges(self.graph)
+
+        # Also index virtual/skeleton edges per tail node
+        # (these come from edge splitting and skeleton construction,
+        # appended to self.ledges after original edges)
+        node_virt_edges: dict[str, list] = defaultdict(list)
+        for le in self.ledges:
+            if le.virtual and le.tail_name in bfs_nodes:
+                node_virt_edges[le.tail_name].append(le)
+
         dot_order = {name: i for i, name in enumerate(self.graph.nodes)}
         ordered_nodes = sorted(
             bfs_nodes,
@@ -3173,32 +3202,74 @@ class DotLayout(LayoutEngine):
             if not n_child and not is_virtual:
                 _fg_fast_node(n)
 
-            # class2.c:179: iterate outgoing edges (agfstout order).
-            # We iterate self.ledges filtered to edges FROM this node.
-            for le in self.ledges:
-                if le.tail_name != n:
-                    continue
-                t, h = n, le.head_name
-                if h not in bfs_nodes:
-                    continue
-                if t == h:
-                    continue  # self-edge (class2.c:226-230)
+            # class2.c:179: iterate outgoing edges in agfstout order.
+            # Process original edges first (from graph.edges), then
+            # virtual edges (from self.ledges, appended later).
+            seen_heads: set[str] = set()
 
-                t_ch = node_child.get(t) or skel_to_child.get(t)
+            # Helper: leader_of (class2.c:55-66) — for a node in a
+            # child cluster, return the skeleton rank leader at the
+            # node's rank.  For non-cluster nodes, return the node.
+            def _leader_of(name):
+                ch = node_child.get(name) or skel_to_child.get(name)
+                if ch and ch in child_skel_ranks:
+                    r = self.lnodes[name].rank if name in self.lnodes else None
+                    if r is not None and r in child_skel_ranks[ch]:
+                        return child_skel_ranks[ch][r]
+                return name
+
+            for edge in node_out_edges.get(n, []):
+                h = edge.head.name if edge.head else None
+                if not h or h not in bfs_nodes or h == n:
+                    continue
+
+                t_ch = node_child.get(n) or skel_to_child.get(n)
                 h_ch = node_child.get(h) or skel_to_child.get(h)
 
-                # class2.c:188: cluster edge?
                 if t_ch or h_ch:
                     if t_ch and h_ch and t_ch == h_ch:
                         continue  # intra-cluster (class2.c:199)
-                    # interclrep (class2.c:201): create edge between
-                    # leaders.  The _icv_ chain edges handle multi-rank
-                    # inter-cluster connections; direct edges go here.
-                    _fg_fast_edge(t, h)
+                    # interclrep (class2.c:99-124): convert to edge
+                    # between rank leaders via leader_of
+                    lt = _leader_of(n)
+                    lh = _leader_of(h)
+                    if lt != lh:
+                        pair_key = (lt, lh)
+                        if pair_key not in seen_heads:
+                            seen_heads.add(pair_key)
+                            _fg_fast_edge(lt, lh)
                     continue
 
-                # class2.c:205+: regular edge
-                _fg_fast_edge(t, h)
+                # class2.c:251: regular edge → make_chain/fast_edge
+                if h not in seen_heads:
+                    seen_heads.add(h)
+                    _fg_fast_edge(n, h)
+
+            # Virtual/skeleton edges from this node (interclrep chains,
+            # edge-split virtual edges)
+            for le in node_virt_edges.get(n, []):
+                h = le.head_name
+                if h not in bfs_nodes or h == n:
+                    continue
+
+                t_ch = node_child.get(n) or skel_to_child.get(n)
+                h_ch = node_child.get(h) or skel_to_child.get(h)
+
+                if t_ch or h_ch:
+                    if t_ch and h_ch and t_ch == h_ch:
+                        continue  # intra-cluster
+                    lt = _leader_of(n)
+                    lh = _leader_of(h)
+                    if lt != lh:
+                        pair_key = (lt, lh)
+                        if pair_key not in seen_heads:
+                            seen_heads.add(pair_key)
+                            _fg_fast_edge(lt, lh)
+                    continue
+
+                if h not in seen_heads:
+                    seen_heads.add(h)
+                    _fg_fast_edge(n, h)
 
         # ── Step 2: build_ranks uses GD_nlist directly ──────
         # expand_cluster (cluster.c:280-296) calls class2 then
