@@ -20,6 +20,7 @@ from GVLexer import GVLexer            # noqa: E402
 from GVParser import GVParser          # noqa: E402
 
 from gvpy.grammar.gv_visitor import GVGraphVisitor  # noqa: E402
+from gvpy.grammar.record_parser import parse_record_label  # noqa: E402
 from gvpy.core.graph import Graph                  # noqa: E402
 
 
@@ -41,6 +42,44 @@ class _SilentErrorListener(ErrorListener):
 
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e):
         self.errors.append(f"line {line}:{column} {msg}")
+
+
+def _init_record_fields(graph: Graph):
+    """Parse record labels into field trees on Node objects.
+
+    For each node with shape=record or shape=Mrecord, parses the label
+    attribute into a RecordField tree and stores it on node.record_fields.
+
+    C reference: shapes.c:3687 record_init() called from
+    dotinit.c:45 dot_init_node().
+    """
+    # Default node shape may come from graph-level "node" defaults
+    # (e.g., node [shape=Mrecord]).  Check the graph's node attr dict.
+    default_shape = getattr(graph, 'attr_dict_n', {}).get("shape", "")
+    for node in graph.nodes.values():
+        shape = node.attributes.get("shape", default_shape).lower()
+        if shape in ("record", "mrecord"):
+            label = node.attributes.get("label", node.name)
+            try:
+                node.record_fields = parse_record_label(label)
+            except Exception:
+                pass  # malformed label — leave record_fields as None
+
+    # Recurse into subgraphs (nodes may be defined in subgraphs)
+    def _walk_subgraphs(g):
+        for sub in g.subgraphs.values():
+            for node in sub.nodes.values():
+                if node.record_fields is not None:
+                    continue  # already parsed
+                shape = node.attributes.get("shape", "").lower()
+                if shape in ("record", "mrecord"):
+                    label = node.attributes.get("label", node.name)
+                    try:
+                        node.record_fields = parse_record_label(label)
+                    except Exception:
+                        pass
+            _walk_subgraphs(sub)
+    _walk_subgraphs(graph)
 
 
 def read_gv(text: str) -> Graph:
@@ -70,6 +109,13 @@ def read_gv(text: str) -> Graph:
 
     visitor = GVGraphVisitor()
     graph = visitor.visit(tree)
+
+    # Post-parse: parse record labels into field trees on Node objects.
+    # C does this in record_init() during dot_init_node() (shapes.c:3687,
+    # dotinit.c:45).  We do it here so the field tree is available to
+    # all consumers (layout engines, renderers, pictosync).
+    _init_record_fields(graph)
+
     return graph
 
 

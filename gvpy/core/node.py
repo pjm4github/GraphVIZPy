@@ -291,6 +291,12 @@ class Node(Agobj):   # from core/core.c
         # from the root enclosed_node.
         self.init_local_attr_values()
 
+        # Record field tree for record/Mrecord shapes.
+        # Parsed from the label attribute by parse_record_label()
+        # (gvpy/grammar/record_parser.py).  None if not a record shape.
+        # C reference: ND_shape_info(n) → field_t* (shapes.c:3705)
+        self.record_fields = None  # Optional[RecordField]
+
         # "Compound node" data
         self.compound_node_data: CompoundNode = CompoundNode()  # was cmp_mode_data
         self.collapsed: bool = False  # Indicates if this node is a collapsed subgraph
