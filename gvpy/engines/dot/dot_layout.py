@@ -2591,6 +2591,51 @@ class DotLayout(LayoutEngine):
                     continue
                 rank_leaders = skeleton_nodes[cl_name]
 
+                # Collect nodes hidden by this cluster
+                cl_hidden = {n for n, hider in hidden_by.items()
+                             if hider == cl_name and n in self.lnodes}
+
+                # Collect virtual nodes whose edge chains pass through
+                # this cluster (both orig_tail and orig_head are cluster
+                # members).  In C, these are in the cluster subgraph and
+                # participate in build_ranks BFS.
+                cl_member_set = node_sets[cl_name]
+                cl_virtual: set[str] = set()
+                cl_min_r = min(rank_leaders.keys())
+                cl_max_r = max(rank_leaders.keys())
+                for vname, vln in self.lnodes.items():
+                    if not vln.virtual:
+                        continue
+                    if vln.rank < cl_min_r or vln.rank > cl_max_r:
+                        continue
+                    # Check if this virtual node's edge chain connects
+                    # two cluster members (via orig_tail/orig_head)
+                    for le in self.ledges:
+                        if le.tail_name == vname or le.head_name == vname:
+                            ot = getattr(le, 'orig_tail', None)
+                            oh = getattr(le, 'orig_head', None)
+                            if ot and oh and ot in cl_member_set and oh in cl_member_set:
+                                cl_virtual.add(vname)
+                                break
+
+                # Child skeleton nodes
+                child_skel_set: set[str] = set()
+                child_skel_ranks: dict[str, dict[int, str]] = {}
+                for child in children_of.get(cl_name, []):
+                    if child in skeleton_nodes:
+                        child_skel_ranks[child] = skeleton_nodes[child]
+                        for sn in skeleton_nodes[child].values():
+                            child_skel_set.add(sn)
+
+                # BFS over hidden + virtual + child skeleton nodes
+                bfs_nodes = cl_hidden | cl_virtual | child_skel_set
+                bfs_order = self._cluster_build_ranks(
+                    bfs_nodes, child_skel_set, child_skel_ranks)
+
+                # Splice BFS-ordered nodes at skeleton positions.
+                # Virtual nodes that were already in self.ranks at
+                # their positions need to be removed first then
+                # re-inserted in BFS order.
                 for r, skel_name in rank_leaders.items():
                     rank_list = self.ranks.get(r, [])
                     try:
@@ -2598,12 +2643,22 @@ class DotLayout(LayoutEngine):
                     except ValueError:
                         continue
 
-                    # Nodes to restore at this rank
-                    restore = [n for n, hider in hidden_by.items()
-                               if hider == cl_name and n in self.lnodes
-                               and self.lnodes[n].rank == r]
-                    restore.sort(key=lambda n: self.lnodes[n].order)
+                    # Remove virtual nodes that will be re-placed by BFS
+                    virt_at_r = [n for n in cl_virtual
+                                 if n in self.lnodes
+                                 and self.lnodes[n].rank == r]
+                    for vn in virt_at_r:
+                        if vn in rank_list:
+                            idx = rank_list.index(vn)
+                            rank_list.pop(idx)
+                            if idx < skel_pos:
+                                skel_pos -= 1
 
+                    # Get BFS-ordered nodes for this rank, filter to
+                    # correct rank
+                    restore = [n for n in bfs_order.get(r, [])
+                               if n in self.lnodes
+                               and self.lnodes[n].rank == r]
                     if restore:
                         rank_list[skel_pos:skel_pos + 1] = restore
                     else:
@@ -2616,6 +2671,23 @@ class DotLayout(LayoutEngine):
                 for n in list(hidden_by):
                     if hidden_by[n] == cl_name:
                         del hidden_by[n]
+
+                # Trace expand ordering (matching C format)
+                print(f"[TRACE order] expand_cluster {cl_name}: after build_ranks", file=sys.stderr)
+                for r2 in sorted(rank_leaders.keys()):
+                    parts = []
+                    for n in self.ranks.get(r2, []):
+                        if n in child_skel_set:
+                            # Find which child cluster this skeleton represents
+                            for ch, rls in child_skel_ranks.items():
+                                if n in rls.values():
+                                    parts.append(f"[CL:{ch}]")
+                                    break
+                        elif n in self.lnodes and not self.lnodes[n].virtual:
+                            if n in node_sets.get(cl_name, set()):
+                                parts.append(n)
+                    if parts:
+                        print(f"[TRACE order]   rank {r2}: {' '.join(parts)}", file=sys.stderr)
 
                 # Local mincross within this cluster.
                 # Include child skeleton nodes that haven't been expanded
@@ -2988,10 +3060,14 @@ class DotLayout(LayoutEngine):
         sources = [n for n in bfs_nodes
                    if n not in has_incoming and n not in child_skel_set]
 
-        # C walks nlist backward for clusters to preserve input order.
-        # Our nlist equivalent is the original DFS order (stored in
-        # lnodes[n].order).  Reversing gives backward walk.
-        sources.sort(key=lambda n: self.lnodes[n].order, reverse=True)
+        # C walks nlist backward for clusters.  The nlist was built
+        # during initial ranking (decompose DFS) which follows DOT
+        # file order via agfstnode/agnxtnode.  We approximate this
+        # by using graph.nodes insertion order (DOT file order),
+        # then reversing for the backward walk.
+        dot_order = {name: i for i, name in enumerate(self.graph.nodes)}
+        sources.sort(key=lambda n: dot_order.get(n, len(dot_order)),
+                     reverse=True)
 
         # BFS (FIFO queue matching C's LIST_PUSH_BACK / LIST_POP_FRONT)
         result: dict[int, list[str]] = defaultdict(list)
