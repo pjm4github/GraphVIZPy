@@ -2757,28 +2757,36 @@ class DotLayout(LayoutEngine):
                         cl_node_set, min_r, max_r)
                     best_order = self._save_ordering()
                     # C mincross.c:1528-1554 mincross_step:
-                    # Alternates down/up passes with reverse flag.
-                    # pass%2==0: down, pass%2==1: up
-                    # Uses fast graph edges for median computation.
+                    # Each step: medians+reorder per rank, then ONE
+                    # transpose at the end.  Alternates down/up passes.
+                    # reverse = pass%4 < 2 (mincross.c:1532)
                     for _pass in range(max_iter):
+                        reverse = (_pass % 4) < 2
                         if _pass % 2 == 0:
                             # Down pass (mincross.c:1534-1538)
                             for r in range(min_r + 1, max_r + 1):
                                 if r in self.ranks:
-                                    self._cluster_median_order(
+                                    self._cluster_medians(
                                         r, r - 1, cl_node_set,
                                         cl_fg_out, cl_fg_in)
-                                    self._cluster_transpose(
-                                        r, cl_node_set, child_cl_map)
+                                    self._cluster_reorder(
+                                        r, cl_node_set, child_cl_map,
+                                        reverse)
                         else:
                             # Up pass (mincross.c:1540-1545)
                             for r in range(max_r - 1, min_r - 1, -1):
                                 if r in self.ranks:
-                                    self._cluster_median_order(
+                                    self._cluster_medians(
                                         r, r + 1, cl_node_set,
                                         cl_fg_out, cl_fg_in)
-                                    self._cluster_transpose(
-                                        r, cl_node_set, child_cl_map)
+                                    self._cluster_reorder(
+                                        r, cl_node_set, child_cl_map,
+                                        reverse)
+                        # Single transpose at end (mincross.c:1553)
+                        for r in range(min_r, max_r + 1):
+                            if r in self.ranks:
+                                self._cluster_transpose(
+                                    r, cl_node_set, child_cl_map)
                         c = self._count_cluster_crossings(
                             cl_node_set, min_r, max_r)
                         if c < best_cross:
@@ -3135,6 +3143,144 @@ class DotLayout(LayoutEngine):
                 self.lnodes[name].order = slot
 
         return changed
+
+    # ── Per-node mval storage for medians/reorder ──────────
+    _node_mval: dict[str, float] = {}
+
+    def _cluster_medians(self, rank: int, adj_rank: int,
+                          cl_nodes: set[str],
+                          fg_out: dict | None = None,
+                          fg_in: dict | None = None):
+        """Compute median values for nodes at rank.
+
+        Mirrors C mincross.c:1687-1743 medians().
+        Stores results in self._node_mval[name].
+        """
+        rank_nodes = self.ranks.get(rank, [])
+        adj_set = set(self.ranks.get(adj_rank, []))
+
+        for name in rank_nodes:
+            if name not in cl_nodes:
+                self._node_mval[name] = -1.0
+                continue
+
+            positions = []
+            if fg_out is not None and fg_in is not None:
+                # Fast graph edges (C ND_out/ND_in)
+                if adj_rank > rank:
+                    for nbr in fg_out.get(name, []):
+                        if nbr in adj_set:
+                            positions.append(self.lnodes[nbr].order)
+                else:
+                    for nbr in fg_in.get(name, []):
+                        if nbr in adj_set:
+                            positions.append(self.lnodes[nbr].order)
+            else:
+                for le in self.ledges:
+                    if le.tail_name == name and le.head_name in adj_set:
+                        positions.append(self.lnodes[le.head_name].order)
+                    elif le.head_name == name and le.tail_name in adj_set:
+                        positions.append(self.lnodes[le.tail_name].order)
+
+            # C mincross.c:1708-1735
+            if not positions:
+                self._node_mval[name] = -1.0
+            elif len(positions) == 1:
+                self._node_mval[name] = float(positions[0])
+            elif len(positions) == 2:
+                self._node_mval[name] = (positions[0] + positions[1]) / 2.0
+            else:
+                positions.sort()
+                m = len(positions) // 2
+                if len(positions) % 2:
+                    self._node_mval[name] = float(positions[m])
+                else:
+                    lm = m - 1
+                    rspan = positions[-1] - positions[m]
+                    lspan = positions[lm] - positions[0]
+                    if lspan == rspan:
+                        self._node_mval[name] = (positions[lm] + positions[m]) / 2.0
+                    elif lspan + rspan > 0:
+                        self._node_mval[name] = (
+                            positions[lm] * rspan + positions[m] * lspan
+                        ) / (lspan + rspan)
+                    else:
+                        self._node_mval[name] = (positions[lm] + positions[m]) / 2.0
+
+    def _cluster_reorder(self, rank: int, cl_nodes: set[str],
+                          child_cl_map: dict[str, str] | None = None,
+                          reverse: bool = False):
+        """Bubble-sort reorder matching C mincross.c:1476-1526 reorder().
+
+        Compares nodes by mval (from _cluster_medians).  Skips nodes
+        with mval < 0 (no neighbors).  Respects left2right (blocks
+        swaps between different child clusters).  The sawclust logic
+        allows jumping over a single cluster group.
+        """
+        nodes = self.ranks.get(rank, [])
+        n = len(nodes)
+        if n < 2:
+            return
+
+        mval = self._node_mval
+        ep = n  # shrinking endpoint (C: ep = vlist + n)
+
+        for nelt in range(n - 1, -1, -1):  # C: nelt = n-1 downto 0
+            li = 0
+            while li < ep:
+                # Find leftmost with mval >= 0 (C: mincross.c:1486)
+                while li < ep and mval.get(nodes[li], -1) < 0:
+                    li += 1
+                if li >= ep:
+                    break
+
+                # Find right comparison partner (C: mincross.c:1493)
+                sawclust = False
+                muststay = False
+                ri = li + 1
+                while ri < ep:
+                    rn = nodes[ri]
+                    # sawclust: skip consecutive cluster nodes
+                    # (C mincross.c:1494-1495)
+                    r_cl = (child_cl_map or {}).get(rn)
+                    if sawclust and r_cl:
+                        ri += 1
+                        continue
+                    # left2right check (C mincross.c:1496-1498)
+                    l_cl = (child_cl_map or {}).get(nodes[li])
+                    if l_cl and r_cl and l_cl != r_cl:
+                        # Check if either is virtual/skeleton (can swap)
+                        lv = nodes[li] in self.lnodes and self.lnodes[nodes[li]].virtual
+                        rv = rn in self.lnodes and self.lnodes[rn].virtual
+                        if not lv and not rv:
+                            muststay = True
+                            break
+                    # Found node with mval >= 0 (C mincross.c:1500)
+                    if mval.get(rn, -1) >= 0:
+                        break
+                    # Mark cluster encounter (C mincross.c:1502-1503)
+                    if r_cl:
+                        sawclust = True
+                    ri += 1
+
+                if ri >= ep:
+                    break
+
+                if not muststay:
+                    p1 = mval.get(nodes[li], -1)
+                    p2 = mval.get(nodes[ri], -1)
+                    # C mincross.c:1510: swap if p1>p2 or tie+reverse
+                    if p1 > p2 or (p1 >= p2 and reverse):
+                        # exchange (swap positions)
+                        nodes[li], nodes[ri] = nodes[ri], nodes[li]
+                        self.lnodes[nodes[li]].order = li
+                        self.lnodes[nodes[ri]].order = ri
+
+                li = ri
+
+            # C mincross.c:1517-1518: shrink unless hasfixed or reverse
+            if not reverse:
+                ep -= 1
 
     def _cluster_build_ranks(
         self,
