@@ -734,135 +734,12 @@ class _NetworkSimplex:
             self._cut = np.zeros(E, dtype=np.int64)
 
 
-# ── Record label parsing ─────────────────────────
 
-def _parse_record_fields(label: str) -> list[dict]:
-    """Parse a record label into a list of field dicts.
-
-    Each field has: {"text": str, "port": str, "children": list[dict]}
-    Handles | separators and {} sub-grouping.
-    Example: "<p1> A|{<p2> B|<p3> C}|D"
-    """
-    fields = []
-    depth = 0
-    current = ""
-    # Split on | at top level only (not inside {})
-    for ch in label:
-        if ch == "{":
-            depth += 1
-            current += ch
-        elif ch == "}":
-            depth -= 1
-            current += ch
-        elif ch == "|" and depth == 0:
-            fields.append(_parse_one_field(current.strip()))
-            current = ""
-        else:
-            current += ch
-    if current.strip():
-        fields.append(_parse_one_field(current.strip()))
-    return fields
-
-
-def _parse_one_field(text: str) -> dict:
-    """Parse a single record field, which may contain {sub|fields}."""
-    port = ""
-    children = []
-
-    # Check for port: "<portname> text"
-    if text.startswith("<"):
-        end = text.find(">")
-        if end > 0:
-            port = text[1:end].strip()
-            text = text[end + 1:].strip()
-
-    # Check for sub-fields: {a|b|c}
-    if text.startswith("{") and text.endswith("}"):
-        inner = text[1:-1]
-        children = _parse_record_fields(inner)
-        text = ""
-
-    return {"text": text, "port": port, "children": children}
-
-
-def _parse_record_ports(label: str, fontsize: float = 14.0,
-                        horizontal: bool = True) -> dict[str, float]:
-    """Parse record label and return port positions as x-fractions [0..1].
-
-    Walks the parsed record tree using the same proportional sizing as the
-    layout engine and renderer.  ``horizontal`` should be True for TB/BT
-    and False for LR/RL (matching the base orientation used by
-    ``_record_size`` and ``_render_record``).
-
-    For each port, the returned fraction indicates the port's center
-    position along the node's **width** axis in the final (post-rankdir)
-    coordinate space.  For LR/RL this is along the pre-swap **height**
-    axis, which ``_apply_rankdir`` turns into the width axis.
-    """
-    from gvpy.render.svg_renderer import _parse_record_label
-
-    tree = _parse_record_label(label)
-    if not tree:
-        return {}
-
-    char_w = fontsize * 0.52
-    field_pad = 8.0
-    min_cell = 20.0
-    cell_h = fontsize * 1.4 + 4.0
-
-    def _measure(node: dict, horiz: bool) -> tuple[float, float]:
-        """Return (width, height) of a node in the tree."""
-        eff = not horiz if node.get("flipped") else horiz
-        if not node.get("children"):
-            text = node.get("text", "")
-            w = max(len(text) * char_w + field_pad * 2, min_cell)
-            return w, cell_h
-        sizes = [_measure(c, eff) for c in node["children"]]
-        if eff:
-            return sum(cw for cw, _ in sizes), max(ch for _, ch in sizes)
-        else:
-            return max(cw for cw, _ in sizes), sum(ch for _, ch in sizes)
-
-    total_w, total_h = _measure(tree, horizontal)
-
-    ports: dict[str, float] = {}
-
-    def _collect(node: dict, horiz: bool,
-                 x0: float, y0: float, w: float, h: float):
-        """Walk the tree, collecting port centre positions as x-fractions."""
-        eff = not horiz if node.get("flipped") else horiz
-
-        if not node.get("children"):
-            if node.get("port"):
-                # Port's x-fraction = centre of this cell / total width
-                cx = (x0 + w / 2) / total_w if total_w > 0 else 0.5
-                ports[node["port"]] = cx
-            return
-
-        # Measure children to get proportional sizes
-        sizes = [_measure(c, eff) for c in node["children"]]
-
-        if eff:
-            # Horizontal: children run left-to-right
-            nat_ws = [cw for cw, _ in sizes]
-            sum_nat = sum(nat_ws)
-            cx = x0
-            for i, child in enumerate(node["children"]):
-                cw = nat_ws[i] / sum_nat * w if sum_nat > 0 else w / len(sizes)
-                _collect(child, eff, cx, y0, cw, h)
-                cx += cw
-        else:
-            # Vertical: children run top-to-bottom
-            nat_hs = [ch for _, ch in sizes]
-            sum_nat = sum(nat_hs)
-            cy = y0
-            for i, child in enumerate(node["children"]):
-                ch_i = nat_hs[i] / sum_nat * h if sum_nat > 0 else h / len(sizes)
-                _collect(child, eff, x0, cy, w, ch_i)
-                cy += ch_i
-
-    _collect(tree, horizontal, 0.0, 0.0, total_w, total_h)
-    return ports
+# Record label parsing removed � now handled by
+# gvpy.grammar.record_parser (ANTLR4 RecordLexer/RecordParser)
+# with field tree stored on Node.record_fields.
+# Removed: _parse_record_fields, _parse_one_field,
+# _parse_record_ports (replaced by Node.record_fields.port_fraction).
 
 
 # ── Layout engine ────────────────────────────────
@@ -909,7 +786,8 @@ class DotLayout(LayoutEngine):
         self._vnode_chains: dict[tuple[str, str], list[str]] = {}
         self._chain_edges: list[LayoutEdge] = []
         self._clusters: list[LayoutCluster] = []
-        self._record_ports: dict[str, dict[str, float]] = {}  # node -> {port: x_fraction}
+        # _record_ports removed — port fractions now come from
+        # Node.record_fields (parsed at DOT load, sized at layout start)
 
     # ── Public API ───────────────────────────────
 
@@ -1666,13 +1544,11 @@ class DotLayout(LayoutEngine):
             fontsize = 14.0
         char_w = fontsize * 0.52  # proportional character width estimate
 
-        # Record shapes: parse fields to determine dimensions and store port info
+        # Record shapes: parse fields to determine dimensions
+        # Port positions now come from Node.record_fields (sized in
+        # _init_from_graph), not from _parse_record_ports.
         if shape in ("record", "Mrecord"):
             w, h = self._record_size(label, fontsize, char_w)
-            # Parse and store port positions on the node
-            rec_horiz = self.rankdir not in ("LR", "RL")
-            self._record_ports[name] = _parse_record_ports(
-                label, fontsize, horizontal=rec_horiz)
         else:
             # Strip HTML tags for sizing
             if label.startswith("<") and label.endswith(">"):
@@ -3044,71 +2920,10 @@ class DotLayout(LayoutEngine):
         self._port_order_cache[cache_key] = port_order
         return self._MC_SCALE * order + port_order
 
-    def _port_order_from_label(self, label: str, port_name: str) -> int:
-        """Compute port.order from record label string.
-        Matches C sameport.c:151-152 proportional positioning.
+    # _port_order_from_label and _split_record_fields removed �
+    # port.order now comes from Node.record_fields.port_fraction()
+    # (ANTLR4 RecordParser, sized at layout start).
 
-        For a record label like {name|In|{<Out0>|<Out1>}}, each
-        top-level field occupies an equal fraction of the node width.
-        Sub-fields within a group also split equally.  The port's
-        position is the center of its sub-field region.
-        """
-        # Strip outer braces
-        inner = label.strip()
-        if inner.startswith("{") and inner.endswith("}"):
-            inner = inner[1:-1]
-
-        # Split into top-level fields (respecting nested braces)
-        fields = self._split_record_fields(inner)
-        n_fields = len(fields)
-        if n_fields == 0:
-            return self._MC_SCALE // 2
-
-        # Search for the port in each field
-        for fi, field in enumerate(fields):
-            # Field center position as fraction of total width
-            field_left = fi / n_fields
-            field_right = (fi + 1) / n_fields
-            field_center = (field_left + field_right) / 2.0
-
-            # Check if port is in this field (possibly nested)
-            sub_fields = self._split_record_fields(
-                field.strip("{}"))
-            if not sub_fields:
-                sub_fields = [field]
-
-            for si, sub in enumerate(sub_fields):
-                if f"<{port_name}>" in sub:
-                    # Found port — compute proportional position
-                    n_sub = len(sub_fields)
-                    sub_left = field_left + si / n_sub * (field_right - field_left)
-                    sub_right = field_left + (si + 1) / n_sub * (field_right - field_left)
-                    pos = (sub_left + sub_right) / 2.0
-                    return int(pos * self._MC_SCALE)
-
-        return self._MC_SCALE // 2  # port not found — center
-
-    @staticmethod
-    def _split_record_fields(s: str) -> list[str]:
-        """Split record label string by | respecting nested {}."""
-        fields = []
-        depth = 0
-        current = []
-        for ch in s:
-            if ch == '{':
-                depth += 1
-                current.append(ch)
-            elif ch == '}':
-                depth -= 1
-                current.append(ch)
-            elif ch == '|' and depth == 0:
-                fields.append(''.join(current).strip())
-                current = []
-            else:
-                current.append(ch)
-        if current:
-            fields.append(''.join(current).strip())
-        return [f for f in fields if f]
 
     def _cluster_medians(self, rank: int, adj_rank: int,
                           cl_nodes: set[str],
@@ -6012,11 +5827,12 @@ class DotLayout(LayoutEngine):
         ``is_tail`` determines which boundary: tails attach at the
         bottom/right edge (toward the next rank), heads at the top/left.
         """
-        ports = self._record_ports.get(node_name)
-        if not ports:
-            return None
+        # Look up port fraction from Node.record_fields (source of truth)
         port_name = port.split(":")[0] if ":" in port else port
-        frac = ports.get(port_name)
+        ln_obj = self.lnodes.get(node_name)
+        if not ln_obj or not ln_obj.node or ln_obj.node.record_fields is None:
+            return None
+        frac = ln_obj.node.record_fields.port_fraction(port_name)
         if frac is None:
             return None
 
@@ -6587,8 +6403,20 @@ class DotLayout(LayoutEngine):
                         entry[attr] = val
             # Pass rankdir so the renderer knows record field orientation
             entry["_rankdir"] = self.rankdir
-            if name in self._record_ports:
-                entry["record_ports"] = self._record_ports[name]
+            # Include record port positions from Node.record_fields
+            if ln.node and ln.node.record_fields is not None:
+                rf = ln.node.record_fields
+                ports_dict = {}
+                def _collect_port_fracs(f):
+                    if f.port:
+                        frac = rf.port_fraction(f.port)
+                        if frac is not None:
+                            ports_dict[f.port] = frac
+                    for c in f.children:
+                        _collect_port_fracs(c)
+                _collect_port_fracs(rf)
+                if ports_dict:
+                    entry["record_ports"] = ports_dict
             nodes_json.append(entry)
 
         edges_json = []
