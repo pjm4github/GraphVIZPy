@@ -2706,8 +2706,18 @@ class DotLayout(LayoutEngine):
                 ))
                 if len(cl_ranks) >= 2:
                     min_r, max_r = min(cl_ranks), max(cl_ranks)
-                    # Match C: mincross(subg, 0) does passes 0,1,2
-                    # with up to 4+4+24 iterations.
+
+                    # Build child-cluster map matching C's mark_clusters:
+                    # each node maps to its top-level child cluster within
+                    # cl_name.  Skeleton nodes are NOT mapped (they can be
+                    # swapped freely — matching C left2right exception for
+                    # CLUSTER+VIRTUAL nodes).
+                    child_cl_map: dict[str, str] = {}
+                    for child in children_of.get(cl_name, []):
+                        for n in node_sets.get(child, set()):
+                            if n in cl_node_set:
+                                child_cl_map[n] = child
+
                     max_iter = max(4, int(24 * self.mclimit))
                     best_cross = self._count_cluster_crossings(
                         cl_node_set, min_r, max_r)
@@ -2715,12 +2725,16 @@ class DotLayout(LayoutEngine):
                     for _ in range(max_iter):
                         for r in range(min_r + 1, max_r + 1):
                             if r in self.ranks:
-                                self._cluster_median_order(r, r - 1, cl_node_set)
-                                self._cluster_transpose(r, cl_node_set)
+                                self._cluster_median_order(
+                                    r, r - 1, cl_node_set)
+                                self._cluster_transpose(
+                                    r, cl_node_set, child_cl_map)
                         for r in range(max_r - 1, min_r - 1, -1):
                             if r in self.ranks:
-                                self._cluster_median_order(r, r + 1, cl_node_set)
-                                self._cluster_transpose(r, cl_node_set)
+                                self._cluster_median_order(
+                                    r, r + 1, cl_node_set)
+                                self._cluster_transpose(
+                                    r, cl_node_set, child_cl_map)
                         c = self._count_cluster_crossings(
                             cl_node_set, min_r, max_r)
                         if c < best_cross:
@@ -3044,14 +3058,38 @@ class DotLayout(LayoutEngine):
         (matching C's ``class2`` which converts them to inter-cluster
         edges via skeleton rank-leaders).
         """
-        # Build adjacency limited to bfs_nodes
+        # Build adjacency limited to bfs_nodes.
+        # Edge ordering matters: C's class2 adds skeleton edges FIRST
+        # (via build_skeleton), then processes original edges (via
+        # agfstout/agnxtout).  We match this by putting skeleton/virtual
+        # edges first, then original DOT-file edges.
         adj_out: dict[str, list[str]] = defaultdict(list)
         has_incoming: set[str] = set()
+        seen_adj: set[tuple[str, str]] = set()
+
+        # Pass 1: skeleton/virtual edges first (matching C build_skeleton)
         for le in self.ledges:
+            if not le.virtual:
+                continue
             t, h = le.tail_name, le.head_name
             if t in bfs_nodes and h in bfs_nodes:
-                adj_out[t].append(h)
-                has_incoming.add(h)
+                pair = (t, h)
+                if pair not in seen_adj:
+                    seen_adj.add(pair)
+                    adj_out[t].append(h)
+                    has_incoming.add(h)
+
+        # Pass 2: original edges (matching C agfstout/agnxtout order)
+        for le in self.ledges:
+            if le.virtual:
+                continue
+            t, h = le.tail_name, le.head_name
+            if t in bfs_nodes and h in bfs_nodes:
+                pair = (t, h)
+                if pair not in seen_adj:
+                    seen_adj.add(pair)
+                    adj_out[t].append(h)
+                    has_incoming.add(h)
 
         # Map: skeleton node → child cluster name
         skel_to_child: dict[str, str] = {}
@@ -3132,8 +3170,15 @@ class DotLayout(LayoutEngine):
 
         return result
 
-    def _cluster_transpose(self, rank: int, cl_nodes: set[str]):
-        """Adjacent-swap transpose restricted to cluster nodes."""
+    def _cluster_transpose(self, rank: int, cl_nodes: set[str],
+                           child_cl_map: dict[str, str] | None = None):
+        """Adjacent-swap transpose restricted to cluster nodes.
+
+        Mirrors C ``transpose_step()`` with ``left2right()`` enforcement:
+        nodes in different child clusters cannot be swapped, UNLESS one
+        is a virtual (skeleton) node.  This preserves child-cluster
+        grouping while allowing skeleton nodes to move freely.
+        """
         nodes = self.ranks.get(rank, [])
         if len(nodes) < 2:
             return
@@ -3141,14 +3186,27 @@ class DotLayout(LayoutEngine):
         while improved:
             improved = False
             for i in range(len(nodes) - 1):
-                if nodes[i] not in cl_nodes or nodes[i + 1] not in cl_nodes:
+                v, w = nodes[i], nodes[i + 1]
+                if v not in cl_nodes or w not in cl_nodes:
                     continue
-                c_before = self._count_crossings_for_pair(nodes[i], nodes[i + 1])
-                c_after = self._count_crossings_for_pair(nodes[i + 1], nodes[i])
+                # left2right check: block swaps between different
+                # child clusters unless one is a skeleton/virtual node
+                if child_cl_map:
+                    v_cl = child_cl_map.get(v)
+                    w_cl = child_cl_map.get(w)
+                    if v_cl and w_cl and v_cl != w_cl:
+                        # Both in different child clusters — check if
+                        # either is a virtual/skeleton node (can swap)
+                        v_virt = v in self.lnodes and self.lnodes[v].virtual
+                        w_virt = w in self.lnodes and self.lnodes[w].virtual
+                        if not v_virt and not w_virt:
+                            continue  # block swap
+                c_before = self._count_crossings_for_pair(v, w)
+                c_after = self._count_crossings_for_pair(w, v)
                 if c_after < c_before:
-                    nodes[i], nodes[i + 1] = nodes[i + 1], nodes[i]
-                    self.lnodes[nodes[i]].order = i
-                    self.lnodes[nodes[i + 1]].order = i + 1
+                    nodes[i], nodes[i + 1] = w, v
+                    self.lnodes[w].order = i
+                    self.lnodes[v].order = i + 1
                     improved = True
 
     def _order_by_weighted_median(self, rank: int, adj_rank: int):
