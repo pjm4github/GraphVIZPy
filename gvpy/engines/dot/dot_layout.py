@@ -3085,158 +3085,164 @@ class DotLayout(LayoutEngine):
         child_skel_ranks: dict[str, dict[int, str]],
         node_sets: dict[str, set[str]] | None = None,
     ) -> dict[int, list[str]]:
-        """BFS-based initial ordering for cluster expand.
+        """Initial ordering for cluster expand via class2 + decompose + build_ranks.
 
-        Faithfully mirrors C ``build_ranks(subg, pass=0)`` inside
-        ``expand_cluster()``:
-
-        1. Walk node list **backward** (C: ``walkbackwards`` for clusters).
-        2. Find source nodes (no incoming edges within ``bfs_nodes``).
-        3. BFS from sources via outgoing edges:
-           - Regular nodes: install in rank, enqueue outgoing neighbors.
-           - Child skeleton nodes (CLUSTER type): install all rank
-             leaders for that child cluster, enqueue their neighbors.
-        4. Reverse each rank if ``GD_flip`` (rankdir LR/RL).
-
-        Edges between nodes in DIFFERENT child clusters are excluded
-        (matching C's ``class2`` which converts them to inter-cluster
-        edges via skeleton rank-leaders).
+        Ports C expand_cluster (cluster.c:280-296):
+          class2(subg)            → build fast graph with scoped edge lists
+          build_ranks(subg, 0)    → decompose DFS for nlist, then BFS
         """
-        # Build adjacency limited to bfs_nodes.
-        # Edge ordering in ND_out matters for BFS discovery order.
-        # C's class2 populates ND_out in this order:
-        #   1. build_skeleton chain edges (same-cluster vertical,
-        #      class2.c:164-165)
-        #   2. interclrep edges (cross-cluster, class2.c:188-203)
-        #   3. regular edges (class2.c:205+)
-        # We match this by adding edges in three passes.
-        adj_out: dict[str, list[str]] = defaultdict(list)
-        has_incoming: set[str] = set()
-        seen_adj: set[tuple[str, str]] = set()
+        _ns = node_sets or {}
 
-        # Identify which skeleton nodes belong to which child cluster
-        # so we can separate chain edges from inter-cluster edges.
-        _skel_child: dict[str, str] = {}
-        for ch_name, rls in child_skel_ranks.items():
-            for sn in rls.values():
-                _skel_child[sn] = ch_name
-
-        # Pass 1: skeleton chain edges (within same child cluster)
-        # These are the vertical edges connecting rank leaders of the
-        # same cluster.  In C, build_skeleton adds these first.
-        # (C class2.c:164-165, cluster.c build_skeleton)
-        for le in self.ledges:
-            if not le.virtual:
-                continue
-            t, h = le.tail_name, le.head_name
-            if t in bfs_nodes and h in bfs_nodes:
-                # Chain edge = both endpoints in same child cluster
-                t_ch = _skel_child.get(t)
-                h_ch = _skel_child.get(h)
-                if t_ch and h_ch and t_ch == h_ch:
-                    pair = (t, h)
-                    if pair not in seen_adj:
-                        seen_adj.add(pair)
-                        adj_out[t].append(h)
-                        has_incoming.add(h)
-
-        # Pass 2: inter-cluster edges (virtual edges between different
-        # child clusters or from non-cluster nodes to cluster nodes)
-        # (C class2.c:188-203 interclrep)
-        for le in self.ledges:
-            if not le.virtual:
-                continue
-            t, h = le.tail_name, le.head_name
-            if t in bfs_nodes and h in bfs_nodes:
-                pair = (t, h)
-                if pair not in seen_adj:
-                    seen_adj.add(pair)
-                    adj_out[t].append(h)
-                    has_incoming.add(h)
-
-        # Pass 3: original DOT-file edges
-        # (C class2.c:205+ regular edge processing)
-        for le in self.ledges:
-            if le.virtual:
-                continue
-            t, h = le.tail_name, le.head_name
-            if t in bfs_nodes and h in bfs_nodes:
-                pair = (t, h)
-                if pair not in seen_adj:
-                    seen_adj.add(pair)
-                    adj_out[t].append(h)
-                    has_incoming.add(h)
-
-        # Map: skeleton node → child cluster name
+        # ── Maps ──
         skel_to_child: dict[str, str] = {}
         for child_name, rleaders in child_skel_ranks.items():
             for sn in rleaders.values():
                 skel_to_child[sn] = child_name
 
-        # Source nodes: no incoming edges within bfs_nodes.
-        # C mincross.c:1298-1301: walks nlist backward, checks
-        # ND_in(n).list[0] != NULL (pass=0).  Sources include:
-        # - CLUSTER-type nodes (child skeleton rank leaders) with
-        #   no incoming edges — these start BFS and trigger
-        #   install_cluster
-        # - Non-cluster, non-virtual nodes with no incoming edges
-        # Virtual nodes from edge splitting are excluded — they
-        # always have predecessors in the full subgraph but may
-        # appear sourceless here because their predecessor is
-        # hidden by a child cluster.
-        sources = [n for n in bfs_nodes
-                   if n not in has_incoming
-                   and not (n in self.lnodes and self.lnodes[n].virtual
-                            and not n.startswith("_skel_"))]
+        # mark_clusters (class2.c:163): node → top-level child cluster
+        node_child: dict[str, str] = {}
+        for child_name in child_skel_ranks:
+            for n in _ns.get(child_name, set()):
+                if n in bfs_nodes:
+                    node_child[n] = child_name
 
-        # C mincross.c:1288-1298: walks nlist backward for clusters.
-        # The nlist was built by decompose DFS during initial ranking.
-        # We approximate by using DOT file node insertion order reversed
-        # (matching agfstnode/agnxtnode backward walk).
-        # For skeleton nodes, use the first real member of the child
-        # cluster in DOT file order as a proxy for nlist position.
+        # ── Step 1: class2 — build fast graph (class2.c:155-282) ──
+        # Per-node out/in edge lists + nlist, matching C fastgr.c.
+        fg_nlist: list[str] = []          # GD_nlist — prepend order
+        fg_nlist_set: set[str] = set()
+        fg_out: dict[str, list[str]] = defaultdict(list)  # ND_out
+        fg_in: dict[str, list[str]] = defaultdict(list)   # ND_in
+        fg_edges: set[tuple[str, str]] = set()  # dedup
+
+        def _fg_fast_node(n: str):
+            """C fastgr.c:175-187 — prepend n to nlist."""
+            if n not in fg_nlist_set:
+                fg_nlist.insert(0, n)
+                fg_nlist_set.add(n)
+
+        def _fg_fast_edge(t: str, h: str):
+            """C fastgr.c:71-93 — append to tail out / head in."""
+            pair = (t, h)
+            if pair not in fg_edges:
+                fg_edges.add(pair)
+                fg_out[t].append(h)
+                fg_in[h].append(t)
+
+        # 1a. build_skeleton for each child cluster
+        # C class2.c:164-165, cluster.c:356-374.
+        # virtual_node calls fast_node (prepend), virtual_edge calls
+        # fast_edge (append to ND_out).  Iterate child clusters in
+        # sorted order for determinism (C iterates GD_clust array
+        # which is in subgraph registration order).
+        for child_name in sorted(child_skel_ranks.keys()):
+            rleaders = child_skel_ranks[child_name]
+            prev_sn = None
+            for r in sorted(rleaders.keys()):
+                sn = rleaders[r]
+                _fg_fast_node(sn)            # virtual_node → fast_node
+                if prev_sn is not None:
+                    _fg_fast_edge(prev_sn, sn)  # virtual_edge chain
+                prev_sn = sn
+
+        # 1b. Process each node's outgoing edges (class2.c:174-282).
+        # Iterate in DOT file order (approximating agfstnode/agnxtnode).
         dot_order = {name: i for i, name in enumerate(self.graph.nodes)}
-        _ns = node_sets or {}
+        ordered_nodes = sorted(
+            bfs_nodes,
+            key=lambda n: (dot_order.get(n, len(dot_order)), n))
 
-        # Source nodes: no incoming edges within bfs_nodes.
-        # C mincross.c:1298-1301: walks nlist backward, checks
-        # ND_in(n).list[0] != NULL (pass=0).  Sources include
-        # skeleton nodes (they trigger install_cluster) but exclude
-        # edge-splitting virtual nodes (_v_*) which always have
-        # predecessors in the full subgraph.
-        # Sort by first-member DOT order with name tiebreaker for
-        # deterministic ordering.
-        dot_order = {name: i for i, name in enumerate(self.graph.nodes)}
-        _ns = node_sets or {}
+        for n in ordered_nodes:
+            # class2.c:175-176: non-cluster leader nodes → fast_node
+            n_child = node_child.get(n) or skel_to_child.get(n)
+            is_virtual = n in self.lnodes and self.lnodes[n].virtual
+            if not n_child and not is_virtual:
+                _fg_fast_node(n)
 
-        sources = [n for n in bfs_nodes
-                   if n not in has_incoming
-                   and not (n in self.lnodes and self.lnodes[n].virtual
-                            and not n.startswith("_skel_"))]
+            # class2.c:179: iterate outgoing edges (agfstout order).
+            # We iterate self.ledges filtered to edges FROM this node.
+            for le in self.ledges:
+                if le.tail_name != n:
+                    continue
+                t, h = n, le.head_name
+                if h not in bfs_nodes:
+                    continue
+                if t == h:
+                    continue  # self-edge (class2.c:226-230)
 
-        def _source_sort_key(n):
-            """DOT-file order for real nodes; first-member DOT order
-            for skeleton nodes.  Name as tiebreaker for determinism."""
-            if n in dot_order:
-                return (dot_order[n], n)
-            child = skel_to_child.get(n)
-            if child and child in _ns:
-                members = sorted(dot_order[m] for m in _ns[child]
-                                 if m in dot_order)
-                if members:
-                    return (members[0], child)
-            return (len(dot_order), n)
+                t_ch = node_child.get(t) or skel_to_child.get(t)
+                h_ch = node_child.get(h) or skel_to_child.get(h)
 
-        sources.sort(key=_source_sort_key, reverse=True)
+                # class2.c:188: cluster edge?
+                if t_ch or h_ch:
+                    if t_ch and h_ch and t_ch == h_ch:
+                        continue  # intra-cluster (class2.c:199)
+                    # interclrep (class2.c:201): create edge between
+                    # leaders.  The _icv_ chain edges handle multi-rank
+                    # inter-cluster connections; direct edges go here.
+                    _fg_fast_edge(t, h)
+                    continue
 
-        # BFS (FIFO queue matching C's LIST_PUSH_BACK / LIST_POP_FRONT)
-        # C mincross.c:1305-1320 build_ranks BFS loop
+                # class2.c:205+: regular edge
+                _fg_fast_edge(t, h)
+
+        # ── Step 2: decompose DFS for nlist (decomp.c:85-130) ──
+        # LIFO stack DFS, reverse edge iteration.
+        # C decompose.c:117: iterates agfstnode(g) which traverses
+        # the nlist linked list.  fast_node prepends, so fg_nlist[0]
+        # is the LAST node added.  We iterate fg_nlist forward
+        # (matching GD_nlist → ND_next traversal).
+        decompose_nlist: list[str] = []
+        decompose_visited: set[str] = set()
+
+        def _search_component(start: str):
+            """C decomp.c:85-106 search_component."""
+            stack = [start]
+            while stack:
+                nd = stack.pop()         # LIFO (decomp.c:74 pop back)
+                if nd in decompose_visited:
+                    continue
+                decompose_visited.add(nd)
+                decompose_nlist.append(nd)  # add_to_component
+                # decomp.c:92 vec = {flat_in, flat_out, in, out}
+                # We use (in, out), each reversed (decomp.c:96)
+                for nbr_list in [fg_in.get(nd, []),
+                                 fg_out.get(nd, [])]:
+                    for nbr in reversed(nbr_list):
+                        if nbr not in decompose_visited:
+                            stack.append(nbr)
+
+        # decompose.c:117-128: iterate the nlist.
+        # C also checks UF_find(v)==v and ND_clust(v) for pass>0.
+        # For pass=0 (our case): skip nodes where v != UF_find(v).
+        # Non-leader nodes (in a child cluster, not skeleton) are
+        # skipped — they're discovered via edges from leaders.
+        for n in fg_nlist:
+            if n not in decompose_visited:
+                _search_component(n)
+        # Also visit any bfs_nodes not in fg_nlist (edge-split virtual
+        # nodes that weren't added by fast_node).
+        for n in sorted(bfs_nodes):
+            if n not in decompose_visited:
+                _search_component(n)
+
+        # ── Step 3: build_ranks BFS (mincross.c:1265-1339) ──
+        # Walk decompose_nlist backward (mincross.c:1288 walkbackwards).
+        # Source = no incoming edges in fast graph (ND_in empty).
+        # Exclude edge-split virtual nodes (_v_*) which have
+        # predecessors outside bfs_nodes.
+        sources = []
+        for n in reversed(decompose_nlist):
+            if fg_in.get(n):
+                continue  # has incoming — not a source
+            if (n in self.lnodes and self.lnodes[n].virtual
+                    and not n.startswith("_skel_")):
+                continue  # _v_* virtual node — skip
+            sources.append(n)
+
+        # BFS from sources (mincross.c:1302-1320)
         result: dict[int, list[str]] = defaultdict(list)
         visited: set[str] = set()
         installed_children: set[str] = set()
-
-        # Enable BFS trace for specific clusters (large ones where
-        # ordering matters)
         _bfs_trace = len(bfs_nodes) > 20
 
         if _bfs_trace:
@@ -3244,66 +3250,54 @@ class DotLayout(LayoutEngine):
 
         queue: deque[str] = deque()
         for s in sources:
-            if s not in visited:
-                visited.add(s)
-                queue.append(s)
-                while queue:
-                    n0 = queue.popleft()
-                    if n0 in child_skel_set:
-                        # CLUSTER node: install all rank leaders
-                        # C cluster.c:393-407 install_cluster
-                        child_name = skel_to_child.get(n0, "")
-                        if child_name and child_name not in installed_children:
-                            installed_children.add(child_name)
-                            if _bfs_trace:
-                                print(f"[TRACE bfs] install_cluster {child_name}", file=sys.stderr)
-                            rleaders = child_skel_ranks[child_name]
-                            for r in sorted(rleaders.keys()):
-                                sn = rleaders[r]
-                                result[r].append(sn)
-                            # Enqueue neighbors of all rank leaders
-                            # C cluster.c:405-406
-                            for sn in rleaders.values():
-                                for nbr in adj_out.get(sn, []):
-                                    if nbr not in visited:
-                                        visited.add(nbr)
-                                        queue.append(nbr)
-                                        if _bfs_trace:
-                                            nbr_r = self.lnodes[nbr].rank if nbr in self.lnodes else "?"
-                                            nbr_cl = skel_to_child.get(nbr, "")
-                                            print(f"[TRACE bfs]   enqueue {nbr} (rank={nbr_r}, cl={nbr_cl}) from {sn}", file=sys.stderr)
-                    else:
-                        # Regular node: install in its rank
-                        # C mincross.c:1307-1312
-                        result[self.lnodes[n0].rank].append(n0)
-                        if _bfs_trace:
-                            print(f"[TRACE bfs] install {n0} rank={self.lnodes[n0].rank}", file=sys.stderr)
-                        # Enqueue outgoing neighbors (pass=0)
-                        # C mincross.c:1341-1351 enqueue_neighbors
-                        for nbr in adj_out.get(n0, []):
-                            if nbr not in visited:
-                                visited.add(nbr)
-                                queue.append(nbr)
-                                if _bfs_trace:
-                                    nbr_r = self.lnodes[nbr].rank if nbr in self.lnodes else "?"
-                                    nbr_cl = skel_to_child.get(nbr, "")
-                                    print(f"[TRACE bfs]   enqueue {nbr} (rank={nbr_r}, cl={nbr_cl}) from {n0}", file=sys.stderr)
-
-        # Handle nodes not reached by BFS (disconnected).
-        # Sort for deterministic order (bfs_nodes is a set).
-        for n in sorted(bfs_nodes):
-            if n not in visited:
-                if n in child_skel_set:
-                    child_name = skel_to_child.get(n, "")
+            if s in visited:
+                continue
+            visited.add(s)
+            queue.append(s)
+            while queue:
+                n0 = queue.popleft()
+                if n0 in child_skel_set:
+                    # CLUSTER node → install_cluster (cluster.c:393-407)
+                    child_name = skel_to_child.get(n0, "")
                     if child_name and child_name not in installed_children:
                         installed_children.add(child_name)
+                        if _bfs_trace:
+                            print(f"[TRACE bfs] install_cluster {child_name}", file=sys.stderr)
                         rleaders = child_skel_ranks[child_name]
+                        # install all rank leaders (cluster.c:399-404)
                         for r in sorted(rleaders.keys()):
                             result[r].append(rleaders[r])
+                        # enqueue neighbors (cluster.c:405-406)
+                        for sn in rleaders.values():
+                            for nbr in fg_out.get(sn, []):
+                                if nbr not in visited:
+                                    visited.add(nbr)
+                                    queue.append(nbr)
                 else:
-                    result[self.lnodes[n].rank].append(n)
+                    # Regular node → install_in_rank (mincross.c:1308)
+                    result[self.lnodes[n0].rank].append(n0)
+                    if _bfs_trace:
+                        print(f"[TRACE bfs] install {n0} rank={self.lnodes[n0].rank}", file=sys.stderr)
+                    # enqueue_neighbors (mincross.c:1341-1351)
+                    for nbr in fg_out.get(n0, []):
+                        if nbr not in visited:
+                            visited.add(nbr)
+                            queue.append(nbr)
 
-        # Reverse each rank for LR/RL (C: GD_flip)
+        # Handle unreached nodes (disconnected components).
+        for n in sorted(bfs_nodes):
+            if n in visited:
+                continue
+            if n in child_skel_set:
+                child_name = skel_to_child.get(n, "")
+                if child_name and child_name not in installed_children:
+                    installed_children.add(child_name)
+                    for r in sorted(child_skel_ranks[child_name].keys()):
+                        result[r].append(child_skel_ranks[child_name][r])
+            elif n in self.lnodes:
+                result[self.lnodes[n].rank].append(n)
+
+        # Reverse each rank for LR/RL (mincross.c:1326-1332 GD_flip)
         if self.rankdir in ("LR", "RL"):
             for r in result:
                 result[r].reverse()
