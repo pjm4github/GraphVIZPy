@@ -2983,6 +2983,7 @@ class DotLayout(LayoutEngine):
     # ── Per-node mval storage for medians/reorder ──────────
     _node_mval: dict[str, float] = {}
     _MC_SCALE = 256  # C const.h:99 — scale factor for VAL() macro
+    _port_order_cache: dict[tuple[str, str], int] = {}
 
     def _mval(self, node_name: str, port_order: int = 128) -> int:
         """C mincross.c:1685 VAL(node, port).
@@ -2993,6 +2994,101 @@ class DotLayout(LayoutEngine):
             return self._MC_SCALE * self.lnodes[node_name].order + port_order
         return 0
 
+    def _mval_edge(self, node_name: str, port_name: str) -> int:
+        """VAL(node, port) with port.order computed from record layout.
+        Matches C sameport.c:151-152:
+          port.order = MC_SCALE * (lw + port.x) / (lw + rw)
+        We approximate port.x from the port's position within the
+        record field layout."""
+        if node_name not in self.lnodes:
+            return 0
+        ln = self.lnodes[node_name]
+        order = ln.order
+
+        if not port_name:
+            return self._MC_SCALE * order + self._MC_SCALE // 2
+
+        cache_key = (node_name, port_name)
+        if cache_key in self._port_order_cache:
+            return self._MC_SCALE * order + self._port_order_cache[cache_key]
+
+        # Compute port.order from record field layout
+        # Parse record label to find port position
+        port_order = self._MC_SCALE // 2  # default center
+        if ln.node:
+            label = ln.node.attributes.get("label", "")
+            if label.startswith("{") and "<" in label:
+                port_order = self._port_order_from_label(
+                    label, port_name)
+        self._port_order_cache[cache_key] = port_order
+        return self._MC_SCALE * order + port_order
+
+    def _port_order_from_label(self, label: str, port_name: str) -> int:
+        """Compute port.order from record label string.
+        Matches C sameport.c:151-152 proportional positioning.
+
+        For a record label like {name|In|{<Out0>|<Out1>}}, each
+        top-level field occupies an equal fraction of the node width.
+        Sub-fields within a group also split equally.  The port's
+        position is the center of its sub-field region.
+        """
+        # Strip outer braces
+        inner = label.strip()
+        if inner.startswith("{") and inner.endswith("}"):
+            inner = inner[1:-1]
+
+        # Split into top-level fields (respecting nested braces)
+        fields = self._split_record_fields(inner)
+        n_fields = len(fields)
+        if n_fields == 0:
+            return self._MC_SCALE // 2
+
+        # Search for the port in each field
+        for fi, field in enumerate(fields):
+            # Field center position as fraction of total width
+            field_left = fi / n_fields
+            field_right = (fi + 1) / n_fields
+            field_center = (field_left + field_right) / 2.0
+
+            # Check if port is in this field (possibly nested)
+            sub_fields = self._split_record_fields(
+                field.strip("{}"))
+            if not sub_fields:
+                sub_fields = [field]
+
+            for si, sub in enumerate(sub_fields):
+                if f"<{port_name}>" in sub:
+                    # Found port — compute proportional position
+                    n_sub = len(sub_fields)
+                    sub_left = field_left + si / n_sub * (field_right - field_left)
+                    sub_right = field_left + (si + 1) / n_sub * (field_right - field_left)
+                    pos = (sub_left + sub_right) / 2.0
+                    return int(pos * self._MC_SCALE)
+
+        return self._MC_SCALE // 2  # port not found — center
+
+    @staticmethod
+    def _split_record_fields(s: str) -> list[str]:
+        """Split record label string by | respecting nested {}."""
+        fields = []
+        depth = 0
+        current = []
+        for ch in s:
+            if ch == '{':
+                depth += 1
+                current.append(ch)
+            elif ch == '}':
+                depth -= 1
+                current.append(ch)
+            elif ch == '|' and depth == 0:
+                fields.append(''.join(current).strip())
+                current = []
+            else:
+                current.append(ch)
+        if current:
+            fields.append(''.join(current).strip())
+        return [f for f in fields if f]
+
     def _cluster_medians(self, rank: int, adj_rank: int,
                           cl_nodes: set[str],
                           fg_out: dict | None = None,
@@ -3000,10 +3096,26 @@ class DotLayout(LayoutEngine):
         """Compute median values for nodes at rank.
 
         Mirrors C mincross.c:1687-1743 medians().
+        Uses VAL(node, port) = MC_SCALE * order + port.order
+        (mincross.c:1685, sameport.c:151-152) for neighbor positions.
         Stores results in self._node_mval[name].
         """
         rank_nodes = self.ranks.get(rank, [])
         adj_set = set(self.ranks.get(adj_rank, []))
+
+        # Build port lookup for edges: (tail, head) → (headport, tailport)
+        # Used to compute VAL with port.order (C mincross.c:1702,1706)
+        if not hasattr(self, '_edge_port_lookup'):
+            self._edge_port_lookup: dict[tuple[str, str], tuple[str, str]] = {}
+            for le in self.ledges:
+                hp = getattr(le, 'headport', '') or ''
+                tp = getattr(le, 'tailport', '') or ''
+                # Strip compass suffix (e.g., "Out0:n" → "Out0")
+                if ':' in hp:
+                    hp = hp.split(':')[0]
+                if ':' in tp:
+                    tp = tp.split(':')[0]
+                self._edge_port_lookup[(le.tail_name, le.head_name)] = (hp, tp)
 
         for name in rank_nodes:
             if name not in cl_nodes:
@@ -3013,22 +3125,33 @@ class DotLayout(LayoutEngine):
             positions = []
             if fg_out is not None and fg_in is not None:
                 # Fast graph edges (C ND_out/ND_in)
-                # Use _mval (C VAL macro, mincross.c:1685) which
-                # includes port.order for sub-node positioning
+                # Use VAL(node, port) (mincross.c:1702,1706)
                 if adj_rank > rank:
+                    # Down: VAL(aghead(e), ED_head_port(e))
                     for nbr in fg_out.get(name, []):
                         if nbr in adj_set:
-                            positions.append(self._mval(nbr))
+                            hp, _ = self._edge_port_lookup.get(
+                                (name, nbr), ('', ''))
+                            positions.append(self._mval_edge(nbr, hp))
                 else:
+                    # Up: VAL(agtail(e), ED_tail_port(e))
                     for nbr in fg_in.get(name, []):
                         if nbr in adj_set:
-                            positions.append(self._mval(nbr))
+                            _, tp = self._edge_port_lookup.get(
+                                (nbr, name), ('', ''))
+                            positions.append(self._mval_edge(nbr, tp))
             else:
                 for le in self.ledges:
                     if le.tail_name == name and le.head_name in adj_set:
-                        positions.append(self._mval(le.head_name))
+                        hp = getattr(le, 'headport', '') or ''
+                        if ':' in hp:
+                            hp = hp.split(':')[0]
+                        positions.append(self._mval_edge(le.head_name, hp))
                     elif le.head_name == name and le.tail_name in adj_set:
-                        positions.append(self._mval(le.tail_name))
+                        tp = getattr(le, 'tailport', '') or ''
+                        if ':' in tp:
+                            tp = tp.split(':')[0]
+                        positions.append(self._mval_edge(le.tail_name, tp))
 
             # C mincross.c:1708-1735
             if not positions:
