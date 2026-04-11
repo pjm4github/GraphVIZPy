@@ -3043,24 +3043,29 @@ class DotLayout(LayoutEngine):
                     else:
                         self._node_mval[name] = (positions[lm] + positions[m]) / 2.0
 
-        # Trace median values for specific ranks
-        if rank in (4, 5, 6, 10) and len(cl_nodes) > 10:
+        # Trace median values for specific ranks (first pass only)
+        if rank in (4, 5, 6) and len(cl_nodes) > 5 and len(cl_nodes) < 60:
             parts = []
             for name in self.ranks.get(rank, []):
-                if name in cl_nodes and not (name in self.lnodes and self.lnodes[name].virtual):
-                    parts.append(f"{name}={self._node_mval.get(name, -9):.1f}")
+                if name in cl_nodes:
+                    v = "v" if (name in self.lnodes and self.lnodes[name].virtual) else ""
+                    parts.append(f"{name}{v}={self._node_mval.get(name, -9):.1f}")
             print(f"[TRACE median] rank {rank} (adj {adj_rank}): {' '.join(parts)}", file=sys.stderr)
-            # Trace edges per node
+            # Trace ALL fg edges per node (including virtual neighbors)
+            adj_set = set(self.ranks.get(adj_rank, []))
             for name in self.ranks.get(rank, []):
-                if name not in cl_nodes or (name in self.lnodes and self.lnodes[name].virtual):
+                if name not in cl_nodes:
                     continue
                 if fg_out is not None:
-                    out_nbrs = [f"{n}({self.lnodes[n].order})" for n in fg_out.get(name, [])
-                                if n in self.lnodes and not self.lnodes[n].virtual]
-                    in_nbrs = [f"{n}({self.lnodes[n].order})" for n in (fg_in or {}).get(name, [])
-                               if n in self.lnodes and not self.lnodes[n].virtual]
-                    print(f"[TRACE median]   {name} out: {' '.join(out_nbrs)}", file=sys.stderr)
-                    print(f"[TRACE median]   {name} in: {' '.join(in_nbrs)}", file=sys.stderr)
+                    if adj_rank > rank:
+                        nbrs = [(n, self.lnodes[n].order) for n in fg_out.get(name, [])
+                                if n in adj_set]
+                    else:
+                        nbrs = [(n, self.lnodes[n].order) for n in (fg_in or {}).get(name, [])
+                                if n in adj_set]
+                    if nbrs:
+                        nbr_str = " ".join(f"{n}({o})" for n, o in nbrs)
+                        print(f"[TRACE median]   {name} adj_nbrs: {nbr_str}", file=sys.stderr)
 
     def _cluster_reorder(self, rank: int, cl_nodes: set[str],
                           child_cl_map: dict[str, str] | None = None,
