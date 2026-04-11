@@ -1340,7 +1340,7 @@ class DotLayout(LayoutEngine):
         """Collect all unique node names from a subgraph and its descendants."""
         seen: set[str] = set()
         self._collect_nodes_into(sub, seen)
-        return list(seen)
+        return sorted(seen)
 
     def _collect_nodes_into(self, sub, seen: set[str]):
         for n in sub.nodes:
