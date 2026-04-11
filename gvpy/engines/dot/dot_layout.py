@@ -735,7 +735,7 @@ class _NetworkSimplex:
 
 
 
-# Record label parsing removed � now handled by
+# Record label parsing removed � now handled by
 # gvpy.grammar.record_parser (ANTLR4 RecordLexer/RecordParser)
 # with field tree stored on Node.record_fields.
 # Removed: _parse_record_fields, _parse_one_field,
@@ -2646,17 +2646,28 @@ class DotLayout(LayoutEngine):
                                 child_cl_map[n] = child
 
                     max_iter = max(4, int(24 * self.mclimit))
-                    best_cross = self._count_cluster_crossings(
+                    cur_cross = best_cross = self._count_cluster_crossings(
                         cl_node_set, min_r, max_r)
                     best_order = self._save_ordering()
-                    # C mincross.c:1528-1554 mincross_step:
-                    # Each step: medians+reorder per rank, then ONE
-                    # transpose at the end.  Alternates down/up passes.
-                    # reverse = pass%4 < 2 (mincross.c:1532)
+
+                    # C mincross.c:774-797: iteration loop with
+                    # MinQuit/Convergence early stopping.
+                    # mincross.c:1820 MinQuit=8, mincross.c:159 Convergence=0.995
+                    _MIN_QUIT = 8
+                    _CONVERGENCE = 0.995
+                    trying = 0
+
                     for _pass in range(max_iter):
+                        # mincross.c:781-784: early stop conditions
+                        if trying >= _MIN_QUIT:
+                            break
+                        trying += 1
+                        if cur_cross == 0:
+                            break
+
+                        # mincross_step (mincross.c:1528-1554)
                         reverse = (_pass % 4) < 2
                         if _pass % 2 == 0:
-                            # Down pass (mincross.c:1534-1538)
                             for r in range(min_r + 1, max_r + 1):
                                 if r in self.ranks:
                                     self._cluster_medians(
@@ -2666,7 +2677,6 @@ class DotLayout(LayoutEngine):
                                         r, cl_node_set, child_cl_map,
                                         reverse)
                         else:
-                            # Up pass (mincross.c:1540-1545)
                             for r in range(max_r - 1, min_r - 1, -1):
                                 if r in self.ranks:
                                     self._cluster_medians(
@@ -2675,16 +2685,20 @@ class DotLayout(LayoutEngine):
                                     self._cluster_reorder(
                                         r, cl_node_set, child_cl_map,
                                         reverse)
-                        # Single transpose at end (mincross.c:1553)
                         for r in range(min_r, max_r + 1):
                             if r in self.ranks:
                                 self._cluster_transpose(
                                     r, cl_node_set, child_cl_map)
-                        c = self._count_cluster_crossings(
+
+                        # mincross.c:786-791: check improvement
+                        cur_cross = self._count_cluster_crossings(
                             cl_node_set, min_r, max_r)
-                        if c < best_cross:
-                            best_cross = c
+                        if cur_cross <= best_cross:
+                            if cur_cross < _CONVERGENCE * best_cross:
+                                trying = 0
+                            best_cross = cur_cross
                             best_order = self._save_ordering()
+
                     self._restore_ordering(best_order)
 
         # ── Clean up skeleton nodes, chain nodes, and edges ──
@@ -2920,7 +2934,7 @@ class DotLayout(LayoutEngine):
         self._port_order_cache[cache_key] = port_order
         return self._MC_SCALE * order + port_order
 
-    # _port_order_from_label and _split_record_fields removed �
+    # _port_order_from_label and _split_record_fields removed �
     # port.order now comes from Node.record_fields.port_fraction()
     # (ANTLR4 RecordParser, sized at layout start).
 
