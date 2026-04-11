@@ -2643,10 +2643,11 @@ class DotLayout(LayoutEngine):
                     except ValueError:
                         continue
 
-                    # Remove virtual nodes that will be re-placed by BFS
-                    virt_at_r = [n for n in cl_virtual
-                                 if n in self.lnodes
-                                 and self.lnodes[n].rank == r]
+                    # Remove virtual nodes that will be re-placed by BFS.
+                    # Sort for deterministic removal order (cl_virtual is a set).
+                    virt_at_r = sorted(n for n in cl_virtual
+                                       if n in self.lnodes
+                                       and self.lnodes[n].rank == r)
                     for vn in virt_at_r:
                         if vn in rank_list:
                             idx = rank_list.index(vn)
@@ -3038,6 +3039,10 @@ class DotLayout(LayoutEngine):
            - Child skeleton nodes (CLUSTER type): install all rank
              leaders for that child cluster, enqueue their neighbors.
         4. Reverse each rank if ``GD_flip`` (rankdir LR/RL).
+
+        Edges between nodes in DIFFERENT child clusters are excluded
+        (matching C's ``class2`` which converts them to inter-cluster
+        edges via skeleton rank-leaders).
         """
         # Build adjacency limited to bfs_nodes
         adj_out: dict[str, list[str]] = defaultdict(list)
@@ -3106,8 +3111,9 @@ class DotLayout(LayoutEngine):
                                 visited.add(nbr)
                                 queue.append(nbr)
 
-        # Handle nodes not reached by BFS (disconnected)
-        for n in bfs_nodes:
+        # Handle nodes not reached by BFS (disconnected).
+        # Sort for deterministic order (bfs_nodes is a set).
+        for n in sorted(bfs_nodes):
             if n not in visited:
                 if n in child_skel_set:
                     child_name = skel_to_child.get(n, "")
