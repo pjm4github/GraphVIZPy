@@ -2954,7 +2954,12 @@ class DotLayout(LayoutEngine):
         order = ln.order
 
         if not port_name:
-            return self._MC_SCALE * order + self._MC_SCALE // 2
+            # C: edges without explicit ports have ED_port.order = 0
+            # (the port struct is zero-initialized).  Only edges that
+            # go through resolvePort/sameport get nonzero port.order.
+            # C shapes.c:2865 sets pp->order = MC_SCALE/2 for
+            # NORMAL shapes, but virtual/skeleton edges keep 0.
+            return self._MC_SCALE * order
 
         cache_key = (node_name, port_name)
         if cache_key in self._port_order_cache:
@@ -3065,7 +3070,7 @@ class DotLayout(LayoutEngine):
                     else:
                         self._node_mval[name] = (positions[lm] + positions[m]) / 2.0
 
-        # Trace median values for specific ranks
+        # Trace median values + VAL details for specific ranks
         if rank in (4, 5, 6) and len(cl_nodes) > 5 and len(cl_nodes) < 60:
             parts = []
             for name in self.ranks.get(rank, []):
@@ -3073,21 +3078,42 @@ class DotLayout(LayoutEngine):
                     v = "v" if (name in self.lnodes and self.lnodes[name].virtual) else ""
                     parts.append(f"{name}{v}={self._node_mval.get(name, -9):.1f}")
             print(f"[TRACE median] rank {rank} (adj {adj_rank}): {' '.join(parts)}", file=sys.stderr)
-            # Trace ALL fg edges per node (including virtual neighbors)
-            adj_set = set(self.ranks.get(adj_rank, []))
+            # Trace per-node neighbor VAL details
+            adj_s = set(self.ranks.get(adj_rank, []))
             for name in self.ranks.get(rank, []):
                 if name not in cl_nodes:
                     continue
-                if fg_out is not None:
-                    if adj_rank > rank:
-                        nbrs = [(n, self.lnodes[n].order) for n in fg_out.get(name, [])
-                                if n in adj_set]
-                    else:
-                        nbrs = [(n, self.lnodes[n].order) for n in (fg_in or {}).get(name, [])
-                                if n in adj_set]
-                    if nbrs:
-                        nbr_str = " ".join(f"{n}({o})" for n, o in nbrs)
-                        print(f"[TRACE median]   {name} adj_nbrs: {nbr_str}", file=sys.stderr)
+                nbr_parts = []
+                if fg_out is not None and fg_in is not None:
+                    edge_list = fg_out.get(name, []) if adj_rank > rank else (fg_in or {}).get(name, [])
+                    for nbr in edge_list:
+                        if nbr in adj_s:
+                            if adj_rank > rank:
+                                hp, _ = self._edge_port_lookup.get((name, nbr), ('', ''))
+                                val = self._mval_edge(nbr, hp)
+                                po = self._port_order_cache.get((nbr, hp), 128)
+                            else:
+                                _, tp = self._edge_port_lookup.get((nbr, name), ('', ''))
+                                val = self._mval_edge(nbr, tp)
+                                po = self._port_order_cache.get((nbr, tp), 128)
+                            nbr_parts.append(f"{nbr}(ord={self.lnodes[nbr].order},port={po},val={val})")
+                else:
+                    for le in self.ledges:
+                        nbr = None
+                        if le.tail_name == name and le.head_name in adj_s:
+                            nbr = le.head_name
+                            hp = (getattr(le, 'headport', '') or '').split(':')[0]
+                            val = self._mval_edge(nbr, hp)
+                            po = self._port_order_cache.get((nbr, hp), 128)
+                        elif le.head_name == name and le.tail_name in adj_s:
+                            nbr = le.tail_name
+                            tp = (getattr(le, 'tailport', '') or '').split(':')[0]
+                            val = self._mval_edge(nbr, tp)
+                            po = self._port_order_cache.get((nbr, tp), 128)
+                        if nbr:
+                            nbr_parts.append(f"{nbr}(ord={self.lnodes[nbr].order},port={po},val={val})")
+                if nbr_parts:
+                    print(f"[TRACE median]   {name} adj_nbrs: {' '.join(nbr_parts)}", file=sys.stderr)
 
     def _cluster_reorder(self, rank: int, cl_nodes: set[str],
                           child_cl_map: dict[str, str] | None = None,
