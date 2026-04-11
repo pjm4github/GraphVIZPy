@@ -527,10 +527,12 @@ class Node(Agobj):   # from core/core.c
         """
         if isinstance(self.outedges, set):
             self.outedges = sorted(self.outedges,
-                key=lambda e: (e.tail.name, e.head.name, e.name or ""))
+                key=lambda e: (e.tail.name or "", e.head.name or "",
+                               e.name or "", e.seq or 0))
         if isinstance(self.inedges, set):
             self.inedges = sorted(self.inedges,
-                key=lambda e: (e.tail.name, e.head.name, e.name or ""))
+                key=lambda e: (e.tail.name or "", e.head.name or "",
+                               e.name or "", e.seq or 0))
 
     def add_outedge(self, edge: 'Edge'):
         if edge not in self.outedges:
@@ -803,9 +805,11 @@ class Node(Agobj):   # from core/core.c
         if outedge:
             if isinstance(self.outedges, set):
                 self.outedges = sorted(self.outedges,
-                    key=lambda e: (e.tail.name, e.head.name, e.name or ""))
+                    key=lambda e: (e.tail.name or "", e.head.name or "",
+                                   e.name or "", e.seq or 0))
         else:
             if isinstance(self.inedges, set):
                 self.inedges = sorted(self.inedges,
-                    key=lambda e: (e.tail.name, e.head.name, e.name or ""))
+                    key=lambda e: (e.tail.name or "", e.head.name or "",
+                                   e.name or "", e.seq or 0))
 
