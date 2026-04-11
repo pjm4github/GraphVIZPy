@@ -3131,10 +3131,25 @@ class DotLayout(LayoutEngine):
         # 1a. build_skeleton for each child cluster
         # C class2.c:164-165, cluster.c:356-374.
         # virtual_node calls fast_node (prepend), virtual_edge calls
-        # fast_edge (append to ND_out).  Iterate child clusters in
-        # sorted order for determinism (C iterates GD_clust array
-        # which is in subgraph registration order).
-        for child_name in sorted(child_skel_ranks.keys()):
+        # fast_edge (append to ND_out).  C iterates GD_clust array
+        # which is in subgraph registration order (make_new_cluster
+        # during initial ranking).  We approximate with the DOT file
+        # subgraph definition order by walking self.graph.subgraphs
+        # recursively.
+        def _subgraph_order(g) -> list[str]:
+            """Collect cluster subgraph names in DOT definition order."""
+            result = []
+            for name, sub in g.subgraphs.items():
+                if name in child_skel_ranks:
+                    result.append(name)
+                result.extend(_subgraph_order(sub))
+            return result
+        child_order = _subgraph_order(self.graph)
+        # Add any child clusters not found in subgraph walk
+        for cn in sorted(child_skel_ranks.keys()):
+            if cn not in child_order:
+                child_order.append(cn)
+        for child_name in child_order:
             rleaders = child_skel_ranks[child_name]
             prev_sn = None
             for r in sorted(rleaders.keys()):
@@ -3211,17 +3226,20 @@ class DotLayout(LayoutEngine):
                         if nbr not in decompose_visited:
                             stack.append(nbr)
 
-        # decompose.c:117-128: iterate the nlist.
-        # C also checks UF_find(v)==v and ND_clust(v) for pass>0.
-        # For pass=0 (our case): skip nodes where v != UF_find(v).
-        # Non-leader nodes (in a child cluster, not skeleton) are
-        # skipped — they're discovered via edges from leaders.
-        for n in fg_nlist:
-            if n not in decompose_visited:
-                _search_component(n)
-        # Also visit any bfs_nodes not in fg_nlist (edge-split virtual
-        # nodes that weren't added by fast_node).
-        for n in sorted(bfs_nodes):
+        # decompose.c:117-128: iterate agfstnode(g)/agnxtnode(g,n).
+        # C iterates ALL subgraph nodes in cgraph order, but skips
+        # nodes where v != UF_find(v) (child cluster members).
+        # For pass=0: only nodes that are their own UF_find leader
+        # start DFS components.  We iterate all bfs_nodes in DOT
+        # file order (approximating agfstnode), skipping child
+        # cluster members (matching UF_find check at decomp.c:121).
+        for n in ordered_nodes:
+            # decomp.c:121: skip non-leaders
+            if n in node_child:
+                continue  # in a child cluster → UF_find(v) != v
+            if n in self.lnodes and self.lnodes[n].virtual:
+                if not n.startswith("_skel_"):
+                    continue  # _v_* virtual → not UF leader
             if n not in decompose_visited:
                 _search_component(n)
 
@@ -3243,6 +3261,11 @@ class DotLayout(LayoutEngine):
         result: dict[int, list[str]] = defaultdict(list)
         visited: set[str] = set()
         installed_children: set[str] = set()
+        _bfs_trace = len(bfs_nodes) > 20
+
+        if _bfs_trace:
+            skel_nlist = [n for n in decompose_nlist if n.startswith("_skel_")]
+            print(f"[TRACE bfs] decompose nlist (skeletons): {skel_nlist}", file=sys.stderr)
         _bfs_trace = len(bfs_nodes) > 20
 
         if _bfs_trace:
