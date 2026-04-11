@@ -690,10 +690,16 @@ class _NetworkSimplex:
     def _connect_components(self):
         """Add zero-weight edges between disconnected components."""
         N = self._N
-        adj: list[set[int]] = [set() for _ in range(N)]
+        adj: list[list[int]] = [[] for _ in range(N)]
+        seen: list[set[int]] = [set() for _ in range(N)]
         for t, h in zip(self._e_tail, self._e_head):
-            adj[int(t)].add(int(h))
-            adj[int(h)].add(int(t))
+            ti, hi = int(t), int(h)
+            if hi not in seen[ti]:
+                seen[ti].add(hi)
+                adj[ti].append(hi)
+            if ti not in seen[hi]:
+                seen[hi].add(ti)
+                adj[hi].append(ti)
         visited = np.zeros(N, dtype=np.bool_)
         components: list[list[int]] = []
         for start in range(N):
@@ -1925,7 +1931,7 @@ class DotLayout(LayoutEngine):
                         anchor_edges.append((a, b, span, 1000))
 
             all_edges = cl_edges + anchor_edges
-            all_nodes = list(cl_members)
+            all_nodes = sorted(cl_members)
 
             if not all_nodes:
                 return
@@ -2030,8 +2036,9 @@ class DotLayout(LayoutEngine):
                                      _CL_BACK * le.weight))
                 global_edges.append((vn, h0, h_len, le.weight))
 
-        # 3. Run global NS
-        ns = _NetworkSimplex(list(global_nodes), global_edges)
+        # 3. Run global NS (sorted for deterministic results —
+        #    set iteration order varies with PYTHONHASHSEED)
+        ns = _NetworkSimplex(sorted(global_nodes), global_edges)
         ns.SEARCH_LIMIT = self.searchsize
         ranks = ns.solve(max_iter=self.nslimit1)
 
