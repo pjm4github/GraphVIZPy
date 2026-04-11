@@ -3198,11 +3198,25 @@ class DotLayout(LayoutEngine):
         dot_order = {name: i for i, name in enumerate(self.graph.nodes)}
         _ns = node_sets or {}
 
+        # Source nodes: no incoming edges within bfs_nodes.
+        # C mincross.c:1298-1301: walks nlist backward, checks
+        # ND_in(n).list[0] != NULL (pass=0).  Sources include
+        # skeleton nodes (they trigger install_cluster) but exclude
+        # edge-splitting virtual nodes (_v_*) which always have
+        # predecessors in the full subgraph.
+        # Sort by first-member DOT order with name tiebreaker for
+        # deterministic ordering.
+        dot_order = {name: i for i, name in enumerate(self.graph.nodes)}
+        _ns = node_sets or {}
+
+        sources = [n for n in bfs_nodes
+                   if n not in has_incoming
+                   and not (n in self.lnodes and self.lnodes[n].virtual
+                            and not n.startswith("_skel_"))]
+
         def _source_sort_key(n):
-            """Sort key approximating C's nlist backward walk order.
-            Real nodes use DOT file position.  Skeleton nodes use
-            first-member DOT order of their child cluster, with
-            cluster name as tiebreaker for determinism."""
+            """DOT-file order for real nodes; first-member DOT order
+            for skeleton nodes.  Name as tiebreaker for determinism."""
             if n in dot_order:
                 return (dot_order[n], n)
             child = skel_to_child.get(n)
