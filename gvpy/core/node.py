@@ -516,13 +516,15 @@ class Node(Agobj):   # from core/core.c
 
     def flatten_edges(self, to_list: bool):
         """
-        Convert outedges and inedges to either list or set
+        Convert outedges and inedges to either list or set.
+        When converting set→list, sort by edge key for deterministic order
+        (Python set iteration order depends on PYTHONHASHSEED).
         """
         if to_list:
             if isinstance(self.outedges, set):
-                self.outedges = list(self.outedges)
+                self.outedges = sorted(self.outedges, key=lambda e: e.key)
             if isinstance(self.inedges, set):
-                self.inedges = list(self.inedges)
+                self.inedges = sorted(self.inedges, key=lambda e: e.key)
         else:
             # Convert to sets
             if isinstance(self.outedges, list):
@@ -810,10 +812,10 @@ class Node(Agobj):   # from core/core.c
             # else, convert node.inedges to a list
             if outedge:
                 if isinstance(self.outedges, set):
-                    self.outedges = list(self.outedges)
+                    self.outedges = sorted(self.outedges, key=lambda e: e.key)
             else:
                 if isinstance(self.inedges, set):
-                    self.inedges = list(self.inedges)
+                    self.inedges = sorted(self.inedges, key=lambda e: e.key)
         else:
             # Convert to set
             if outedge:
