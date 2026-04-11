@@ -3001,44 +3001,60 @@ class DotLayout(LayoutEngine):
             children_of.setdefault(par, []).append(cn)
 
         def _mincross_clust(cl_name: str):
-            """Run mincross within a cluster, then recurse into children."""
+            """Run mincross within a cluster, then recurse into children.
+
+            Mirrors C mincross.c:574-598 mincross_clust():
+            expand_cluster → mincross(g, 2) → recurse children.
+            """
             cl_nodes = node_sets[cl_name]
             if len(cl_nodes) < 2:
-                # Recurse into children even for small clusters
                 for child in children_of.get(cl_name, []):
                     _mincross_clust(child)
                 return
 
-            # Find the rank range this cluster spans
-            cl_ranks = set()
-            for n in cl_nodes:
-                if n in self.lnodes:
-                    cl_ranks.add(self.lnodes[n].rank)
+            cl_ranks = sorted(set(
+                self.lnodes[n].rank for n in cl_nodes
+                if n in self.lnodes))
             if not cl_ranks:
                 return
 
             min_r, max_r = min(cl_ranks), max(cl_ranks)
 
-            # Run median + transpose sweeps restricted to this cluster's
-            # nodes within each rank
-            for _ in range(4):
-                improved = False
-                for r in range(min_r + 1, max_r + 1):
-                    if r not in self.ranks:
-                        continue
-                    if self._cluster_median_order(r, r - 1, cl_nodes):
-                        improved = True
-                    self._cluster_transpose(r, cl_nodes)
-                for r in range(max_r - 1, min_r - 1, -1):
-                    if r not in self.ranks:
-                        continue
-                    if self._cluster_median_order(r, r + 1, cl_nodes):
-                        improved = True
-                    self._cluster_transpose(r, cl_nodes)
-                if not improved:
-                    break
+            # C mincross_clust calls mincross(g, 2) which starts at
+            # pass 2 with maxthispass=MaxIter=24.
+            # Use medians + reorder + transpose matching mincross_step.
+            max_iter = max(4, int(24 * self.mclimit))
+            best_cross = self._count_cluster_crossings(
+                cl_nodes, min_r, max_r)
+            best_order = self._save_ordering()
+            for _pass in range(max_iter):
+                reverse = (_pass % 4) < 2
+                if _pass % 2 == 0:
+                    for r in range(min_r + 1, max_r + 1):
+                        if r in self.ranks:
+                            self._cluster_medians(
+                                r, r - 1, cl_nodes)
+                            self._cluster_reorder(
+                                r, cl_nodes, None, reverse)
+                else:
+                    for r in range(max_r - 1, min_r - 1, -1):
+                        if r in self.ranks:
+                            self._cluster_medians(
+                                r, r + 1, cl_nodes)
+                            self._cluster_reorder(
+                                r, cl_nodes, None, reverse)
+                for r in range(min_r, max_r + 1):
+                    if r in self.ranks:
+                        self._cluster_transpose(r, cl_nodes)
+                c = self._count_cluster_crossings(
+                    cl_nodes, min_r, max_r)
+                if c < best_cross:
+                    best_cross = c
+                    best_order = self._save_ordering()
+            self._restore_ordering(best_order)
 
             # Recurse depth-first into child clusters
+            # (C mincross.c:588-593)
             for child in children_of.get(cl_name, []):
                 _mincross_clust(child)
 
@@ -3206,6 +3222,25 @@ class DotLayout(LayoutEngine):
                         ) / (lspan + rspan)
                     else:
                         self._node_mval[name] = (positions[lm] + positions[m]) / 2.0
+
+        # Trace median values for specific ranks
+        if rank in (4, 5, 6, 10) and len(cl_nodes) > 10:
+            parts = []
+            for name in self.ranks.get(rank, []):
+                if name in cl_nodes and not (name in self.lnodes and self.lnodes[name].virtual):
+                    parts.append(f"{name}={self._node_mval.get(name, -9):.1f}")
+            print(f"[TRACE median] rank {rank} (adj {adj_rank}): {' '.join(parts)}", file=sys.stderr)
+            # Trace edges per node
+            for name in self.ranks.get(rank, []):
+                if name not in cl_nodes or (name in self.lnodes and self.lnodes[name].virtual):
+                    continue
+                if fg_out is not None:
+                    out_nbrs = [f"{n}({self.lnodes[n].order})" for n in fg_out.get(name, [])
+                                if n in self.lnodes and not self.lnodes[n].virtual]
+                    in_nbrs = [f"{n}({self.lnodes[n].order})" for n in (fg_in or {}).get(name, [])
+                               if n in self.lnodes and not self.lnodes[n].virtual]
+                    print(f"[TRACE median]   {name} out: {' '.join(out_nbrs)}", file=sys.stderr)
+                    print(f"[TRACE median]   {name} in: {' '.join(in_nbrs)}", file=sys.stderr)
 
     def _cluster_reorder(self, rank: int, cl_nodes: set[str],
                           child_cl_map: dict[str, str] | None = None,
