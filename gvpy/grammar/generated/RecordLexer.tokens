@@ -1,0 +1,12 @@
+LBRACE=1
+RBRACE=2
+PIPE=3
+PORT_OPEN=4
+PORT_CLOSE=5
+ESCAPE=6
+TEXT=7
+'{'=1
+'}'=2
+'|'=3
+'<'=4
+'>'=5
