@@ -2646,24 +2646,25 @@ class DotLayout(LayoutEngine):
                                 child_cl_map[n] = child
 
                     max_iter = max(4, int(24 * self.mclimit))
-                    cur_cross = best_cross = self._count_cluster_crossings(
-                        cl_node_set, min_r, max_r)
+                    # C ncross() counts GLOBAL crossings over Root,
+                    # not just cluster-local (mincross.c:1617-1632)
+                    cur_cross = best_cross = self._count_all_crossings()
                     best_order = self._save_ordering()
 
-                    # C mincross.c:774-797: iteration loop with
-                    # MinQuit/Convergence early stopping.
-                    # mincross.c:1820 MinQuit=8, mincross.c:159 Convergence=0.995
+                    # C mincross.c:774-797: iteration loop.
+                    # MinQuit=8 (mincross.c:1820), Convergence=0.995
+                    # (mincross.c:159).
                     _MIN_QUIT = 8
                     _CONVERGENCE = 0.995
                     trying = 0
 
                     for _pass in range(max_iter):
-                        # mincross.c:781-784: early stop conditions
+                        if cur_cross == 0:
+                            break
+                        # mincross.c:781-782: MinQuit early stop
                         if trying >= _MIN_QUIT:
                             break
                         trying += 1
-                        if cur_cross == 0:
-                            break
 
                         # mincross_step (mincross.c:1528-1554)
                         reverse = (_pass % 4) < 2
@@ -2691,8 +2692,8 @@ class DotLayout(LayoutEngine):
                                     r, cl_node_set, child_cl_map)
 
                         # mincross.c:786-791: check improvement
-                        cur_cross = self._count_cluster_crossings(
-                            cl_node_set, min_r, max_r)
+                        # C ncross() = global crossing count
+                        cur_cross = self._count_all_crossings()
                         if cur_cross <= best_cross:
                             if cur_cross < _CONVERGENCE * best_cross:
                                 trying = 0
