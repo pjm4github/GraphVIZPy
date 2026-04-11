@@ -2646,41 +2646,70 @@ class DotLayout(LayoutEngine):
                                 child_cl_map[n] = child
 
                     max_iter = max(4, int(24 * self.mclimit))
-                    # C ncross() counts GLOBAL crossings over Root,
-                    # not just cluster-local (mincross.c:1617-1632)
+
+                    # Build post-expansion scoped fast graph for real
+                    # nodes, matching C class2 inside expand_cluster
+                    # (cluster.c:282,298 → class2.c:155-282).
+                    # Includes edges where both endpoints are in
+                    # cl_node_set.  Excludes intra-child-cluster edges.
+                    mc_fg_out: dict[str, list[str]] = defaultdict(list)
+                    mc_fg_in: dict[str, list[str]] = defaultdict(list)
+                    mc_seen: set[tuple[str, str]] = set()
+                    for le in self.ledges:
+                        t, h = le.tail_name, le.head_name
+                        if t not in cl_node_set and h not in cl_node_set:
+                            continue
+                        if t not in self.lnodes or h not in self.lnodes:
+                            continue
+                        t_in = t in cl_node_set
+                        h_in = h in cl_node_set
+                        if not t_in and not h_in:
+                            continue
+                        # Include virtual nodes within rank range
+                        if not t_in or not h_in:
+                            t_r = self.lnodes[t].rank
+                            h_r = self.lnodes[h].rank
+                            if t_r < min_r or t_r > max_r:
+                                continue
+                            if h_r < min_r or h_r > max_r:
+                                continue
+                        if t == h:
+                            continue  # class2.c:226
+                        # Exclude intra-child-cluster (class2.c:199)
+                        t_ch = child_cl_map.get(t)
+                        h_ch = child_cl_map.get(h)
+                        if t_ch and h_ch and t_ch == h_ch:
+                            continue
+                        pair = (t, h)
+                        if pair not in mc_seen:
+                            mc_seen.add(pair)
+                            mc_fg_out[t].append(h)
+                            mc_fg_in[h].append(t)
+
+                    # C ncross() counts GLOBAL crossings (mincross.c:1617)
                     cur_cross = best_cross = self._count_all_crossings()
                     best_order = self._save_ordering()
 
                     # C mincross.c:774-797: iteration loop.
-                    # MinQuit=8 (mincross.c:1820), Convergence=0.995
-                    # (mincross.c:159).
-                    _MIN_QUIT = 8
-                    _CONVERGENCE = 0.995
+                    _MIN_QUIT = 8       # mincross.c:1820
+                    _CONVERGENCE = 0.995  # mincross.c:159
                     trying = 0
 
                     for _pass in range(max_iter):
                         if cur_cross == 0:
                             break
-                        # mincross.c:781-782: MinQuit early stop
                         if trying >= _MIN_QUIT:
                             break
                         trying += 1
 
                         # mincross_step (mincross.c:1528-1554)
                         reverse = (_pass % 4) < 2
-                        # Note: cl_fg_out/cl_fg_in are the SKELETON-level
-                        # fast graph from _cluster_build_ranks. After
-                        # expansion, real nodes replace skeletons but the
-                        # fast graph still has skeleton edges.  Pass
-                        # fg_out=None so _cluster_medians falls back to
-                        # self.ledges which has edges for real nodes.
-                        # C rebuilds the fast graph via class2 inside
-                        # expand_cluster (cluster.c:282,298).
                         if _pass % 2 == 0:
                             for r in range(min_r + 1, max_r + 1):
                                 if r in self.ranks:
                                     self._cluster_medians(
-                                        r, r - 1, cl_node_set)
+                                        r, r - 1, cl_node_set,
+                                        mc_fg_out, mc_fg_in)
                                     self._cluster_reorder(
                                         r, cl_node_set, child_cl_map,
                                         reverse)
@@ -2688,7 +2717,8 @@ class DotLayout(LayoutEngine):
                             for r in range(max_r - 1, min_r - 1, -1):
                                 if r in self.ranks:
                                     self._cluster_medians(
-                                        r, r + 1, cl_node_set)
+                                        r, r + 1, cl_node_set,
+                                        mc_fg_out, mc_fg_in)
                                     self._cluster_reorder(
                                         r, cl_node_set, child_cl_map,
                                         reverse)
