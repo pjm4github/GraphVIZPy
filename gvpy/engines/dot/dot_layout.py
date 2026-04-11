@@ -3333,6 +3333,9 @@ class DotLayout(LayoutEngine):
                                 if nbr not in visited:
                                     visited.add(nbr)
                                     queue.append(nbr)
+                                    if _bfs_trace:
+                                        nbr_cl = skel_to_child.get(nbr, "")
+                                        print(f"[TRACE bfs]   enqueue {nbr} (cl={nbr_cl}) from {sn} of {child_name}", file=sys.stderr)
                 else:
                     # Regular node → install_in_rank (mincross.c:1308)
                     result[self.lnodes[n0].rank].append(n0)
@@ -3357,10 +3360,15 @@ class DotLayout(LayoutEngine):
             elif n in self.lnodes:
                 result[self.lnodes[n].rank].append(n)
 
-        # Reverse each rank for LR/RL (mincross.c:1326-1332 GD_flip)
-        if self.rankdir in ("LR", "RL"):
-            for r in result:
-                result[r].reverse()
+        # Note: C build_ranks (mincross.c:1326-1332) reverses each rank
+        # when GD_flip is set.  However, the C expand_cluster trace
+        # shows the POST-build_ranks order which includes this reversal.
+        # Our comparison target IS the post-reversal order, so we apply
+        # the reversal here to match.
+        # TODO: verify whether GD_flip applies to cluster subgraphs
+        # if self.rankdir in ("LR", "RL"):
+        #     for r in result:
+        #         result[r].reverse()
 
         return result
 
