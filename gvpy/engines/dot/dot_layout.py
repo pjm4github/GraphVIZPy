@@ -2207,10 +2207,12 @@ class DotLayout(LayoutEngine):
         if self._clusters:
             self._skeleton_mincross()
             # Final remincross on full expanded graph (C: mincross(g, 2))
-            # This is the key step that C always runs for clustered graphs.
+            # C mincross.c:381-398: runs mincross on the fully expanded
+            # graph with ReMincross=true.  Uses VAL with port.order from
+            # real node record fields.
             if self.remincross:
                 self._mark_low_clusters()
-                self._run_mincross()
+                self._remincross_full()
         else:
             self._run_mincross()
 
@@ -2265,6 +2267,89 @@ class DotLayout(LayoutEngine):
                 if c < best_crossings:
                     best_crossings = c
                     best_order = self._save_ordering()
+
+        self._restore_ordering(best_order)
+
+    def _remincross_full(self):
+        """Final remincross on the fully expanded graph.
+
+        Matches C mincross.c:381-398: mincross(g, 2) with ReMincross=true
+        after all cluster expansion.  Uses _cluster_medians with VAL
+        + port.order from Node.record_fields, and _cluster_reorder with
+        the full reorder bubble sort.  Scoped fast graph covers all nodes.
+        """
+        all_nodes = set(self.lnodes.keys())
+        max_rank = max(self.ranks.keys()) if self.ranks else 0
+        min_rank = min(self.ranks.keys()) if self.ranks else 0
+
+        # Build scoped fast graph for the full graph
+        # (matching C class2 at root level, class2.c:155-282)
+        fg_out: dict[str, list[str]] = defaultdict(list)
+        fg_in: dict[str, list[str]] = defaultdict(list)
+        seen: set[tuple[str, str]] = set()
+        # mark_clusters for ReMincross: left2right blocks ALL
+        # cross-cluster swaps (mincross.c:612-613)
+        node_cl: dict[str, str] = {}
+        if self._clusters:
+            for cl in sorted(self._clusters,
+                             key=lambda c: len(c.nodes), reverse=True):
+                for n in cl.nodes:
+                    if n in self.lnodes:
+                        node_cl[n] = cl.name  # innermost cluster
+
+        for le in self.ledges:
+            t, h = le.tail_name, le.head_name
+            if t not in self.lnodes or h not in self.lnodes:
+                continue
+            if t == h:
+                continue
+            pair = (t, h)
+            if pair not in seen:
+                seen.add(pair)
+                fg_out[t].append(h)
+                fg_in[h].append(t)
+
+        # C mincross.c:774-797 iteration loop
+        max_iter = max(4, int(24 * self.mclimit))
+        cur_cross = best_cross = self._count_all_crossings()
+        best_order = self._save_ordering()
+        _MIN_QUIT = 8
+        _CONVERGENCE = 0.995
+        trying = 0
+
+        for _pass in range(max_iter):
+            if cur_cross == 0:
+                break
+            if trying >= _MIN_QUIT:
+                break
+            trying += 1
+
+            reverse = (_pass % 4) < 2
+            if _pass % 2 == 0:
+                for r in range(min_rank + 1, max_rank + 1):
+                    if r in self.ranks:
+                        self._cluster_medians(
+                            r, r - 1, all_nodes, fg_out, fg_in)
+                        self._cluster_reorder(
+                            r, all_nodes, node_cl, reverse)
+            else:
+                for r in range(max_rank - 1, min_rank - 1, -1):
+                    if r in self.ranks:
+                        self._cluster_medians(
+                            r, r + 1, all_nodes, fg_out, fg_in)
+                        self._cluster_reorder(
+                            r, all_nodes, node_cl, reverse)
+            # Single transpose (mincross.c:1553)
+            for r in range(min_rank, max_rank + 1):
+                if r in self.ranks:
+                    self._cluster_transpose(r, all_nodes, node_cl)
+
+            cur_cross = self._count_all_crossings()
+            if cur_cross <= best_cross:
+                if cur_cross < _CONVERGENCE * best_cross:
+                    trying = 0
+                best_cross = cur_cross
+                best_order = self._save_ordering()
 
         self._restore_ordering(best_order)
 
@@ -3071,7 +3156,11 @@ class DotLayout(LayoutEngine):
                         self._node_mval[name] = (positions[lm] + positions[m]) / 2.0
 
         # Trace median values + VAL details for specific ranks
-        if rank in (4, 5, 6) and len(cl_nodes) > 5 and len(cl_nodes) < 60:
+        # Capture both skeleton level (>10 nodes) and child level (<10)
+        _trace_names = {'c4118', 'c4145', 'c4147', 'c4051', 'c4139', 'c4138',
+                        'c4143', 'c4146', 'c4236', 'c4243'}
+        _has_trace_nodes = any(n in _trace_names for n in self.ranks.get(rank, []))
+        if _has_trace_nodes and rank in (1, 2, 3, 4, 5, 6):
             parts = []
             for name in self.ranks.get(rank, []):
                 if name in cl_nodes:
