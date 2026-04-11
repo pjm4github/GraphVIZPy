@@ -206,6 +206,7 @@ Attribute        Effect
 """
 from __future__ import annotations
 
+import sys
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Optional
@@ -376,28 +377,29 @@ class _NetworkSimplex:
     # ── Initial feasible ranking ─────────────────
 
     def _init_rank(self):
+        """Compute initial feasible ranks using iterative relaxation.
+
+        Uses Bellman-Ford style relaxation: repeatedly scan all edges
+        and update head ranks until no more changes.  This handles
+        non-DAG constraint topologies where simple BFS misses backward
+        constraints (e.g. weight=0 separation edges between nodes that
+        are also connected via edge-pair or containment constraints).
+        """
         N = self._N
         E = len(self._edges_raw)
-        in_deg = np.zeros(N, dtype=np.int64)
-        np.add.at(in_deg, self._e_head[:E], 1)
         self.rank[:] = 0
-        queue = deque(int(i) for i in np.where(in_deg == 0)[0])
-        if not queue:
-            queue = deque(range(N))
-        visited = np.zeros(N, dtype=np.bool_)
-        while queue:
-            u = queue.popleft()
-            if visited[u]:
-                continue
-            visited[u] = True
-            for ei in self._out[u]:
-                h = int(self._e_head[ei])
-                nr = self.rank[u] + self._e_minlen[ei]
-                if nr > self.rank[h]:
-                    self.rank[h] = nr
-                in_deg[h] -= 1
-                if in_deg[h] <= 0 and not visited[h]:
-                    queue.append(h)
+
+        # Bellman-Ford: relax all edges up to N times
+        tails = self._e_tail[:E]
+        heads = self._e_head[:E]
+        minlens = self._e_minlen[:E]
+        for _ in range(N):
+            needed = self.rank[tails] + minlens
+            violations = self.rank[heads] < needed
+            if not violations.any():
+                break
+            np.maximum.at(self.rank, heads[violations],
+                          needed[violations])
 
     # ── Spanning tree construction ───────────────
 
@@ -885,7 +887,7 @@ class DotLayout(LayoutEngine):
         self.nslimit1: int = 200
         self.searchsize: int = 30
         self.mclimit: float = 1.0
-        self.remincross: bool = False
+        self.remincross: bool = True  # C default: ON for clustered graphs
         self.quantum: float = 0.0
         self.normalize: bool = False
         self.clusterrank: str = "local"
@@ -913,8 +915,10 @@ class DotLayout(LayoutEngine):
         # lay out each one separately and pack them side by side.
         components = self._find_components()
         if len(components) > 1:
+            print(f"[TRACE rank] component packing: {len(components)} components", file=sys.stderr)
             return self._pack_components(components)
 
+        print(f"[TRACE rank] begin layout: nodes={len(self.lnodes)} edges={len(self.ledges)} clusters={len(self._clusters)}", file=sys.stderr)
         self._phase1_rank()
         self._phase2_ordering()
         self._phase3_position()
@@ -1496,6 +1500,7 @@ class DotLayout(LayoutEngine):
                     min_y -= label_h
 
             cl.bb = (min_x, min_y, max_x, max_y)
+            print(f"[TRACE label] cluster_bb: {cl.name} bb=({min_x:.1f},{min_y:.1f},{max_x:.1f},{max_y:.1f})", file=sys.stderr)
 
     def _separate_sibling_clusters(self):
         """Push apart sibling clusters whose bounding boxes overlap.
@@ -1731,7 +1736,10 @@ class DotLayout(LayoutEngine):
     # ── Phase 1: Rank assignment ─────────────────
 
     def _phase1_rank(self):
+        print(f"[TRACE rank] phase1 begin: newrank={self.newrank} clusterrank={self.clusterrank}", file=sys.stderr)
         self._break_cycles()
+        reversed_count = sum(1 for le in self.ledges if le.reversed)
+        print(f"[TRACE rank] break_cycles: reversed={reversed_count}", file=sys.stderr)
         self._classify_edges()
         # Inject rank=same constraints as zero-length high-weight edges
         # BEFORE running NS so the solver respects them natively
@@ -1741,11 +1749,21 @@ class DotLayout(LayoutEngine):
             self._network_simplex_rank()
         else:
             self._cluster_aware_rank()
+        # Log rank assignments for all real (non-virtual) nodes
+        for name in sorted(self.lnodes.keys()):
+            ln = self.lnodes[name]
+            if not ln.virtual:
+                print(f"[TRACE rank] node_rank: {name} rank={ln.rank}", file=sys.stderr)
         self._apply_rank_constraints()
         self._compact_ranks()
+        max_rank = max((ln.rank for ln in self.lnodes.values()), default=0)
+        print(f"[TRACE rank] after compact: max_rank={max_rank}", file=sys.stderr)
         self._add_virtual_nodes()
+        vcount = sum(1 for ln in self.lnodes.values() if ln.virtual)
+        print(f"[TRACE rank] virtual_nodes: {vcount}", file=sys.stderr)
         self._build_ranks()
         self._classify_flat_edges()
+        print(f"[TRACE rank] phase1 done: ranks={sorted(self.ranks.keys())} nodes_per_rank={[(r, len(self.ranks[r])) for r in sorted(self.ranks.keys())]}", file=sys.stderr)
 
     def _inject_same_rank_edges(self):
         """Add zero-length high-weight edges between rank=same nodes.
@@ -1932,37 +1950,106 @@ class DotLayout(LayoutEngine):
         for cl_name in top_level:
             _dot1_rank_cluster(cl_name)
 
-        # ── Now rank the full graph with cluster ranks as anchors ───
-        # This is the final dot1_rank pass on the root graph.
-        # Cluster-internal relative ranks are preserved via anchor edges;
-        # inter-cluster and non-cluster edges determine global placement.
-        all_edges: list[tuple[str, str, int, int]] = []
+        # ── UF_union collapse → global NS → expand ──────────
+        # Mirrors C rank.c: cluster_leader() collapses each top-level
+        # cluster to a single leader via UF_union.  class1/interclust1
+        # converts inter-cluster edges using the "slack node + 2 edges"
+        # pattern with offset-adjusted minlens.  rank1() runs global NS.
+        # expand_ranksets() maps: rank(n) += rank(UF_find(n)).
+
+        # 1. Build UF_find map: every node in a top-level cluster
+        #    maps to that cluster's leader (min-rank node).
+        top_clusters = children_of.get(None, [])
+        uf_find: dict[str, str] = {}         # node → leader
+        local_offset: dict[str, int] = {}    # node → rank offset from leader
+
+        for cl_name in top_clusters:
+            cl = cl_by_name[cl_name]
+            members = [n for n in cl.nodes
+                       if n in self.lnodes and n in ranked_nodes]
+            if not members:
+                continue
+            members.sort(key=lambda n: self.lnodes[n].rank)
+            leader = members[0]
+            min_rank = self.lnodes[leader].rank
+            for n in members:
+                uf_find[n] = leader
+                local_offset[n] = self.lnodes[n].rank - min_rank
+
+        # 2. Build global NS graph.
+        #    - Non-cluster nodes and leaders appear as themselves.
+        #    - Intra-cluster edges (both endpoints → same leader) are skipped.
+        #    - Inter-cluster/cross edges use interclust1 pattern:
+        #      slack_node → UF_find(tail), slack_node → UF_find(head)
+        #      with offset-adjusted minlens.
+        _CL_BACK = 10  # C CL_BACK weight multiplier for tail side
+
+        global_nodes: set[str] = set()
+        for name in self.lnodes:
+            global_nodes.add(uf_find.get(name, name))
+
+        global_edges: list[tuple[str, str, int, int]] = []
+        _vn_ctr = [0]
+
         for le in self.ledges:
             if not le.constraint:
                 continue
-            all_edges.append((
-                le.tail_name, le.head_name, le.minlen, le.weight,
-            ))
+            t, h = le.tail_name, le.head_name
+            if t not in self.lnodes or h not in self.lnodes:
+                continue
 
-        # Add anchor edges for all ranked clusters to preserve internal order
-        for cl in self._clusters:
-            nodes_sorted = sorted(
-                (n for n in cl.nodes
-                 if n in self.lnodes and n in ranked_nodes),
-                key=lambda n: self.lnodes[n].rank,
-            )
-            for i in range(len(nodes_sorted) - 1):
-                a, b = nodes_sorted[i], nodes_sorted[i + 1]
-                span = self.lnodes[b].rank - self.lnodes[a].rank
-                if span >= 1:
-                    all_edges.append((a, b, span, 1000))
+            t0 = uf_find.get(t, t)
+            h0 = uf_find.get(h, h)
 
-        ns = _NetworkSimplex(list(self.lnodes.keys()), all_edges)
+            if t0 == h0:
+                continue  # intra-cluster
+
+            t_in_cluster = t in uf_find
+            h_in_cluster = h in uf_find
+
+            if not t_in_cluster and not h_in_cluster:
+                # Neither endpoint in a cluster — regular edge
+                global_edges.append((t0, h0, le.minlen, le.weight))
+            else:
+                # At least one endpoint in a cluster — use interclust1
+                # pattern: create slack node V with offset-adjusted edges
+                t_rank = local_offset.get(t, 0)
+                h_rank = local_offset.get(h, 0)
+                offset = le.minlen + t_rank - h_rank
+                if offset > 0:
+                    t_len = 0
+                    h_len = offset
+                else:
+                    t_len = -offset
+                    h_len = 0
+
+                _vn_ctr[0] += 1
+                vn = f"_uf_v{_vn_ctr[0]}"
+                global_nodes.add(vn)
+                global_edges.append((vn, t0, t_len,
+                                     _CL_BACK * le.weight))
+                global_edges.append((vn, h0, h_len, le.weight))
+
+        # 3. Run global NS
+        ns = _NetworkSimplex(list(global_nodes), global_edges)
         ns.SEARCH_LIMIT = self.searchsize
         ranks = ns.solve(max_iter=self.nslimit1)
-        for name, r in ranks.items():
-            if name in self.lnodes:
-                self.lnodes[name].rank = r
+
+        # 4. Re-normalize: C expand_ranksets iterates real nodes only
+        #    (agfstnode), so slack nodes from interclust1 don't affect
+        #    the rank floor.  Shift so min real/leader rank == 0.
+        real_min = min(
+            (ranks[uf_find.get(n, n)]
+             for n in self.lnodes if uf_find.get(n, n) in ranks),
+            default=0)
+        if real_min != 0:
+            ranks = {k: v - real_min for k, v in ranks.items()}
+
+        # 5. Expand: rank(n) = rank(UF_find(n)) + local_offset(n)
+        for name in self.lnodes:
+            leader = uf_find.get(name, name)
+            if leader in ranks:
+                self.lnodes[name].rank = ranks[leader] + local_offset.get(name, 0)
 
     def _break_cycles(self):
         UNVISITED, IN_PROGRESS, DONE = 0, 1, 2
@@ -2103,56 +2190,52 @@ class DotLayout(LayoutEngine):
         """
         self.ranks = defaultdict(list)
 
-        # Build adjacency (including virtual edges)
+        # Build adjacency preserving edge list order (matching C's edge
+        # traversal in decompose search_component).
+        # C visits: flat_in, flat_out, in, out — in reverse edge order.
+        # We approximate this: for each node, collect neighbors in the
+        # order edges appear in self.ledges, then reverse (to match C's
+        # reverse iteration with a LIFO stack).
         adj: dict[str, list[str]] = defaultdict(list)
         for le in self.ledges:
             adj[le.tail_name].append(le.head_name)
             adj[le.head_name].append(le.tail_name)
+        # Reverse to match C's stack-based reverse iteration
+        for k in adj:
+            adj[k].reverse()
 
         visited: set[str] = set()
 
-        # Use explicit stack to mirror recursive DFS behavior:
-        # visit a node, then recurse into each neighbor one at a time
-        # (fully exploring each subtree before the next neighbor).
+        # Use explicit stack to mirror C's search_component:
+        # push neighbors in reverse order (C iterates edge list backward
+        # and pushes, stack pops give forward order).
         def _dfs(start: str):
             if start in visited or start not in self.lnodes:
                 return
-            # Iterative DFS that mimics recursive behavior
-            stack: list[tuple[str, int]] = [(start, 0)]
-            # Pre-sort neighbors for each node
-            nbr_cache: dict[str, list[str]] = {}
+            stack: list[str] = [start]
             while stack:
-                name, ni = stack[-1]
-                if name not in visited:
-                    visited.add(name)
-                    self.ranks[self.lnodes[name].rank].append(name)
-                if name not in nbr_cache:
-                    neighbors = [n for n in adj.get(name, [])
-                                 if n in self.lnodes and n not in visited]
-                    my_rank = self.lnodes[name].rank
-                    neighbors.sort(key=lambda n: (
-                        abs(self.lnodes[n].rank - my_rank),
-                        self.lnodes[n].rank,
-                    ))
-                    nbr_cache[name] = neighbors
-                neighbors = nbr_cache[name]
-                # Find next unvisited neighbor
-                advanced = False
-                while ni < len(neighbors):
-                    nbr = neighbors[ni]
-                    ni += 1
-                    stack[-1] = (name, ni)
-                    if nbr not in visited:
-                        stack.append((nbr, 0))
-                        advanced = True
-                        break
-                if not advanced:
-                    stack.pop()
+                name = stack.pop()
+                if name in visited:
+                    continue
+                visited.add(name)
+                self.ranks[self.lnodes[name].rank].append(name)
+                # Push neighbors in reverse order so first neighbor
+                # gets processed first (LIFO)
+                nbrs = [n for n in adj.get(name, [])
+                        if n in self.lnodes and n not in visited]
+                for nbr in reversed(nbrs):
+                    stack.append(nbr)
 
-        # Start from node with minimum rank (root-like)
-        all_nodes = list(self.lnodes.keys())
-        all_nodes.sort(key=lambda n: (self.lnodes[n].rank, n))
-        for name in all_nodes:
+        # Start from nodes in DOT file order (matching C's agfstnode)
+        # The graph.nodes dict preserves insertion order.
+        dot_order_nodes: list[str] = []
+        for name in self.graph.nodes:
+            if name in self.lnodes:
+                dot_order_nodes.append(name)
+        # Also include virtual nodes (sorted by rank for consistency)
+        virtual_nodes = [n for n in self.lnodes if n not in set(dot_order_nodes)]
+        virtual_nodes.sort(key=lambda n: (self.lnodes[n].rank, n))
+        for name in dot_order_nodes + virtual_nodes:
             _dfs(name)
 
         # Ensure all nodes are in ranks (disconnected nodes)
@@ -2202,6 +2285,7 @@ class DotLayout(LayoutEngine):
         return True
 
     def _phase2_ordering(self):
+        print(f"[TRACE order] phase2 begin: ordering={self.ordering}", file=sys.stderr)
         if not self.ranks:
             return
 
@@ -2214,6 +2298,7 @@ class DotLayout(LayoutEngine):
 
         # ordering=out preserves input order — skip crossing minimization
         if self.ordering in ("out", "in"):
+            print(f"[TRACE order] skip mincross: ordering={self.ordering}", file=sys.stderr)
             return
 
         # ── Skeleton-based cluster ordering ──────────────
@@ -2221,11 +2306,29 @@ class DotLayout(LayoutEngine):
         # → mincross_clust expand_cluster → mincross per cluster.
         if self._clusters:
             self._skeleton_mincross()
+            # Final remincross on full expanded graph (C: mincross(g, 2))
+            # This is the key step that C always runs for clustered graphs.
+            if self.remincross:
+                self._mark_low_clusters()
+                self._run_mincross()
         else:
             self._run_mincross()
 
+        crossings = self._count_all_crossings()
+        print(f"[TRACE order] after mincross: crossings={crossings}", file=sys.stderr)
+
         # Enforce flat-edge ordering: tails left of heads
         self._flat_reorder()
+
+        # Log final ordering (matching C format: name(order))
+        for r in sorted(self.ranks.keys()):
+            names = self.ranks[r]
+            parts = []
+            for n in names:
+                if not self.lnodes[n].virtual:
+                    parts.append(f"{n}({self.lnodes[n].order})")
+            if parts:
+                print(f"[TRACE order] rank {r}: {' '.join(parts)}", file=sys.stderr)
 
     def _run_mincross(self):
         """Run crossing minimization sweeps on the current rank arrays."""
@@ -2465,6 +2568,15 @@ class DotLayout(LayoutEngine):
         # ── Run mincross on fully collapsed graph ──
         self._run_mincross()
 
+        # Trace skeleton ordering (just skeleton node positions)
+        for r in sorted(self.ranks.keys()):
+            skel_parts = []
+            for n in self.ranks[r]:
+                if n.startswith("_skel_"):
+                    skel_parts.append(n)
+            if skel_parts:
+                print(f"[TRACE order] skeleton rank {r}: {skel_parts}", file=sys.stderr)
+
         # ── Expand: shallowest to deepest ──
         for d in range(0, max_depth + 1):
             for cl_name in skeleton_nodes:
@@ -2479,7 +2591,7 @@ class DotLayout(LayoutEngine):
                     except ValueError:
                         continue
 
-                    # Nodes to restore: those hidden by this cluster at rank r
+                    # Nodes to restore at this rank
                     restore = [n for n, hider in hidden_by.items()
                                if hider == cl_name and n in self.lnodes
                                and self.lnodes[n].rank == r]
@@ -2514,20 +2626,27 @@ class DotLayout(LayoutEngine):
                 ))
                 if len(cl_ranks) >= 2:
                     min_r, max_r = min(cl_ranks), max(cl_ranks)
-                    for _ in range(4):
-                        improved = False
+                    # Match C: mincross(subg, 0) does passes 0,1,2
+                    # with up to 4+4+24 iterations.
+                    max_iter = max(4, int(24 * self.mclimit))
+                    best_cross = self._count_cluster_crossings(
+                        cl_node_set, min_r, max_r)
+                    best_order = self._save_ordering()
+                    for _ in range(max_iter):
                         for r in range(min_r + 1, max_r + 1):
                             if r in self.ranks:
-                                if self._cluster_median_order(r, r - 1, cl_node_set):
-                                    improved = True
+                                self._cluster_median_order(r, r - 1, cl_node_set)
                                 self._cluster_transpose(r, cl_node_set)
                         for r in range(max_r - 1, min_r - 1, -1):
                             if r in self.ranks:
-                                if self._cluster_median_order(r, r + 1, cl_node_set):
-                                    improved = True
+                                self._cluster_median_order(r, r + 1, cl_node_set)
                                 self._cluster_transpose(r, cl_node_set)
-                        if not improved:
-                            break
+                        c = self._count_cluster_crossings(
+                            cl_node_set, min_r, max_r)
+                        if c < best_cross:
+                            best_cross = c
+                            best_order = self._save_ordering()
+                    self._restore_ordering(best_order)
 
         # ── Clean up skeleton nodes and edges ──
         for cl_name, rank_leaders in skeleton_nodes.items():
@@ -2822,6 +2941,108 @@ class DotLayout(LayoutEngine):
 
         return changed
 
+    def _cluster_build_ranks(
+        self,
+        bfs_nodes: set[str],
+        child_skel_set: set[str],
+        child_skel_ranks: dict[str, dict[int, str]],
+    ) -> dict[int, list[str]]:
+        """BFS-based initial ordering for cluster expand.
+
+        Faithfully mirrors C ``build_ranks(subg, pass=0)`` inside
+        ``expand_cluster()``:
+
+        1. Walk node list **backward** (C: ``walkbackwards`` for clusters).
+        2. Find source nodes (no incoming edges within ``bfs_nodes``).
+        3. BFS from sources via outgoing edges:
+           - Regular nodes: install in rank, enqueue outgoing neighbors.
+           - Child skeleton nodes (CLUSTER type): install all rank
+             leaders for that child cluster, enqueue their neighbors.
+        4. Reverse each rank if ``GD_flip`` (rankdir LR/RL).
+        """
+        # Build adjacency limited to bfs_nodes
+        adj_out: dict[str, list[str]] = defaultdict(list)
+        has_incoming: set[str] = set()
+        for le in self.ledges:
+            t, h = le.tail_name, le.head_name
+            if t in bfs_nodes and h in bfs_nodes:
+                adj_out[t].append(h)
+                has_incoming.add(h)
+
+        # Map: skeleton node → child cluster name
+        skel_to_child: dict[str, str] = {}
+        for child_name, rleaders in child_skel_ranks.items():
+            for sn in rleaders.values():
+                skel_to_child[sn] = child_name
+
+        # Source nodes: no incoming edges within bfs_nodes
+        # Only consider non-skeleton nodes as BFS seeds (skeleton
+        # nodes are "installed" when a cluster node is encountered).
+        sources = [n for n in bfs_nodes
+                   if n not in has_incoming and n not in child_skel_set]
+
+        # C walks nlist backward for clusters to preserve input order.
+        # Our nlist equivalent is the original DFS order (stored in
+        # lnodes[n].order).  Reversing gives backward walk.
+        sources.sort(key=lambda n: self.lnodes[n].order, reverse=True)
+
+        # BFS (FIFO queue matching C's LIST_PUSH_BACK / LIST_POP_FRONT)
+        result: dict[int, list[str]] = defaultdict(list)
+        visited: set[str] = set()
+        installed_children: set[str] = set()
+
+        queue: deque[str] = deque()
+        for s in sources:
+            if s not in visited:
+                visited.add(s)
+                queue.append(s)
+                while queue:
+                    n0 = queue.popleft()
+                    if n0 in child_skel_set:
+                        # CLUSTER node: install all rank leaders for
+                        # this child, enqueue their neighbors.
+                        child_name = skel_to_child.get(n0, "")
+                        if child_name and child_name not in installed_children:
+                            installed_children.add(child_name)
+                            rleaders = child_skel_ranks[child_name]
+                            for r in sorted(rleaders.keys()):
+                                sn = rleaders[r]
+                                result[r].append(sn)
+                            # Enqueue neighbors of all rank leaders
+                            for sn in rleaders.values():
+                                for nbr in adj_out.get(sn, []):
+                                    if nbr not in visited:
+                                        visited.add(nbr)
+                                        queue.append(nbr)
+                    else:
+                        # Regular node: install in its rank
+                        result[self.lnodes[n0].rank].append(n0)
+                        # Enqueue outgoing neighbors (pass=0)
+                        for nbr in adj_out.get(n0, []):
+                            if nbr not in visited:
+                                visited.add(nbr)
+                                queue.append(nbr)
+
+        # Handle nodes not reached by BFS (disconnected)
+        for n in bfs_nodes:
+            if n not in visited:
+                if n in child_skel_set:
+                    child_name = skel_to_child.get(n, "")
+                    if child_name and child_name not in installed_children:
+                        installed_children.add(child_name)
+                        rleaders = child_skel_ranks[child_name]
+                        for r in sorted(rleaders.keys()):
+                            result[r].append(rleaders[r])
+                else:
+                    result[self.lnodes[n].rank].append(n)
+
+        # Reverse each rank for LR/RL (C: GD_flip)
+        if self.rankdir in ("LR", "RL"):
+            for r in result:
+                result[r].reverse()
+
+        return result
+
     def _cluster_transpose(self, rank: int, cl_nodes: set[str]):
         """Adjacent-swap transpose restricted to cluster nodes."""
         nodes = self.ranks.get(rank, [])
@@ -2939,6 +3160,36 @@ class DotLayout(LayoutEngine):
                         crossings += 1
         return crossings
 
+    def _count_cluster_crossings(self, cl_nodes: set[str],
+                                    min_r: int, max_r: int) -> int:
+        """Count crossings involving edges with at least one endpoint in cl_nodes."""
+        total = 0
+        for r in range(min_r, max_r):
+            if r not in self.ranks or r + 1 not in self.ranks:
+                continue
+            upper = self.ranks[r]
+            lower = self.ranks[r + 1]
+            upper_set = set(upper)
+            lower_set = set(lower)
+            edges_between = []
+            for le in self.ledges:
+                t, h = le.tail_name, le.head_name
+                if t in upper_set and h in lower_set:
+                    if t in cl_nodes or h in cl_nodes:
+                        edges_between.append((self.lnodes[t].order,
+                                              self.lnodes[h].order))
+                elif h in upper_set and t in lower_set:
+                    if t in cl_nodes or h in cl_nodes:
+                        edges_between.append((self.lnodes[h].order,
+                                              self.lnodes[t].order))
+            for i in range(len(edges_between)):
+                for j in range(i + 1, len(edges_between)):
+                    o1_t, o1_h = edges_between[i]
+                    o2_t, o2_h = edges_between[j]
+                    if (o1_t - o2_t) * (o1_h - o2_h) < 0:
+                        total += 1
+        return total
+
     def _count_all_crossings(self) -> int:
         total = 0
         max_rank = max(self.ranks.keys()) if self.ranks else 0
@@ -2979,11 +3230,17 @@ class DotLayout(LayoutEngine):
     _CL_OFFSET = 8.0  # Graphviz CL_OFFSET constant (points)
 
     def _phase3_position(self):
+        print(f"[TRACE position] phase3 begin: rankdir={self.rankdir} ranksep={self.ranksep} nodesep={self.nodesep}", file=sys.stderr)
         if not self.lnodes:
             return
 
         # Y coordinates following Graphviz position.c set_ycoords().
         self._set_ycoords()
+        # Log Y coords for real nodes
+        for name in sorted(self.lnodes.keys()):
+            ln = self.lnodes[name]
+            if not ln.virtual:
+                print(f"[TRACE position] set_ycoords: {name} y={ln.y:.1f}", file=sys.stderr)
 
         # Expand leaves: ensure degree-1 nodes have proper spacing
         # (Graphviz position.c expand_leaves).
@@ -2994,16 +3251,23 @@ class DotLayout(LayoutEngine):
         if self._insert_flat_label_nodes():
             self._set_ycoords()
 
-        # X coordinates: bottom-up NS for clustered graphs.
-        # Each cluster level runs its own NS with child clusters as
-        # rigid blocks.  Flat graphs use simple positioning.
+        # X coordinates: single-pass global NS for clustered graphs,
+        # matching Graphviz position.c create_aux_edges + rank().
         if self._clusters:
-            self._bottomup_ns_x_position()
+            if not self._ns_x_position():
+                # Fallback to bottom-up if NS fails
+                self._bottomup_ns_x_position()
             self._compute_cluster_boxes()
         else:
             self._simple_x_position()
             self._median_x_improvement()
             self._center_ranks()
+
+        # Log final X,Y coords for real nodes
+        for name in sorted(self.lnodes.keys()):
+            ln = self.lnodes[name]
+            if not ln.virtual:
+                print(f"[TRACE position] final_pos: {name} x={ln.x:.1f} y={ln.y:.1f} w={ln.width:.1f} h={ln.height:.1f}", file=sys.stderr)
 
         self._apply_rankdir()
 
@@ -3012,6 +3276,12 @@ class DotLayout(LayoutEngine):
         if self._clusters:
             self._resolve_cluster_overlaps()
             self._post_rankdir_keepout()
+
+        # Log post-rankdir positions
+        for name in sorted(self.lnodes.keys()):
+            ln = self.lnodes[name]
+            if not ln.virtual:
+                print(f"[TRACE position] post_rankdir: {name} x={ln.x:.1f} y={ln.y:.1f}", file=sys.stderr)
 
     def _expand_leaves(self):
         """Ensure degree-1 (leaf) nodes have proper separation.
@@ -3902,6 +4172,21 @@ class DotLayout(LayoutEngine):
         # ── 1. Separation edges (make_LR_constraints) ─────
         # Adjacent nodes in the same rank: left → right with
         # minlen = separation needed, weight = 0.
+        # Re-sort each rank to group cluster members contiguously.
+        # This prevents infeasible cycles between separation and
+        # containment edges when mincross interleaves clusters.
+        if self._clusters and _node_to_cl:
+            for rank_val in self.ranks:
+                rank_nodes = self.ranks[rank_val]
+                # Stable sort by innermost cluster name
+                rank_nodes.sort(key=lambda n: (
+                    _node_to_cl.get(n, ""),
+                    self.lnodes[n].order if n in self.lnodes else 0))
+                # Update order fields
+                for i, name in enumerate(rank_nodes):
+                    if name in self.lnodes:
+                        self.lnodes[name].order = i
+
         for rank_val, rank_nodes in self.ranks.items():
             for i in range(len(rank_nodes) - 1):
                 left = rank_nodes[i]
@@ -3938,10 +4223,19 @@ class DotLayout(LayoutEngine):
             h_grp = node_groups.get(le.head_name, "")
             if t_grp and t_grp == h_grp:
                 w = max(w * 100, 100)
+            # Port offset: difference in cross-rank port positions
+            # (mirrors C make_edge_pairs: m0 = head_port.x - tail_port.x)
+            m0 = int(getattr(le, 'head_port_cross', 0)
+                     - getattr(le, 'tail_port_cross', 0))
+            if m0 > 0:
+                m1 = 0
+            else:
+                m1 = -m0
+                m0 = 0
             sn = _vnode("_sn")
             aux_nodes.append(sn)
-            aux_edges.append((sn, le.tail_name, 0, w))
-            aux_edges.append((sn, le.head_name, 0, w))
+            aux_edges.append((sn, le.tail_name, m0 + 1, w))
+            aux_edges.append((sn, le.head_name, m1 + 1, w))
 
         # ── 3. Cluster boundary edges (pos_clusters) ──────
         if self._clusters:
@@ -3968,12 +4262,47 @@ class DotLayout(LayoutEngine):
             cl_rn: dict[str, str] = {}
 
             # ── 3a. Create ln/rn boundary nodes ──────────
+            # Compute cluster border widths for labels (C: input.c)
+            # For rankdir=LR/RL, label height becomes cross-rank border.
+            cl_border_l: dict[str, float] = {}
+            cl_border_r: dict[str, float] = {}
+            is_flipped = self.rankdir in ("LR", "RL")
+            for cl in self._clusters:
+                bl = br = 0.0
+                if cl.label:
+                    try:
+                        fontsize = float(cl.attrs.get("fontsize", 14))
+                    except (ValueError, TypeError):
+                        fontsize = 14.0
+                    # Label dimen: width = text_width, height = fontsize
+                    # PAD adds 4pt each side
+                    label_h = fontsize + 8.0
+                    label_w = len(cl.label) * fontsize * 0.6 + 8.0
+                    labelloc = cl.attrs.get("labelloc", "t").lower()
+                    if is_flipped:
+                        # Rotated: TOP→RIGHT, BOTTOM→LEFT
+                        # border.x = dimen.y (label height → cross-rank)
+                        if labelloc != "b":
+                            br = label_h  # label at top → right border
+                        else:
+                            bl = label_h
+                    # TB/BT: borders are in rank direction, not cross-rank
+                cl_border_l[cl.name] = bl
+                cl_border_r[cl.name] = br
+
             for cl in self._clusters:
                 ln_name = _vnode("_cln")
                 rn_name = _vnode("_crn")
                 aux_nodes.extend([ln_name, rn_name])
                 cl_ln[cl.name] = ln_name
                 cl_rn[cl.name] = rn_name
+                # Label width edge for ln→rn (C: make_lrvn)
+                if cl.label and not is_flipped:
+                    lbl_w = max(cl_border_l.get(cl.name, 0),
+                                cl_border_r.get(cl.name, 0))
+                    if lbl_w > 0:
+                        aux_edges.append((ln_name, rn_name,
+                                          max(1, int(lbl_w)), 0))
 
             # ── 3b. Containment: ln → node, node → rn ───
             # (contain_nodes in C code)
@@ -3981,9 +4310,11 @@ class DotLayout(LayoutEngine):
                 margin = int(cl.margin)
                 ln_name = cl_ln[cl.name]
                 rn_name = cl_rn[cl.name]
+                border_l = cl_border_l.get(cl.name, 0.0)
+                border_r = cl_border_r.get(cl.name, 0.0)
 
-                # For each rank, only constrain the leftmost and rightmost
-                # cluster nodes (not every node — reduces edge count).
+                # For each rank, constrain the leftmost and rightmost
+                # cluster nodes (matches C contain_nodes).
                 cl_ranks: dict[int, list[str]] = {}
                 for n in cl.nodes:
                     if n in self.lnodes:
@@ -3994,25 +4325,28 @@ class DotLayout(LayoutEngine):
                     nodes.sort(key=lambda n: self.lnodes[n].order)
                     leftmost = nodes[0]
                     rightmost = nodes[-1]
-                    lw = int(self.lnodes[leftmost].width / 2.0)
-                    rw = int(self.lnodes[rightmost].width / 2.0)
+                    lw = self.lnodes[leftmost].width / 2.0
+                    rw = self.lnodes[rightmost].width / 2.0
                     aux_edges.append((ln_name, leftmost,
-                                      max(1, lw + margin), 0))
+                                      max(1, int(lw + margin + border_l)), 0))
                     aux_edges.append((rightmost, rn_name,
-                                      max(1, rw + margin), 0))
+                                      max(1, int(rw + margin + border_r)), 0))
 
                 # ── 3c. Compaction: ln → rn (weight=128) ─
                 aux_edges.append((ln_name, rn_name, 1, 128))
 
             # ── 3d. Hierarchy: parent.ln → child.ln, child.rn → parent.rn
+            # (contain_subclust in C code — includes parent border)
             for cl_name, par in tree_parent.items():
                 if par is None:
                     continue
                 margin = int(cl_by_name[par].margin)
+                par_bl = cl_border_l.get(par, 0.0)
+                par_br = cl_border_r.get(par, 0.0)
                 aux_edges.append((cl_ln[par], cl_ln[cl_name],
-                                  max(1, margin), 0))
+                                  max(1, int(margin + par_bl)), 0))
                 aux_edges.append((cl_rn[cl_name], cl_rn[par],
-                                  max(1, margin), 0))
+                                  max(1, int(margin + par_br)), 0))
 
             # ── 3e. Sibling separation ────────────────────
             # For sibling clusters, determine left/right from actual
@@ -4086,33 +4420,61 @@ class DotLayout(LayoutEngine):
         if not aux_edges:
             return False
 
-        # ── Seed from baseline positions ──────────────────
+        # ── Seed: use C-style cumulative initialization ───
+        # Match Graphviz make_LR_constraints: for each rank,
+        # set positions cumulatively from left to right.
         seed: dict[str, int] = {}
-        for name in aux_nodes:
-            if name in self.lnodes:
-                seed[name] = int(self.lnodes[name].x)
+        for rank_val in sorted(self.ranks.keys()):
+            rank_nodes = self.ranks[rank_val]
+            last = 0
+            for j, name in enumerate(rank_nodes):
+                seed[name] = last
+                if j < len(rank_nodes) - 1:
+                    ln_l = self.lnodes[name]
+                    ln_r = self.lnodes[rank_nodes[j + 1]]
+                    width = int(ln_l.width / 2.0 + ln_r.width / 2.0
+                                + self.nodesep)
+                    last += width
+        # Cluster boundary nodes: initialize from member positions
         if self._clusters:
             for cl_obj in self._clusters:
                 cn = cl_obj.name
-                member_xs = [int(self.lnodes[n].x)
-                             for n in cl_obj.nodes
-                             if n in self.lnodes]
-                if member_xs:
+                member_seeds = [seed.get(n, 0)
+                                for n in cl_obj.nodes
+                                if n in self.lnodes]
+                if member_seeds:
                     m = int(cl_obj.margin)
                     if cn in cl_ln:
-                        seed[cl_ln[cn]] = min(member_xs) - m
+                        seed[cl_ln[cn]] = min(member_seeds) - m
                     if cn in cl_rn:
-                        seed[cl_rn[cn]] = max(member_xs) + m
+                        seed[cl_rn[cn]] = max(member_seeds) + m
 
         # ── Solve ─────────────────────────────────────────
+        print(f"[TRACE position] aux_graph: total_aux_edges={len(aux_edges)} total_aux_nodes={len(aux_nodes)}", file=sys.stderr)
+        # Log containment edges
+        if self._clusters:
+            for cl in self._clusters:
+                cn = cl.name
+                if cn in cl_ln and cn in cl_rn:
+                    print(f"[TRACE position] contain_nodes: {cn} margin={int(cl.margin)}", file=sys.stderr)
+        # Log pre-NS positions for real nodes
+        for name in sorted(self.lnodes.keys()):
+            ln = self.lnodes[name]
+            if not ln.virtual:
+                print(f"[TRACE position] pre_ns: {name} rank_val={seed.get(name, 0)} lw={ln.width/2:.1f} rw={ln.width/2:.1f}", file=sys.stderr)
         try:
             ns = _NetworkSimplex(aux_nodes, aux_edges)
             ns.SEARCH_LIMIT = self.searchsize
-            x_ranks = ns.solve(max_iter=self.nslimit,
-                               initial_ranks=seed)
+            x_ranks = ns.solve(max_iter=self.nslimit)
             for name, xr in x_ranks.items():
                 if name in self.lnodes:
                     self.lnodes[name].x = float(xr)
+
+            # Log NS-solved positions
+            for name in sorted(self.lnodes.keys()):
+                ln = self.lnodes[name]
+                if not ln.virtual:
+                    print(f"[TRACE position] ns_solved: {name} x_pos={int(ln.x)}", file=sys.stderr)
 
             # Store ln/rn X positions for cluster bbox computation.
             # The C code uses these directly as cluster X boundaries
@@ -4128,7 +4490,8 @@ class DotLayout(LayoutEngine):
                         self._cl_rn_x[cl_name] = float(x_ranks[rn_name])
 
             return True
-        except Exception:
+        except Exception as e:
+            print(f"[TRACE position] ns_x_position FAILED: {e}", file=sys.stderr)
             return False
 
     def _compact_clusters(self):
@@ -4754,6 +5117,7 @@ class DotLayout(LayoutEngine):
     # ── Phase 4: Edge routing ────────────────────
 
     def _phase4_routing(self):
+        print(f"[TRACE spline] phase4 begin: splines={self.splines} compound={self.compound}", file=sys.stderr)
         # Pre-compute rank bounding info for obstacle-aware routing
         self._rank_ht1: dict[int, float] = {}  # bottom half-height per rank
         self._rank_ht2: dict[int, float] = {}  # top half-height per rank
@@ -4828,6 +5192,13 @@ class DotLayout(LayoutEngine):
                 if le.points and len(le.points) >= 2 and le.spline_type != "bezier":
                     le.points = self._to_bezier(le.points)
                     le.spline_type = "bezier"
+
+        # Log edge routing results
+        all_routed = [le for le in self.ledges if not le.virtual] + self._chain_edges
+        for le in all_routed:
+            if le.points:
+                pts_str = " ".join(f"({p[0]:.1f},{p[1]:.1f})" for p in le.points[:4])
+                print(f"[TRACE spline] edge {le.tail_name}->{le.head_name}: npts={len(le.points)} type={le.spline_type} pts={pts_str}{'...' if len(le.points)>4 else ''}", file=sys.stderr)
 
     def _clip_compound_edges(self):
         """Clip edges with lhead/ltail to their target cluster bounding box."""
