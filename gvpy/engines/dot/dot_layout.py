@@ -1026,6 +1026,23 @@ class DotLayout(LayoutEngine):
         for name, node in self.graph.nodes.items():
             w, h = self._compute_node_size(name, node)
             ln = LayoutNode(node=node, width=w, height=h)
+
+            # Size record fields and store geometry on Node
+            # (C shapes.c:3687 record_init → size_reclbl)
+            if node.record_fields is not None:
+                fontsize = 14.0
+                try:
+                    fontsize = float(node.attributes.get("fontsize", "14"))
+                except (ValueError, TypeError):
+                    pass
+                node.record_fields.compute_size(fontsize=fontsize)
+                node.record_fields.compute_positions(
+                    0, 0, node.record_fields.width,
+                    node.record_fields.height)
+            # Store computed geometry on Node (C: ND_lw, ND_rw, ND_ht)
+            node.lw = w / 2.0
+            node.rw = w / 2.0
+            node.ht = h
             # Read pos and pin attributes
             pos_str = node.attributes.get("pos", "")
             if pos_str:
@@ -2995,11 +3012,15 @@ class DotLayout(LayoutEngine):
         return 0
 
     def _mval_edge(self, node_name: str, port_name: str) -> int:
-        """VAL(node, port) with port.order computed from record layout.
-        Matches C sameport.c:151-152:
+        """VAL(node, port) with port.order from Node.record_fields.
+
+        Matches C mincross.c:1685 VAL() + sameport.c:151-152:
           port.order = MC_SCALE * (lw + port.x) / (lw + rw)
-        We approximate port.x from the port's position within the
-        record field layout."""
+
+        The port fraction comes from Node.record_fields (parsed at
+        DOT load time, sized by RecordField.compute_size/positions).
+        Node is the single source of truth for port geometry.
+        """
         if node_name not in self.lnodes:
             return 0
         ln = self.lnodes[node_name]
@@ -3012,14 +3033,14 @@ class DotLayout(LayoutEngine):
         if cache_key in self._port_order_cache:
             return self._MC_SCALE * order + self._port_order_cache[cache_key]
 
-        # Compute port.order from record field layout
-        # Parse record label to find port position
+        # Look up port fraction from Node.record_fields
+        # (parsed at DOT load, sized at layout start)
         port_order = self._MC_SCALE // 2  # default center
-        if ln.node:
-            label = ln.node.attributes.get("label", "")
-            if label.startswith("{") and "<" in label:
-                port_order = self._port_order_from_label(
-                    label, port_name)
+        if ln.node and ln.node.record_fields is not None:
+            frac = ln.node.record_fields.port_fraction(port_name)
+            if frac is not None:
+                port_order = int(frac * self._MC_SCALE)
+
         self._port_order_cache[cache_key] = port_order
         return self._MC_SCALE * order + port_order
 
