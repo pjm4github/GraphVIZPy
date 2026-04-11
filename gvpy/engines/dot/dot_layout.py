@@ -2982,6 +2982,16 @@ class DotLayout(LayoutEngine):
 
     # ── Per-node mval storage for medians/reorder ──────────
     _node_mval: dict[str, float] = {}
+    _MC_SCALE = 256  # C const.h:99 — scale factor for VAL() macro
+
+    def _mval(self, node_name: str, port_order: int = 128) -> int:
+        """C mincross.c:1685 VAL(node, port).
+        Returns MC_SCALE * ND_order(node) + port.order.
+        Default port_order=128 (MC_SCALE/2) for center port
+        (C shapes.c:2865)."""
+        if node_name in self.lnodes:
+            return self._MC_SCALE * self.lnodes[node_name].order + port_order
+        return 0
 
     def _cluster_medians(self, rank: int, adj_rank: int,
                           cl_nodes: set[str],
@@ -3003,20 +3013,22 @@ class DotLayout(LayoutEngine):
             positions = []
             if fg_out is not None and fg_in is not None:
                 # Fast graph edges (C ND_out/ND_in)
+                # Use _mval (C VAL macro, mincross.c:1685) which
+                # includes port.order for sub-node positioning
                 if adj_rank > rank:
                     for nbr in fg_out.get(name, []):
                         if nbr in adj_set:
-                            positions.append(self.lnodes[nbr].order)
+                            positions.append(self._mval(nbr))
                 else:
                     for nbr in fg_in.get(name, []):
                         if nbr in adj_set:
-                            positions.append(self.lnodes[nbr].order)
+                            positions.append(self._mval(nbr))
             else:
                 for le in self.ledges:
                     if le.tail_name == name and le.head_name in adj_set:
-                        positions.append(self.lnodes[le.head_name].order)
+                        positions.append(self._mval(le.head_name))
                     elif le.head_name == name and le.tail_name in adj_set:
-                        positions.append(self.lnodes[le.tail_name].order)
+                        positions.append(self._mval(le.tail_name))
 
             # C mincross.c:1708-1735
             if not positions:
