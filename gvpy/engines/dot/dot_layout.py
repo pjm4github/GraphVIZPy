@@ -3101,15 +3101,46 @@ class DotLayout(LayoutEngine):
         edges via skeleton rank-leaders).
         """
         # Build adjacency limited to bfs_nodes.
-        # Edge ordering matters: C's class2 adds skeleton edges FIRST
-        # (via build_skeleton), then processes original edges (via
-        # agfstout/agnxtout).  We match this by putting skeleton/virtual
-        # edges first, then original DOT-file edges.
+        # Edge ordering in ND_out matters for BFS discovery order.
+        # C's class2 populates ND_out in this order:
+        #   1. build_skeleton chain edges (same-cluster vertical,
+        #      class2.c:164-165)
+        #   2. interclrep edges (cross-cluster, class2.c:188-203)
+        #   3. regular edges (class2.c:205+)
+        # We match this by adding edges in three passes.
         adj_out: dict[str, list[str]] = defaultdict(list)
         has_incoming: set[str] = set()
         seen_adj: set[tuple[str, str]] = set()
 
-        # Pass 1: skeleton/virtual edges first (matching C build_skeleton)
+        # Identify which skeleton nodes belong to which child cluster
+        # so we can separate chain edges from inter-cluster edges.
+        _skel_child: dict[str, str] = {}
+        for ch_name, rls in child_skel_ranks.items():
+            for sn in rls.values():
+                _skel_child[sn] = ch_name
+
+        # Pass 1: skeleton chain edges (within same child cluster)
+        # These are the vertical edges connecting rank leaders of the
+        # same cluster.  In C, build_skeleton adds these first.
+        # (C class2.c:164-165, cluster.c build_skeleton)
+        for le in self.ledges:
+            if not le.virtual:
+                continue
+            t, h = le.tail_name, le.head_name
+            if t in bfs_nodes and h in bfs_nodes:
+                # Chain edge = both endpoints in same child cluster
+                t_ch = _skel_child.get(t)
+                h_ch = _skel_child.get(h)
+                if t_ch and h_ch and t_ch == h_ch:
+                    pair = (t, h)
+                    if pair not in seen_adj:
+                        seen_adj.add(pair)
+                        adj_out[t].append(h)
+                        has_incoming.add(h)
+
+        # Pass 2: inter-cluster edges (virtual edges between different
+        # child clusters or from non-cluster nodes to cluster nodes)
+        # (C class2.c:188-203 interclrep)
         for le in self.ledges:
             if not le.virtual:
                 continue
@@ -3121,7 +3152,8 @@ class DotLayout(LayoutEngine):
                     adj_out[t].append(h)
                     has_incoming.add(h)
 
-        # Pass 2: original edges (matching C agfstout/agnxtout order)
+        # Pass 3: original DOT-file edges
+        # (C class2.c:205+ regular edge processing)
         for le in self.ledges:
             if le.virtual:
                 continue
