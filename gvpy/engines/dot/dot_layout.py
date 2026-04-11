@@ -2668,12 +2668,19 @@ class DotLayout(LayoutEngine):
 
                         # mincross_step (mincross.c:1528-1554)
                         reverse = (_pass % 4) < 2
+                        # Note: cl_fg_out/cl_fg_in are the SKELETON-level
+                        # fast graph from _cluster_build_ranks. After
+                        # expansion, real nodes replace skeletons but the
+                        # fast graph still has skeleton edges.  Pass
+                        # fg_out=None so _cluster_medians falls back to
+                        # self.ledges which has edges for real nodes.
+                        # C rebuilds the fast graph via class2 inside
+                        # expand_cluster (cluster.c:282,298).
                         if _pass % 2 == 0:
                             for r in range(min_r + 1, max_r + 1):
                                 if r in self.ranks:
                                     self._cluster_medians(
-                                        r, r - 1, cl_node_set,
-                                        cl_fg_out, cl_fg_in)
+                                        r, r - 1, cl_node_set)
                                     self._cluster_reorder(
                                         r, cl_node_set, child_cl_map,
                                         reverse)
@@ -2681,8 +2688,7 @@ class DotLayout(LayoutEngine):
                             for r in range(max_r - 1, min_r - 1, -1):
                                 if r in self.ranks:
                                     self._cluster_medians(
-                                        r, r + 1, cl_node_set,
-                                        cl_fg_out, cl_fg_in)
+                                        r, r + 1, cl_node_set)
                                     self._cluster_reorder(
                                         r, cl_node_set, child_cl_map,
                                         reverse)
@@ -3029,7 +3035,7 @@ class DotLayout(LayoutEngine):
                     else:
                         self._node_mval[name] = (positions[lm] + positions[m]) / 2.0
 
-        # Trace median values for specific ranks (first pass only)
+        # Trace median values for specific ranks
         if rank in (4, 5, 6) and len(cl_nodes) > 5 and len(cl_nodes) < 60:
             parts = []
             for name in self.ranks.get(rank, []):
