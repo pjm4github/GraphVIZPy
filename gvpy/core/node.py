@@ -291,10 +291,22 @@ class Node(Agobj):   # from core/core.c
         # from the root enclosed_node.
         self.init_local_attr_values()
 
-        # Record field tree for record/Mrecord shapes.
+        # ── Computed geometry (set by layout engine) ────
+        # These match C's ND_coord, ND_lw, ND_rw, ND_ht fields.
+        # All values in points (1 inch = 72 points).
+        # Set during layout; initially None/0.
+        self.coord_x: float = 0.0      # C: ND_coord(n).x — center X
+        self.coord_y: float = 0.0      # C: ND_coord(n).y — center Y
+        self.lw: float = 0.0           # C: ND_lw(n) — left half-width
+        self.rw: float = 0.0           # C: ND_rw(n) — right half-width
+        self.ht: float = 0.0           # C: ND_ht(n) — total height
+
+        # ── Record field tree for record/Mrecord shapes ──
         # Parsed from the label attribute by parse_record_label()
         # (gvpy/grammar/record_parser.py).  None if not a record shape.
         # C reference: ND_shape_info(n) → field_t* (shapes.c:3705)
+        # After sizing, each RecordField has x, y, width, height
+        # relative to the node center.
         self.record_fields = None  # Optional[RecordField]
 
         # "Compound node" data
