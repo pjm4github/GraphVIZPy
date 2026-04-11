@@ -2498,22 +2498,50 @@ class DotLayout(LayoutEngine):
                         break  # one is a direct node of par_cl, not a child cluster
                     if t_child == h_child:
                         break  # same child cluster
-                    # Create skeleton edge between rank-leaders
+                    # Create inter-cluster edge chain between rank-leaders.
+                    # Mirrors C class2.c:99-124 interclrep() → make_chain():
+                    # instead of a direct edge from t_skel to h_skel,
+                    # create a chain of virtual nodes at intermediate ranks
+                    # so the BFS visits all ranks between the endpoints.
                     t_rank = self.lnodes[le.tail_name].rank
                     h_rank = self.lnodes[le.head_name].rank
                     t_skel = skeleton_nodes.get(t_child, {}).get(t_rank)
                     h_skel = skeleton_nodes.get(h_child, {}).get(h_rank)
-                    if t_skel and h_skel:
+                    if t_skel and h_skel and t_rank != h_rank:
+                        # Ensure t_rank < h_rank (C interclrep:106-108)
+                        if t_rank > h_rank:
+                            t_skel, h_skel = h_skel, t_skel
+                            t_rank, h_rank = h_rank, t_rank
                         key = (t_skel, h_skel)
                         if key not in _seen_skel_edges:
                             _seen_skel_edges.add(key)
-                            se = LayoutEdge(
-                                edge=None, tail_name=t_skel,
-                                head_name=h_skel,
-                                minlen=1, weight=le.weight, virtual=True,
-                            )
-                            skeleton_edges.append(se)
-                            self.ledges.append(se)
+                            # C class2.c:70-96 make_chain(): create chain
+                            # from→v1→v2→...→to with virtual nodes at
+                            # each intermediate rank.
+                            prev_name = t_skel
+                            for cr in range(t_rank + 1, h_rank + 1):
+                                if cr < h_rank:
+                                    # Intermediate virtual node
+                                    # (C class2.c:87 plain_vnode)
+                                    cvn = f"_icv_{t_skel}_{h_skel}_{cr}"
+                                    self.lnodes[cvn] = LayoutNode(
+                                        node=None, rank=cr, virtual=True,
+                                        width=2.0, height=2.0)
+                                    next_name = cvn
+                                else:
+                                    next_name = h_skel
+                                ce = LayoutEdge(
+                                    edge=None, tail_name=prev_name,
+                                    head_name=next_name,
+                                    minlen=1, weight=le.weight,
+                                    virtual=True)
+                                skeleton_edges.append(ce)
+                                self.ledges.append(ce)
+                                prev_name = next_name
+                    elif t_skel and h_skel and t_rank == h_rank:
+                        # Same rank: C interclrep:114-115 skips same-rank
+                        # inter-cluster edges.  No edge created.
+                        pass
                     break
 
         # ── Collapse: replace clusters with skeletons, top-down ──
@@ -2595,10 +2623,10 @@ class DotLayout(LayoutEngine):
                 cl_hidden = {n for n, hider in hidden_by.items()
                              if hider == cl_name and n in self.lnodes}
 
-                # Collect virtual nodes whose edge chains pass through
-                # this cluster (both orig_tail and orig_head are cluster
-                # members).  In C, these are in the cluster subgraph and
-                # participate in build_ranks BFS.
+                # Collect virtual nodes that participate in this cluster's
+                # BFS.  In C, the cluster subgraph contains virtual nodes
+                # from edge splitting AND inter-cluster chain nodes from
+                # interclrep/make_chain (class2.c:70-96).
                 cl_member_set = node_sets[cl_name]
                 cl_virtual: set[str] = set()
                 cl_min_r = min(rank_leaders.keys())
@@ -2608,8 +2636,13 @@ class DotLayout(LayoutEngine):
                         continue
                     if vln.rank < cl_min_r or vln.rank > cl_max_r:
                         continue
-                    # Check if this virtual node's edge chain connects
-                    # two cluster members (via orig_tail/orig_head)
+                    # Include inter-cluster chain nodes (_icv_*) created
+                    # by interclrep make_chain (C class2.c:70-96)
+                    if vname.startswith("_icv_"):
+                        cl_virtual.add(vname)
+                        continue
+                    # Include virtual nodes from edge splitting whose
+                    # chain connects two cluster members
                     for le in self.ledges:
                         if le.tail_name == vname or le.head_name == vname:
                             ot = getattr(le, 'orig_tail', None)
@@ -2742,12 +2775,21 @@ class DotLayout(LayoutEngine):
                             best_order = self._save_ordering()
                     self._restore_ordering(best_order)
 
-        # ── Clean up skeleton nodes and edges ──
+        # ── Clean up skeleton nodes, chain nodes, and edges ──
         for cl_name, rank_leaders in skeleton_nodes.items():
             for r, skel_name in rank_leaders.items():
                 if r in self.ranks and skel_name in self.ranks[r]:
                     self.ranks[r].remove(skel_name)
                 self.lnodes.pop(skel_name, None)
+
+        # Remove inter-cluster chain virtual nodes (_icv_* from
+        # interclrep make_chain, C class2.c:70-96)
+        icv_names = [n for n in self.lnodes if n.startswith("_icv_")]
+        for n in icv_names:
+            for r in self.ranks.values():
+                if n in r:
+                    r.remove(n)
+            del self.lnodes[n]
 
         skel_edge_set = set(id(se) for se in skeleton_edges)
         self.ledges = [le for le in self.ledges if id(le) not in skel_edge_set]
