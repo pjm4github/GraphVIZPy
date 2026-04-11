@@ -3200,56 +3200,22 @@ class DotLayout(LayoutEngine):
                 # class2.c:205+: regular edge
                 _fg_fast_edge(t, h)
 
-        # ── Step 2: decompose DFS for nlist (decomp.c:85-130) ──
-        # LIFO stack DFS, reverse edge iteration.
-        # C decompose.c:117: iterates agfstnode(g) which traverses
-        # the nlist linked list.  fast_node prepends, so fg_nlist[0]
-        # is the LAST node added.  We iterate fg_nlist forward
-        # (matching GD_nlist → ND_next traversal).
-        decompose_nlist: list[str] = []
-        decompose_visited: set[str] = set()
-
-        def _search_component(start: str):
-            """C decomp.c:85-106 search_component."""
-            stack = [start]
-            while stack:
-                nd = stack.pop()         # LIFO (decomp.c:74 pop back)
-                if nd in decompose_visited:
-                    continue
-                decompose_visited.add(nd)
-                decompose_nlist.append(nd)  # add_to_component
-                # decomp.c:92 vec = {flat_in, flat_out, in, out}
-                # We use (in, out), each reversed (decomp.c:96)
-                for nbr_list in [fg_in.get(nd, []),
-                                 fg_out.get(nd, [])]:
-                    for nbr in reversed(nbr_list):
-                        if nbr not in decompose_visited:
-                            stack.append(nbr)
-
-        # decompose.c:117-128: iterate agfstnode(g)/agnxtnode(g,n).
-        # C iterates ALL subgraph nodes in cgraph order, but skips
-        # nodes where v != UF_find(v) (child cluster members).
-        # For pass=0: only nodes that are their own UF_find leader
-        # start DFS components.  We iterate all bfs_nodes in DOT
-        # file order (approximating agfstnode), skipping child
-        # cluster members (matching UF_find check at decomp.c:121).
-        for n in ordered_nodes:
-            # decomp.c:121: skip non-leaders
-            if n in node_child:
-                continue  # in a child cluster → UF_find(v) != v
-            if n in self.lnodes and self.lnodes[n].virtual:
-                if not n.startswith("_skel_"):
-                    continue  # _v_* virtual → not UF leader
-            if n not in decompose_visited:
-                _search_component(n)
+        # ── Step 2: build_ranks uses GD_nlist directly ──────
+        # expand_cluster (cluster.c:280-296) calls class2 then
+        # build_ranks.  build_ranks (mincross.c:1270,1292-1298)
+        # iterates GD_nlist(g) — the fast graph nlist built by
+        # class2's fast_node (prepend) calls.  It does NOT call
+        # decompose.  The nlist IS the traversal order.
+        #
+        # fast_node prepends, so fg_nlist[0] = last node added.
+        # walkbackwards (mincross.c:1288): walk from END of nlist
+        # toward front = reversed(fg_nlist).
 
         # ── Step 3: build_ranks BFS (mincross.c:1265-1339) ──
-        # Walk decompose_nlist backward (mincross.c:1288 walkbackwards).
-        # Source = no incoming edges in fast graph (ND_in empty).
-        # Exclude edge-split virtual nodes (_v_*) which have
-        # predecessors outside bfs_nodes.
+        # Walk GD_nlist backward (mincross.c:1288-1298 walkbackwards).
+        # Source = node with ND_in(n).list[0] == NULL (pass=0).
         sources = []
-        for n in reversed(decompose_nlist):
+        for n in reversed(fg_nlist):
             if fg_in.get(n):
                 continue  # has incoming — not a source
             if (n in self.lnodes and self.lnodes[n].virtual
@@ -3264,8 +3230,8 @@ class DotLayout(LayoutEngine):
         _bfs_trace = len(bfs_nodes) > 20
 
         if _bfs_trace:
-            skel_nlist = [n for n in decompose_nlist if n.startswith("_skel_")]
-            print(f"[TRACE bfs] decompose nlist (skeletons): {skel_nlist}", file=sys.stderr)
+            skel_nlist = [n for n in fg_nlist if n.startswith("_skel_")]
+            print(f"[TRACE bfs] fg_nlist (skeletons): {skel_nlist}", file=sys.stderr)
         _bfs_trace = len(bfs_nodes) > 20
 
         if _bfs_trace:
