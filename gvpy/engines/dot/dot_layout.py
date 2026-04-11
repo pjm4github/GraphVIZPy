@@ -3171,11 +3171,21 @@ class DotLayout(LayoutEngine):
             for sn in rleaders.values():
                 skel_to_child[sn] = child_name
 
-        # Source nodes: no incoming edges within bfs_nodes
-        # Only consider non-skeleton nodes as BFS seeds (skeleton
-        # nodes are "installed" when a cluster node is encountered).
+        # Source nodes: no incoming edges within bfs_nodes.
+        # C mincross.c:1298-1301: walks nlist backward, checks
+        # ND_in(n).list[0] != NULL (pass=0).  Sources include:
+        # - CLUSTER-type nodes (child skeleton rank leaders) with
+        #   no incoming edges — these start BFS and trigger
+        #   install_cluster
+        # - Non-cluster, non-virtual nodes with no incoming edges
+        # Virtual nodes from edge splitting are excluded — they
+        # always have predecessors in the full subgraph but may
+        # appear sourceless here because their predecessor is
+        # hidden by a child cluster.
         sources = [n for n in bfs_nodes
-                   if n not in has_incoming and n not in child_skel_set]
+                   if n not in has_incoming
+                   and not (n in self.lnodes and self.lnodes[n].virtual
+                            and not n.startswith("_skel_"))]
 
         # C walks nlist backward for clusters.  The nlist was built
         # during initial ranking (decompose DFS) which follows DOT
@@ -3187,9 +3197,17 @@ class DotLayout(LayoutEngine):
                      reverse=True)
 
         # BFS (FIFO queue matching C's LIST_PUSH_BACK / LIST_POP_FRONT)
+        # C mincross.c:1305-1320 build_ranks BFS loop
         result: dict[int, list[str]] = defaultdict(list)
         visited: set[str] = set()
         installed_children: set[str] = set()
+
+        # Enable BFS trace for specific clusters (large ones where
+        # ordering matters)
+        _bfs_trace = len(bfs_nodes) > 20
+
+        if _bfs_trace:
+            print(f"[TRACE bfs] sources: {sources}", file=sys.stderr)
 
         queue: deque[str] = deque()
         for s in sources:
@@ -3199,29 +3217,44 @@ class DotLayout(LayoutEngine):
                 while queue:
                     n0 = queue.popleft()
                     if n0 in child_skel_set:
-                        # CLUSTER node: install all rank leaders for
-                        # this child, enqueue their neighbors.
+                        # CLUSTER node: install all rank leaders
+                        # C cluster.c:393-407 install_cluster
                         child_name = skel_to_child.get(n0, "")
                         if child_name and child_name not in installed_children:
                             installed_children.add(child_name)
+                            if _bfs_trace:
+                                print(f"[TRACE bfs] install_cluster {child_name}", file=sys.stderr)
                             rleaders = child_skel_ranks[child_name]
                             for r in sorted(rleaders.keys()):
                                 sn = rleaders[r]
                                 result[r].append(sn)
                             # Enqueue neighbors of all rank leaders
+                            # C cluster.c:405-406
                             for sn in rleaders.values():
                                 for nbr in adj_out.get(sn, []):
                                     if nbr not in visited:
                                         visited.add(nbr)
                                         queue.append(nbr)
+                                        if _bfs_trace:
+                                            nbr_r = self.lnodes[nbr].rank if nbr in self.lnodes else "?"
+                                            nbr_cl = skel_to_child.get(nbr, "")
+                                            print(f"[TRACE bfs]   enqueue {nbr} (rank={nbr_r}, cl={nbr_cl}) from {sn}", file=sys.stderr)
                     else:
                         # Regular node: install in its rank
+                        # C mincross.c:1307-1312
                         result[self.lnodes[n0].rank].append(n0)
+                        if _bfs_trace:
+                            print(f"[TRACE bfs] install {n0} rank={self.lnodes[n0].rank}", file=sys.stderr)
                         # Enqueue outgoing neighbors (pass=0)
+                        # C mincross.c:1341-1351 enqueue_neighbors
                         for nbr in adj_out.get(n0, []):
                             if nbr not in visited:
                                 visited.add(nbr)
                                 queue.append(nbr)
+                                if _bfs_trace:
+                                    nbr_r = self.lnodes[nbr].rank if nbr in self.lnodes else "?"
+                                    nbr_cl = skel_to_child.get(nbr, "")
+                                    print(f"[TRACE bfs]   enqueue {nbr} (rank={nbr_r}, cl={nbr_cl}) from {n0}", file=sys.stderr)
 
         # Handle nodes not reached by BFS (disconnected).
         # Sort for deterministic order (bfs_nodes is a set).
