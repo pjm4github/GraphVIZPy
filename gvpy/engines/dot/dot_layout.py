@@ -2662,7 +2662,7 @@ class DotLayout(LayoutEngine):
 
                 # BFS over hidden + virtual + child skeleton nodes
                 bfs_nodes = cl_hidden | cl_virtual | child_skel_set
-                bfs_order = self._cluster_build_ranks(
+                bfs_order, cl_fg_out, cl_fg_in = self._cluster_build_ranks(
                     bfs_nodes, child_skel_set, child_skel_ranks,
                     node_sets)
 
@@ -2756,19 +2756,29 @@ class DotLayout(LayoutEngine):
                     best_cross = self._count_cluster_crossings(
                         cl_node_set, min_r, max_r)
                     best_order = self._save_ordering()
-                    for _ in range(max_iter):
-                        for r in range(min_r + 1, max_r + 1):
-                            if r in self.ranks:
-                                self._cluster_median_order(
-                                    r, r - 1, cl_node_set)
-                                self._cluster_transpose(
-                                    r, cl_node_set, child_cl_map)
-                        for r in range(max_r - 1, min_r - 1, -1):
-                            if r in self.ranks:
-                                self._cluster_median_order(
-                                    r, r + 1, cl_node_set)
-                                self._cluster_transpose(
-                                    r, cl_node_set, child_cl_map)
+                    # C mincross.c:1528-1554 mincross_step:
+                    # Alternates down/up passes with reverse flag.
+                    # pass%2==0: down, pass%2==1: up
+                    # Uses fast graph edges for median computation.
+                    for _pass in range(max_iter):
+                        if _pass % 2 == 0:
+                            # Down pass (mincross.c:1534-1538)
+                            for r in range(min_r + 1, max_r + 1):
+                                if r in self.ranks:
+                                    self._cluster_median_order(
+                                        r, r - 1, cl_node_set,
+                                        cl_fg_out, cl_fg_in)
+                                    self._cluster_transpose(
+                                        r, cl_node_set, child_cl_map)
+                        else:
+                            # Up pass (mincross.c:1540-1545)
+                            for r in range(max_r - 1, min_r - 1, -1):
+                                if r in self.ranks:
+                                    self._cluster_median_order(
+                                        r, r + 1, cl_node_set,
+                                        cl_fg_out, cl_fg_in)
+                                    self._cluster_transpose(
+                                        r, cl_node_set, child_cl_map)
                         c = self._count_cluster_crossings(
                             cl_node_set, min_r, max_r)
                         if c < best_cross:
@@ -3029,11 +3039,14 @@ class DotLayout(LayoutEngine):
             _mincross_clust(top_cl)
 
     def _cluster_median_order(self, rank: int, adj_rank: int,
-                               cl_nodes: set[str]) -> bool:
-        """Reorder cluster nodes within a rank by median neighbor position.
+                               cl_nodes: set[str],
+                               fg_out: dict | None = None,
+                               fg_in: dict | None = None) -> bool:
+        """Reorder cluster nodes by median neighbor position.
 
-        Only reorders nodes that belong to ``cl_nodes``; other nodes stay
-        in place.  Returns True if any reordering occurred.
+        Mirrors C mincross.c:1687-1743 medians() + mincross.c:1476-1526
+        reorder().  Uses fast graph edges (fg_out/fg_in from class2)
+        when available, matching C's ND_out/ND_in scoping.
         """
         rank_nodes = self.ranks.get(rank, [])
         if not rank_nodes:
@@ -3044,37 +3057,82 @@ class DotLayout(LayoutEngine):
         if len(cl_in_rank) < 2:
             return False
 
-        # Compute medians for cluster nodes only
+        # Compute medians (C mincross.c:1687-1743 medians())
         medians: dict[str, float] = {}
         for _, name in cl_in_rank:
             positions = []
-            for le in self.ledges:
-                neighbor = None
-                if le.tail_name == name and le.head_name in adj_set:
-                    neighbor = le.head_name
-                elif le.head_name == name and le.tail_name in adj_set:
-                    neighbor = le.tail_name
-                if neighbor is not None:
-                    positions.append(self.lnodes[neighbor].order)
-            if positions:
+            if fg_out is not None and fg_in is not None:
+                # Use fast graph edges (matching C ND_out/ND_in)
+                if adj_rank > rank:
+                    # Down: use outgoing edges (C mincross.c:1700)
+                    for nbr in fg_out.get(name, []):
+                        if nbr in adj_set:
+                            positions.append(self.lnodes[nbr].order)
+                else:
+                    # Up: use incoming edges (C mincross.c:1704)
+                    for nbr in fg_in.get(name, []):
+                        if nbr in adj_set:
+                            positions.append(self.lnodes[nbr].order)
+            else:
+                # Fallback: scan all edges (used when no fast graph)
+                for le in self.ledges:
+                    neighbor = None
+                    if le.tail_name == name and le.head_name in adj_set:
+                        neighbor = le.head_name
+                    elif le.head_name == name and le.tail_name in adj_set:
+                        neighbor = le.tail_name
+                    if neighbor is not None:
+                        positions.append(self.lnodes[neighbor].order)
+
+            if not positions:
+                medians[name] = -1.0  # C: ND_mval = -1 (no neighbors)
+            elif len(positions) == 1:
+                medians[name] = float(positions[0])
+            elif len(positions) == 2:
+                medians[name] = (positions[0] + positions[1]) / 2.0
+            else:
+                # Weighted median (C mincross.c:1719-1733)
                 positions.sort()
                 m = len(positions) // 2
-                medians[name] = positions[m] if len(positions) % 2 else \
-                    (positions[m - 1] + positions[m]) / 2.0
-            else:
-                medians[name] = self.lnodes[name].order
+                if len(positions) % 2:
+                    medians[name] = float(positions[m])
+                else:
+                    lm = m - 1
+                    rspan = positions[-1] - positions[m]
+                    lspan = positions[lm] - positions[0]
+                    if lspan == rspan:
+                        medians[name] = (positions[lm] + positions[m]) / 2.0
+                    elif lspan + rspan > 0:
+                        medians[name] = (positions[lm] * rspan +
+                                         positions[m] * lspan) / (lspan + rspan)
+                    else:
+                        medians[name] = (positions[lm] + positions[m]) / 2.0
 
-        # Sort cluster nodes by median while keeping their positions
-        # (the slot indices they occupy in the rank)
+        # Reorder: sort cluster nodes by median (C reorder, mincross.c:1476)
+        # Nodes with mval == -1 keep their position (C reorder skips them)
         slots = [i for i, _ in cl_in_rank]
-        cl_names_sorted = sorted([n for _, n in cl_in_rank],
-                                  key=lambda n: medians[n])
+        movable = [(i, n) for i, n in cl_in_rank if medians.get(n, -1) >= 0]
+        fixed = [(i, n) for i, n in cl_in_rank if medians.get(n, -1) < 0]
+        movable_sorted = sorted([n for _, n in movable],
+                                 key=lambda n: medians[n])
+
+        # Place fixed nodes at their current positions, movable at
+        # remaining slots sorted by median
         changed = False
-        for slot, name in zip(slots, cl_names_sorted):
-            if rank_nodes[slot] != name:
-                changed = True
-            rank_nodes[slot] = name
-            self.lnodes[name].order = slot
+        mov_idx = 0
+        for slot in slots:
+            cur = rank_nodes[slot]
+            # Is this slot occupied by a fixed node?
+            is_fixed = any(s == slot and n == cur for s, n in fixed)
+            if is_fixed:
+                continue
+            if mov_idx < len(movable_sorted):
+                name = movable_sorted[mov_idx]
+                mov_idx += 1
+                if rank_nodes[slot] != name:
+                    changed = True
+                rank_nodes[slot] = name
+                self.lnodes[name].order = slot
 
         return changed
 
@@ -3370,7 +3428,7 @@ class DotLayout(LayoutEngine):
         #     for r in result:
         #         result[r].reverse()
 
-        return result
+        return result, fg_out, fg_in
 
     def _cluster_transpose(self, rank: int, cl_nodes: set[str],
                            child_cl_map: dict[str, str] | None = None):
