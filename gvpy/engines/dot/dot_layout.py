@@ -906,13 +906,18 @@ class DotLayout(LayoutEngine):
             ln = LayoutNode(node=node, width=w, height=h)
 
             # Size record fields and store geometry on Node
-            # (C shapes.c:3687 record_init → size_reclbl)
+            # (C shapes.c:3687-3708 record_init → parse_reclbl/size_reclbl)
+            # For LR/RL, C starts with flip=TRUE (shapes.c:3705) which
+            # swaps the LR direction at the top level.
             if node.record_fields is not None:
                 fontsize = 14.0
                 try:
                     fontsize = float(node.attributes.get("fontsize", "14"))
                 except (ValueError, TypeError):
                     pass
+                # Flip for LR/RL (C shapes.c:3705 flip = GD_flip)
+                if self.rankdir in ("LR", "RL"):
+                    self._flip_record_lr(node.record_fields)
                 node.record_fields.compute_size(fontsize=fontsize)
                 node.record_fields.compute_positions(
                     0, 0, node.record_fields.width,
@@ -1519,6 +1524,18 @@ class DotLayout(LayoutEngine):
     # ── Node sizing ──────────────────────────────
 
     # _MIN_WIDTH, _MIN_HEIGHT, _H_PAD, _V_PAD inherited from LayoutEngine
+
+    @staticmethod
+    def _flip_record_lr(rf):
+        """Flip LR flags for LR/RL rankdir.
+
+        C shapes.c:3705: record_init calls parse_reclbl with flip=TRUE
+        for LR/RL, which makes the top-level fields stack vertically
+        (TB) instead of horizontally (LR).  Each {} nesting flips again.
+        """
+        rf.LR = not rf.LR
+        for child in rf.children:
+            DotLayout._flip_record_lr(child)
 
     def _compute_node_size(self, name: str, node) -> tuple[float, float]:
         """Compute node dimensions from label text, shape, and explicit width/height."""

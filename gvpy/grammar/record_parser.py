@@ -183,17 +183,30 @@ class RecordField:
         return (f.x + f.width / 2.0, f.y + f.height / 2.0)
 
     def port_fraction(self, port_name: str) -> Optional[float]:
-        """Return the port's horizontal position as a fraction [0..1].
+        """Return the port's cross-rank position as a fraction [0..1].
 
         Used for port.order computation in mincross
-        (C sameport.c:151-152).  Returns None if port not found.
+        (C sameport.c:151-152: MC_SCALE * (lw + port.x) / (lw + rw)).
+
+        For LR=True (horizontal fields): returns X fraction.
+        For LR=False (vertical fields, LR/RL rankdir): returns Y
+        fraction — matching C which uses the cross-rank axis for
+        port.order (the axis perpendicular to the rank direction).
         """
         f = self.find_port(port_name)
         if f is None:
             return None
-        if self.width <= 0:
-            return 0.5
-        return (f.x + f.width / 2.0 - self.x) / self.width
+        if self.LR:
+            # Horizontal fields → port.order from X position
+            if self.width <= 0:
+                return 0.5
+            return (f.x + f.width / 2.0 - self.x) / self.width
+        else:
+            # Vertical fields (LR/RL) → port.order from Y position
+            # (C: cross-rank axis for GD_flip graphs)
+            if self.height <= 0:
+                return 0.5
+            return (f.y + f.height / 2.0 - self.y) / self.height
 
 
 class _RecordVisitor(RecordParserVisitor):
