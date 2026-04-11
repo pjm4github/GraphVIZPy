@@ -183,11 +183,12 @@ class TestNodeSpliceEdge:
 class TestNodeFlatten:
 
     def test_flatten_to_set(self, graph):
-        """flatten_edges converts adjacency to set."""
+        """flatten_edges keeps adjacency as list (no set conversion)."""
         n = graph.nodes["B"]
         n.flatten_edges(to_list=False)
-        assert isinstance(n.outedges, set)
-        assert isinstance(n.inedges, set)
+        # Always list — set conversion removed for deterministic ordering
+        assert isinstance(n.outedges, list)
+        assert isinstance(n.inedges, list)
 
     def test_flatten_to_list(self, graph):
         """flatten_edges converts adjacency back to list."""
@@ -198,18 +199,18 @@ class TestNodeFlatten:
         assert isinstance(n.inedges, list)
 
     def test_agflatten_elist_out(self, graph):
-        """agflatten_elist converts outedges."""
+        """agflatten_elist keeps outedges as list."""
         n = graph.nodes["A"]
         n.agflatten_elist(outedge=True, to_list=False)
-        assert isinstance(n.outedges, set)
+        assert isinstance(n.outedges, list)  # always list now
         n.agflatten_elist(outedge=True, to_list=True)
         assert isinstance(n.outedges, list)
 
     def test_agflatten_elist_in(self, graph):
-        """agflatten_elist converts inedges."""
+        """agflatten_elist keeps inedges as list."""
         n = graph.nodes["C"]
         n.agflatten_elist(outedge=False, to_list=False)
-        assert isinstance(n.inedges, set)
+        assert isinstance(n.inedges, list)  # always list now
         n.agflatten_elist(outedge=False, to_list=True)
         assert isinstance(n.inedges, list)
 

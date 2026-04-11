@@ -516,27 +516,21 @@ class Node(Agobj):   # from core/core.c
 
     def flatten_edges(self, to_list: bool):
         """
-        Convert outedges and inedges to either list or set.
-        When converting set→list, sort by edge key for deterministic order
-        (Python set iteration order depends on PYTHONHASHSEED).
+        Ensure outedges and inedges are lists.
+
+        The C code toggles between Dtlist (ordered) and Dtoset (tree) for
+        performance.  In Python, we always keep lists — add_outedge and
+        add_inedge already deduplicate with ``not in`` checks, and node
+        degrees are small enough that O(n) membership is fine.  Using
+        sets would introduce non-deterministic iteration order (Python
+        randomizes hash seeds).
         """
-        if to_list:
-            if isinstance(self.outedges, set):
-                self.outedges = sorted(self.outedges,
-                    key=lambda e: (e.tail.name if e.tail else "",
-                                   e.head.name if e.head else "",
-                                   e.name or ""))
-            if isinstance(self.inedges, set):
-                self.inedges = sorted(self.inedges,
-                    key=lambda e: (e.tail.name if e.tail else "",
-                                   e.head.name if e.head else "",
-                                   e.name or ""))
-        else:
-            # Convert to sets
-            if isinstance(self.outedges, list):
-                self.outedges = set(self.outedges)
-            if isinstance(self.inedges, list):
-                self.inedges = set(self.inedges)
+        if isinstance(self.outedges, set):
+            self.outedges = sorted(self.outedges,
+                key=lambda e: (e.tail.name, e.head.name, e.name or ""))
+        if isinstance(self.inedges, set):
+            self.inedges = sorted(self.inedges,
+                key=lambda e: (e.tail.name, e.head.name, e.name or ""))
 
     def add_outedge(self, edge: 'Edge'):
         if edge not in self.outedges:
@@ -800,40 +794,18 @@ class Node(Agobj):   # from core/core.c
 
     def agflatten_elist(self, outedge=True, to_list=True):  # from core/flatten.c
         """
-        In the snippet, we have a pointer to out_seq or in_seq, then calls dtmethod(d, ...).
-        Here, we just call node.flatten_edges, but we might want separate calls for out vs in.
-        """
-        # 2. Flatten Functions
-        # 2.1 agflatten_elist(...)
-        # static void agflatten_elist(Dict_t * d, Dtlink_t ** lptr, int flag) {
-        #     dtrestore(d, *lptr);
-        #     dtmethod(d, flag? Dtlist : Dtoset);
-        #     *lptr = dtextract(d);
-        # }
-        # This toggles the dictionary’s method (list vs. set) for the edges of a node. In Python,
-        # we’ll do something simpler: a helper that toggles a node’s single adjacency from list <-> set. Something like:
+        Ensure edge lists are in list form.
 
-        if to_list:
-            # If outedge, convert node.outedges to a list
-            # else, convert node.inedges to a list
-            if outedge:
-                if isinstance(self.outedges, set):
-                    self.outedges = sorted(self.outedges,
-                        key=lambda e: (e.tail.name if e.tail else "",
-                                       e.head.name if e.head else "",
-                                       e.name or ""))
-            else:
-                if isinstance(self.inedges, set):
-                    self.inedges = sorted(self.inedges,
-                        key=lambda e: (e.tail.name if e.tail else "",
-                                       e.head.name if e.head else "",
-                                       e.name or ""))
+        The C code toggles between Dtlist and Dtoset.  We always keep
+        lists to avoid non-deterministic set iteration order.  If edges
+        are somehow in set form, convert to sorted list.
+        """
+        if outedge:
+            if isinstance(self.outedges, set):
+                self.outedges = sorted(self.outedges,
+                    key=lambda e: (e.tail.name, e.head.name, e.name or ""))
         else:
-            # Convert to set
-            if outedge:
-                if isinstance(self.outedges, list):
-                    self.outedges = set(self.outedges)
-            else:
-                if isinstance(self.inedges, list):
-                    self.inedges = set(self.inedges)
+            if isinstance(self.inedges, set):
+                self.inedges = sorted(self.inedges,
+                    key=lambda e: (e.tail.name, e.head.name, e.name or ""))
 

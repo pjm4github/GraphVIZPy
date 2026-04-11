@@ -100,15 +100,16 @@ class TestEdgeTraversal:
 
 class TestEdgeFlatten:
 
-    def test_flatten_edges_to_set(self, graph):
-        """flatten_edges converts adjacency to set."""
+    def test_flatten_edges_always_list(self, graph):
+        """flatten_edges keeps adjacency as list (no set conversion)."""
         n = graph.nodes["B"]
         n.flatten_edges(to_list=False)
-        assert isinstance(n.outedges, set)
-        assert isinstance(n.inedges, set)
+        # Always list — set conversion removed for deterministic ordering
+        assert isinstance(n.outedges, list)
+        assert isinstance(n.inedges, list)
 
     def test_flatten_edges_to_list(self, graph):
-        """flatten_edges converts adjacency back to list."""
+        """flatten_edges keeps adjacency as list."""
         n = graph.nodes["B"]
         n.flatten_edges(to_list=False)
         n.flatten_edges(to_list=True)
