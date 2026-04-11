@@ -69,7 +69,8 @@ class RecordField:
         """Compute natural width/height for this field tree.
 
         Matches C lib/common/shapes.c size_reclbl() logic:
-        - Leaf fields: sized by text content
+        - Leaf fields: sized by text content using per-character
+          font metrics (Times-Roman AFM widths)
         - Container fields: children are laid out LR or TB
         - Each nesting level alternates direction
 
@@ -78,15 +79,27 @@ class RecordField:
 
         Args:
             fontsize: Font size in points.
-            char_width_factor: Approximate char width as fraction of fontsize.
+            char_width_factor: Fallback char width factor if font
+                metrics unavailable (fraction of fontsize).
             field_pad: Horizontal padding per field (points).
             min_cell: Minimum cell dimension (points).
         """
-        char_w = fontsize * char_width_factor
+        # Use Times-Roman per-character metrics when available
+        # (matching C's font engine text sizing for record fields)
+        try:
+            from gvpy.engines.font_metrics import text_width_times_roman
+            _use_font_metrics = True
+        except ImportError:
+            _use_font_metrics = False
+
         cell_h = fontsize * 1.4 + 4.0
 
         if self.is_leaf:
-            text_w = len(self.text) * char_w + field_pad * 2
+            if _use_font_metrics and self.text:
+                text_w = text_width_times_roman(self.text, fontsize) + field_pad * 2
+            else:
+                char_w = fontsize * char_width_factor
+                text_w = len(self.text) * char_w + field_pad * 2
             self.width = max(text_w, min_cell)
             self.height = cell_h
             return

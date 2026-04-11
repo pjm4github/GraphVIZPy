@@ -55,6 +55,24 @@ The rendering pipeline will be handled by the **pictosync** project, not by Grap
 
 ---
 
+## TODO: Font Metrics Refinement
+
+The mincross port.order computation uses Times-Roman AFM character
+width tables (gvpy/engines/font_metrics.py) for record field sizing.
+These are the standard PostScript metrics but may differ from the
+actual font engine (GDI+, Cairo) used by the C reference.
+
+Port.order values (C vs Python, c4118 label):
+- In0: C=42, Python=99 (should match for mincross convergence)
+- Out0: C=213, Python=239
+
+To improve:
+1. Try Times New Roman metrics (Windows GDI+ uses TNR, not Times-Roman)
+2. Consider integrating with the rendering font engine for exact metrics
+3. The SVG renderer's _parse_record_label should be replaced by
+   Node.record_fields (ANTLR4 RecordParser) — ~130 lines to remove
+4. _record_size in dot_layout.py still imports svg_renderer._parse_record_label
+
 ## Current Test Coverage Summary
 
 | Test File | Tests | Status |
