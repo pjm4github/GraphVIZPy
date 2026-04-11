@@ -84,19 +84,29 @@ class RecordField:
             field_pad: Horizontal padding per field (points).
             min_cell: Minimum cell dimension (points).
         """
-        # Use Times-Roman per-character metrics when available
-        # (matching C's font engine text sizing for record fields)
+        # Use system font metrics (tkinter/GDI+) when available,
+        # fall back to Times-Roman AFM, then to char_width_factor.
+        # C uses the system font engine for exact text dimensions.
+        _text_width_fn = None
         try:
-            from gvpy.engines.font_metrics import text_width_times_roman
-            _use_font_metrics = True
+            from gvpy.engines.font_metrics import text_width_system
+            # Test once to see if tkinter works
+            if text_width_system("x", fontsize) is not None:
+                _text_width_fn = lambda t: text_width_system(t, fontsize)
         except ImportError:
-            _use_font_metrics = False
+            pass
+        if _text_width_fn is None:
+            try:
+                from gvpy.engines.font_metrics import text_width_times_roman
+                _text_width_fn = lambda t: text_width_times_roman(t, fontsize)
+            except ImportError:
+                pass
 
         cell_h = fontsize * 1.4 + 4.0
 
         if self.is_leaf:
-            if _use_font_metrics and self.text:
-                text_w = text_width_times_roman(self.text, fontsize) + field_pad * 2
+            if _text_width_fn and self.text:
+                text_w = _text_width_fn(self.text) + field_pad * 2
             else:
                 char_w = fontsize * char_width_factor
                 text_w = len(self.text) * char_w + field_pad * 2

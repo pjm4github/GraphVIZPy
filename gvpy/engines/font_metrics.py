@@ -61,6 +61,47 @@ def text_width_times_roman(text: str, fontsize: float) -> float:
     return total * fontsize / 1000.0
 
 
+_tk_root = None
+_tk_font_cache: dict[tuple[str, int], tuple] = {}  # (family,size) → (font, dpi)
+
+
+def text_width_system(text: str, fontsize: float,
+                      family: str = "Times New Roman") -> float | None:
+    """Compute text width using the system font engine (tkinter).
+
+    Uses the same font engine as C's Graphviz on Windows (GDI+).
+    Returns width in points, or None if tkinter is unavailable.
+    Caches the Tk root and Font for performance.
+
+    TODO: Revisit when integrating with pictosync font rendering.
+    """
+    global _tk_root
+    try:
+        import tkinter as tk
+        from tkinter.font import Font
+    except ImportError:
+        return None
+
+    key = (family, int(fontsize))
+    if key not in _tk_font_cache:
+        try:
+            if _tk_root is None:
+                _tk_root = tk.Tk()
+                _tk_root.withdraw()
+            dpi = _tk_root.winfo_fpixels('1i')
+            f = Font(family=family, size=int(fontsize))
+            _tk_font_cache[key] = (f, dpi)
+        except Exception:
+            return None
+
+    f, dpi = _tk_font_cache[key]
+    try:
+        w_px = f.measure(text)
+        return w_px * 72.0 / dpi
+    except Exception:
+        return None
+
+
 def avg_char_width_times_roman(fontsize: float) -> float:
     """Average character width for Times-Roman at given font size.
 
