@@ -145,9 +145,25 @@ completion status:
       `dot_layout.py`: 3687 -> 3036 lines this pass; 6739 -> 3036
       over the full session (-3703, -55%).  All 715 tests pass,
       14/14 sampled files produce 0 overlaps.
-- [ ] **Step 7c**: Extract remaining dot phases — Phase 1 rank
-      assignment (rank.c), cluster geometry (cluster.c), class2,
-      fastgr, flat, sameport, acyclic — into per-phase modules
-      matching `lib/dotgen/`
+- [x] **Step 7c (Phase 1)**: Extract Phase 1 (rank assignment) into
+      `gvpy/engines/dot/rank.py` — done 2026-04-12.  Moved 11 methods
+      (~498 lines) via `tools/extract_rank.py` (improved
+      `_replace_self_outside_strings` so the regex-based
+      `self`->`layout` rename no longer touches string literals — a
+      regression where edge_type literal `"self"` got rewritten to
+      `"layout"` was the catch).  `rank.py` is 602 lines; C analogue
+      `lib/dotgen/rank.c`.  Covers break_cycles, classify_edges (pre+
+      post), inject_same_rank_edges, network_simplex_rank,
+      cluster_aware_rank, apply_rank_constraints, compact_ranks,
+      add_virtual_nodes, build_ranks.  Required lazy imports for
+      `_NetworkSimplex`, `LayoutEdge`, `LayoutNode` inside the
+      functions that instantiate them.  `dot_layout.py`: 3036 -> 2593
+      lines this pass; **6739 -> 2593 over the full session (-4146,
+      -62%)**.  All 715 tests pass, 0 overlaps on aa1332.dot.
+- [ ] **Step 7d**: Extract remaining helpers — cluster geometry
+      (cluster.c), init helpers (`_collect_edges`,
+      `_collect_clusters`, `_dedup_cluster_nodes`,
+      `_concentrate_edges`), and the `_NetworkSimplex` class itself —
+      into `cluster.py`, `dotinit.py`, and `ns_solver.py`.
 - [ ] **Step 8**: Add `SimulationView` base + minimal skeleton
 - [ ] **Step 9**: Add `PictoGraphInfo(LayoutView)` pictosync engine

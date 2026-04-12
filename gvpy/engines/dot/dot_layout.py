@@ -1658,514 +1658,71 @@ class DotGraphInfo(LayoutEngine):
 
     # ── Phase 1: Rank assignment ─────────────────
 
-    def _phase1_rank(self):
-        print(f"[TRACE rank] phase1 begin: newrank={self.newrank} clusterrank={self.clusterrank}", file=sys.stderr)
-        self._break_cycles()
-        reversed_count = sum(1 for le in self.ledges if le.reversed)
-        print(f"[TRACE rank] break_cycles: reversed={reversed_count}", file=sys.stderr)
-        self._classify_edges()
-        # Inject rank=same constraints as zero-length high-weight edges
-        # BEFORE running NS so the solver respects them natively
-        # (matching Graphviz collapse_sets).
-        self._inject_same_rank_edges()
-        if self.newrank or self.clusterrank == "none":
-            self._network_simplex_rank()
-        else:
-            self._cluster_aware_rank()
-        # Log rank assignments for all real (non-virtual) nodes
-        for name in sorted(self.lnodes.keys()):
-            ln = self.lnodes[name]
-            if not ln.virtual:
-                print(f"[TRACE rank] node_rank: {name} rank={ln.rank}", file=sys.stderr)
-        self._apply_rank_constraints()
-        self._compact_ranks()
-        max_rank = max((ln.rank for ln in self.lnodes.values()), default=0)
-        print(f"[TRACE rank] after compact: max_rank={max_rank}", file=sys.stderr)
-        self._add_virtual_nodes()
-        vcount = sum(1 for ln in self.lnodes.values() if ln.virtual)
-        print(f"[TRACE rank] virtual_nodes: {vcount}", file=sys.stderr)
-        self._build_ranks()
-        self._classify_flat_edges()
-        print(f"[TRACE rank] phase1 done: ranks={sorted(self.ranks.keys())} nodes_per_rank={[(r, len(self.ranks[r])) for r in sorted(self.ranks.keys())]}", file=sys.stderr)
+    def _phase1_rank(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.rank.phase1_rank."""
+        from gvpy.engines.dot import rank
+        return rank.phase1_rank(self, *args, **kwargs)
 
-    def _inject_same_rank_edges(self):
-        """Add zero-length high-weight edges between rank=same nodes.
 
-        This ensures the network simplex solver assigns them the same rank
-        rather than relying on a post-hoc fixup that can violate other
-        edge constraints.  Mirrors Graphviz ``rank.c:collapse_sets()``.
-        """
-        for kind, node_names in self._rank_constraints:
-            if kind != "same" or len(node_names) < 2:
-                continue
-            # Chain consecutive pairs with bidirectional zero-length edges
-            for i in range(len(node_names) - 1):
-                a, b = node_names[i], node_names[i + 1]
-                if a not in self.lnodes or b not in self.lnodes:
-                    continue
-                # Forward: a → b, minlen=0, weight=1000
-                self.ledges.append(LayoutEdge(
-                    edge=None, tail_name=a, head_name=b,
-                    minlen=0, weight=1000, virtual=True,
-                    constraint=True,
-                ))
-                # Backward: b → a, minlen=0, weight=1000
-                self.ledges.append(LayoutEdge(
-                    edge=None, tail_name=b, head_name=a,
-                    minlen=0, weight=1000, virtual=True,
-                    constraint=True,
-                ))
+    def _inject_same_rank_edges(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.rank.inject_same_rank_edges."""
+        from gvpy.engines.dot import rank
+        return rank.inject_same_rank_edges(self, *args, **kwargs)
 
-    def _classify_flat_edges(self):
-        """Post-ranking pass: mark same-rank edges as flat."""
-        for le in self.ledges:
-            if le.virtual:
-                continue
-            t = self.lnodes.get(le.tail_name)
-            h = self.lnodes.get(le.head_name)
-            if t and h and t.rank == h.rank:
-                le.edge_type = "flat"
 
-    def _classify_edges(self):
-        """Classify edges by type for downstream processing.
+    def _classify_flat_edges(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.rank.classify_flat_edges."""
+        from gvpy.engines.dot import rank
+        return rank.classify_flat_edges(self, *args, **kwargs)
 
-        Sets ``le.edge_type`` on each LayoutEdge to one of:
-        - ``'normal'`` — standard cross-rank edge
-        - ``'flat'`` — same-rank edge (detected after ranking)
-        - ``'reversed'`` — edge reversed by cycle breaking
-        - ``'self'`` — self-loop
 
-        This runs before ranking so types are preliminary; flat edges
-        can only be fully detected after ranks are assigned.  A second
-        pass runs after ranking to finalize flat-edge classification.
+    def _classify_edges(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.rank.classify_edges."""
+        from gvpy.engines.dot import rank
+        return rank.classify_edges(self, *args, **kwargs)
 
-        Mirrors Graphviz ``class1.c:class1()`` (pre-rank) and
-        ``class2.c:class2()`` (post-rank) classification.
-        """
-        for le in self.ledges:
-            if le.virtual:
-                le.edge_type = "virtual"
-            elif le.tail_name == le.head_name:
-                le.edge_type = "self"
-            elif le.reversed:
-                le.edge_type = "reversed"
-            else:
-                le.edge_type = "normal"
 
-    def _cluster_aware_rank(self):
-        """Rank nodes using recursive bottom-up cluster ranking.
+    def _cluster_aware_rank(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.rank.cluster_aware_rank."""
+        from gvpy.engines.dot import rank
+        return rank.cluster_aware_rank(self, *args, **kwargs)
 
-        Mirrors Graphviz ``rank.c:dot1_rank()`` which recursively ranks
-        each cluster bottom-up via ``collapse_sets()`` → ``collapse_cluster()``
-        → ``dot1_rank(child)``.  Each cluster is ranked independently
-        starting from the deepest leaves of the cluster tree, then the
-        parent graph is ranked with cluster-internal edges replaced by
-        min-length constraints between cluster boundary nodes.
-        """
-        if not self._clusters:
-            self._network_simplex_rank()
-            return
 
-        # Build cluster hierarchy from the Graph's subgraph tree
-        # so we can walk it bottom-up like the C code does.
-        cl_by_name: dict[str, "LayoutCluster"] = {
-            cl.name: cl for cl in self._clusters
-        }
-        cl_node_sets: dict[str, set[str]] = {
-            cl.name: set(cl.nodes) for cl in self._clusters
-        }
+    def _break_cycles(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.rank.break_cycles."""
+        from gvpy.engines.dot import rank
+        return rank.break_cycles(self, *args, **kwargs)
 
-        # Determine parent-child relationships among clusters:
-        # A cluster P is parent of C if C.nodes ⊂ P.nodes and P is the
-        # smallest such containing cluster.
-        children_of: dict[str | None, list[str]] = {None: []}
-        for cl in self._clusters:
-            children_of[cl.name] = []
-        parent_of: dict[str, str | None] = {}
-        for cl in self._clusters:
-            best_parent: str | None = None
-            best_size = float("inf")
-            for other in self._clusters:
-                if other.name == cl.name:
-                    continue
-                if cl_node_sets[cl.name] < cl_node_sets[other.name]:
-                    if len(cl_node_sets[other.name]) < best_size:
-                        best_parent = other.name
-                        best_size = len(cl_node_sets[other.name])
-            parent_of[cl.name] = best_parent
-            children_of.setdefault(best_parent, []).append(cl.name)
 
-        # Track which nodes have been ranked by a cluster pass
-        ranked_nodes: set[str] = set()
+    def _network_simplex_rank(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.rank.network_simplex_rank."""
+        from gvpy.engines.dot import rank
+        return rank.network_simplex_rank(self, *args, **kwargs)
 
-        # ── Recursive bottom-up ranking (mirrors dot1_rank) ─────────
-        def _dot1_rank_cluster(cl_name: str):
-            """Rank a single cluster bottom-up: children first, then self.
 
-            This mirrors the C code path:
-              dot1_rank(g) → collapse_sets(g) → for each child cluster:
-                collapse_cluster(g, child) → dot1_rank(child)
-              then: class1 → decompose → acyclic → rank1 → expand_ranksets
-            """
-            # 1. Recursively rank all child clusters first (bottom-up)
-            for child_name in children_of.get(cl_name, []):
-                _dot1_rank_cluster(child_name)
+    def _apply_rank_constraints(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.rank.apply_rank_constraints."""
+        from gvpy.engines.dot import rank
+        return rank.apply_rank_constraints(self, *args, **kwargs)
 
-            cl = cl_by_name[cl_name]
-            cl_members = cl_node_sets[cl_name]
 
-            # 2. Collect edges internal to this cluster that involve
-            #    nodes NOT already locked by a child cluster ranking.
-            #    For nodes ranked by children, we keep their relative
-            #    ranks fixed and add constraint edges to anchor them.
-            child_ranked = ranked_nodes & cl_members
-            unranked = cl_members - ranked_nodes
+    def _compact_ranks(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.rank.compact_ranks."""
+        from gvpy.engines.dot import rank
+        return rank.compact_ranks(self, *args, **kwargs)
 
-            # All internal edges (both endpoints in this cluster)
-            cl_edges: list[tuple[str, str, int, int]] = []
-            for le in self.ledges:
-                if not le.constraint:
-                    continue
-                if le.tail_name in cl_members and le.head_name in cl_members:
-                    cl_edges.append((
-                        le.tail_name, le.head_name, le.minlen, le.weight,
-                    ))
 
-            # If child clusters have already been ranked, anchor their
-            # nodes with high-weight edges so NS preserves their relative
-            # ranks while positioning them within the parent cluster.
-            anchor_edges: list[tuple[str, str, int, int]] = []
-            for child_name in children_of.get(cl_name, []):
-                child_nodes_sorted = sorted(
-                    (n for n in cl_by_name[child_name].nodes
-                     if n in self.lnodes and n in ranked_nodes),
-                    key=lambda n: self.lnodes[n].rank,
-                )
-                for i in range(len(child_nodes_sorted) - 1):
-                    a, b = child_nodes_sorted[i], child_nodes_sorted[i + 1]
-                    span = self.lnodes[b].rank - self.lnodes[a].rank
-                    if span >= 1:
-                        anchor_edges.append((a, b, span, 1000))
+    def _add_virtual_nodes(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.rank.add_virtual_nodes."""
+        from gvpy.engines.dot import rank
+        return rank.add_virtual_nodes(self, *args, **kwargs)
 
-            all_edges = cl_edges + anchor_edges
-            all_nodes = sorted(cl_members)
 
-            if not all_nodes:
-                return
+    def _build_ranks(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.rank.build_ranks."""
+        from gvpy.engines.dot import rank
+        return rank.build_ranks(self, *args, **kwargs)
 
-            # 3. Run network simplex on this cluster
-            ns = _NetworkSimplex(all_nodes, all_edges)
-            ns.SEARCH_LIMIT = self.searchsize
-            ranks = ns.solve(max_iter=self.nslimit1)
-
-            # 4. Apply ranks to nodes
-            for n, r in ranks.items():
-                if n in self.lnodes:
-                    self.lnodes[n].rank = r
-
-            # 5. Mark all nodes in this cluster as ranked
-            ranked_nodes.update(cl_members)
-
-        # ── Walk the cluster tree: rank leaf clusters first ─────────
-        # Process top-level clusters (those with no parent cluster).
-        # Each one recursively processes its children first.
-        top_level = children_of.get(None, [])
-        for cl_name in top_level:
-            _dot1_rank_cluster(cl_name)
-
-        # ── UF_union collapse → global NS → expand ──────────
-        # Mirrors C rank.c: cluster_leader() collapses each top-level
-        # cluster to a single leader via UF_union.  class1/interclust1
-        # converts inter-cluster edges using the "slack node + 2 edges"
-        # pattern with offset-adjusted minlens.  rank1() runs global NS.
-        # expand_ranksets() maps: rank(n) += rank(UF_find(n)).
-
-        # 1. Build UF_find map: every node in a top-level cluster
-        #    maps to that cluster's leader (min-rank node).
-        top_clusters = children_of.get(None, [])
-        uf_find: dict[str, str] = {}         # node → leader
-        local_offset: dict[str, int] = {}    # node → rank offset from leader
-
-        for cl_name in top_clusters:
-            cl = cl_by_name[cl_name]
-            members = [n for n in cl.nodes
-                       if n in self.lnodes and n in ranked_nodes]
-            if not members:
-                continue
-            members.sort(key=lambda n: self.lnodes[n].rank)
-            leader = members[0]
-            min_rank = self.lnodes[leader].rank
-            for n in members:
-                uf_find[n] = leader
-                local_offset[n] = self.lnodes[n].rank - min_rank
-
-        # 2. Build global NS graph.
-        #    - Non-cluster nodes and leaders appear as themselves.
-        #    - Intra-cluster edges (both endpoints → same leader) are skipped.
-        #    - Inter-cluster/cross edges use interclust1 pattern:
-        #      slack_node → UF_find(tail), slack_node → UF_find(head)
-        #      with offset-adjusted minlens.
-        _CL_BACK = 10  # C CL_BACK weight multiplier for tail side
-
-        global_nodes: set[str] = set()
-        for name in self.lnodes:
-            global_nodes.add(uf_find.get(name, name))
-
-        global_edges: list[tuple[str, str, int, int]] = []
-        _vn_ctr = [0]
-
-        for le in self.ledges:
-            if not le.constraint:
-                continue
-            t, h = le.tail_name, le.head_name
-            if t not in self.lnodes or h not in self.lnodes:
-                continue
-
-            t0 = uf_find.get(t, t)
-            h0 = uf_find.get(h, h)
-
-            if t0 == h0:
-                continue  # intra-cluster
-
-            t_in_cluster = t in uf_find
-            h_in_cluster = h in uf_find
-
-            if not t_in_cluster and not h_in_cluster:
-                # Neither endpoint in a cluster — regular edge
-                global_edges.append((t0, h0, le.minlen, le.weight))
-            else:
-                # At least one endpoint in a cluster — use interclust1
-                # pattern: create slack node V with offset-adjusted edges
-                t_rank = local_offset.get(t, 0)
-                h_rank = local_offset.get(h, 0)
-                offset = le.minlen + t_rank - h_rank
-                if offset > 0:
-                    t_len = 0
-                    h_len = offset
-                else:
-                    t_len = -offset
-                    h_len = 0
-
-                _vn_ctr[0] += 1
-                vn = f"_uf_v{_vn_ctr[0]}"
-                global_nodes.add(vn)
-                global_edges.append((vn, t0, t_len,
-                                     _CL_BACK * le.weight))
-                global_edges.append((vn, h0, h_len, le.weight))
-
-        # 3. Run global NS (sorted for deterministic results —
-        #    set iteration order varies with PYTHONHASHSEED)
-        ns = _NetworkSimplex(sorted(global_nodes), global_edges)
-        ns.SEARCH_LIMIT = self.searchsize
-        ranks = ns.solve(max_iter=self.nslimit1)
-
-        # 4. Re-normalize: C expand_ranksets iterates real nodes only
-        #    (agfstnode), so slack nodes from interclust1 don't affect
-        #    the rank floor.  Shift so min real/leader rank == 0.
-        real_min = min(
-            (ranks[uf_find.get(n, n)]
-             for n in self.lnodes if uf_find.get(n, n) in ranks),
-            default=0)
-        if real_min != 0:
-            ranks = {k: v - real_min for k, v in ranks.items()}
-
-        # 5. Expand: rank(n) = rank(UF_find(n)) + local_offset(n)
-        for name in self.lnodes:
-            leader = uf_find.get(name, name)
-            if leader in ranks:
-                self.lnodes[name].rank = ranks[leader] + local_offset.get(name, 0)
-
-    def _break_cycles(self):
-        UNVISITED, IN_PROGRESS, DONE = 0, 1, 2
-        state = {n: UNVISITED for n in self.lnodes}
-
-        def dfs(u):
-            state[u] = IN_PROGRESS
-            for le in self.ledges:
-                if le.tail_name != u:
-                    continue
-                v = le.head_name
-                if state[v] == IN_PROGRESS:
-                    le.reversed = True
-                    le.tail_name, le.head_name = le.head_name, le.tail_name
-                elif state[v] == UNVISITED:
-                    dfs(v)
-            state[u] = DONE
-
-        for n in self.lnodes:
-            if state[n] == UNVISITED:
-                dfs(n)
-
-    def _network_simplex_rank(self):
-        if not self.lnodes:
-            return
-        # Build node group map for weight boosting
-        node_groups: dict[str, str] = {}
-        for name, ln in self.lnodes.items():
-            if ln.node:
-                grp = ln.node.attributes.get("group", "")
-                if grp:
-                    node_groups[name] = grp
-
-        # Only edges with constraint=True affect ranking
-        # Boost weight ×100 for edges connecting nodes in the same group
-        ns_edges = []
-        for le in self.ledges:
-            if not le.constraint:
-                continue
-            w = le.weight
-            t_grp = node_groups.get(le.tail_name, "")
-            h_grp = node_groups.get(le.head_name, "")
-            if t_grp and t_grp == h_grp:
-                w = min(w * 100, 1000)
-            ns_edges.append((le.tail_name, le.head_name, le.minlen, w))
-        ns = _NetworkSimplex(list(self.lnodes.keys()), ns_edges)
-        ns.SEARCH_LIMIT = self.searchsize
-        ranks = ns.solve(max_iter=self.nslimit1)
-        for name, r in ranks.items():
-            if name in self.lnodes:
-                self.lnodes[name].rank = r
-
-    def _apply_rank_constraints(self):
-        if not self._rank_constraints:
-            return
-        max_rank = max(ln.rank for ln in self.lnodes.values()) if self.lnodes else 0
-        for kind, node_names in self._rank_constraints:
-            existing = [self.lnodes[n] for n in node_names if n in self.lnodes]
-            if not existing:
-                continue
-            if kind == "same":
-                target = min(ln.rank for ln in existing)
-                for ln in existing:
-                    ln.rank = target
-            elif kind in ("min", "source"):
-                for ln in existing:
-                    ln.rank = 0
-            elif kind in ("max", "sink"):
-                for ln in existing:
-                    ln.rank = max_rank
-
-    def _compact_ranks(self):
-        if not self.lnodes:
-            return
-        min_rank = min(ln.rank for ln in self.lnodes.values())
-        if min_rank != 0:
-            for ln in self.lnodes.values():
-                ln.rank -= min_rank
-
-    def _add_virtual_nodes(self):
-        """Insert virtual nodes for edges spanning multiple ranks."""
-        self._vnode_chains = {}
-        new_edges = []
-        to_remove = []
-
-        for i, le in enumerate(self.ledges):
-            t_rank = self.lnodes[le.tail_name].rank
-            h_rank = self.lnodes[le.head_name].rank
-            span = h_rank - t_rank
-            if span <= 1:
-                continue  # No virtual nodes needed
-            if span > 100:
-                continue  # Too many virtual nodes, skip
-
-            # Create chain of virtual nodes
-            chain = []
-            prev_name = le.tail_name
-            for j in range(1, span):
-                vname = f"_v_{le.tail_name}_{le.head_name}_{j}"
-                # Ensure unique name
-                while vname in self.lnodes:
-                    vname += "_"
-                self.lnodes[vname] = LayoutNode(
-                    node=None, rank=t_rank + j, virtual=True,
-                    width=2.0, height=2.0,
-                )
-                chain.append(vname)
-                new_edges.append(LayoutEdge(
-                    edge=None, tail_name=prev_name, head_name=vname,
-                    minlen=1, weight=le.weight, virtual=True,
-                    orig_tail=le.tail_name, orig_head=le.head_name,
-                ))
-                prev_name = vname
-
-            # Final edge to head
-            new_edges.append(LayoutEdge(
-                edge=None, tail_name=prev_name, head_name=le.head_name,
-                minlen=1, weight=le.weight, virtual=True,
-                orig_tail=le.tail_name, orig_head=le.head_name,
-            ))
-
-            self._vnode_chains[(le.tail_name, le.head_name)] = chain
-            to_remove.append(i)
-
-        # Move original long edges to _chain_edges, add virtual edges to ledges
-        for idx in sorted(to_remove, reverse=True):
-            self._chain_edges.append(self.ledges.pop(idx))
-        self.ledges.extend(new_edges)
-
-    def _build_ranks(self):
-        """Populate self.ranks with DFS-based initial ordering.
-
-        Mirrors Graphviz ``init_mincross()`` / ``dfs_range()``: traverse
-        from a root node following edges, assigning order within each
-        rank based on DFS visit order.  This naturally groups connected
-        components and clusters together, giving the mincross a better
-        starting configuration than simple dict-order iteration.
-        """
-        self.ranks = defaultdict(list)
-
-        # Build adjacency preserving edge list order (matching C's edge
-        # traversal in decompose search_component).
-        # C visits: flat_in, flat_out, in, out — in reverse edge order.
-        # We approximate this: for each node, collect neighbors in the
-        # order edges appear in self.ledges, then reverse (to match C's
-        # reverse iteration with a LIFO stack).
-        adj: dict[str, list[str]] = defaultdict(list)
-        for le in self.ledges:
-            adj[le.tail_name].append(le.head_name)
-            adj[le.head_name].append(le.tail_name)
-        # Reverse to match C's stack-based reverse iteration
-        for k in adj:
-            adj[k].reverse()
-
-        visited: set[str] = set()
-
-        # Use explicit stack to mirror C's search_component:
-        # push neighbors in reverse order (C iterates edge list backward
-        # and pushes, stack pops give forward order).
-        def _dfs(start: str):
-            if start in visited or start not in self.lnodes:
-                return
-            stack: list[str] = [start]
-            while stack:
-                name = stack.pop()
-                if name in visited:
-                    continue
-                visited.add(name)
-                self.ranks[self.lnodes[name].rank].append(name)
-                # Push neighbors in reverse order so first neighbor
-                # gets processed first (LIFO)
-                nbrs = [n for n in adj.get(name, [])
-                        if n in self.lnodes and n not in visited]
-                for nbr in reversed(nbrs):
-                    stack.append(nbr)
-
-        # Start from nodes in DOT file order (matching C's agfstnode)
-        # The graph.nodes dict preserves insertion order.
-        dot_order_nodes: list[str] = []
-        for name in self.graph.nodes:
-            if name in self.lnodes:
-                dot_order_nodes.append(name)
-        # Also include virtual nodes (sorted by rank for consistency)
-        virtual_nodes = [n for n in self.lnodes if n not in set(dot_order_nodes)]
-        virtual_nodes.sort(key=lambda n: (self.lnodes[n].rank, n))
-        for name in dot_order_nodes + virtual_nodes:
-            _dfs(name)
-
-        # Ensure all nodes are in ranks (disconnected nodes)
-        for name, ln in self.lnodes.items():
-            if name not in visited:
-                self.ranks[ln.rank].append(name)
 
     # ── Phase 2: Crossing minimization ───────────
 
