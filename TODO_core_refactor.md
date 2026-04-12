@@ -88,21 +88,33 @@ completion status:
       Created `position.phase3_position(layout)` and
       `position.ns_x_position(layout)` as free functions taking the
       layout instance.  `DotLayout._phase3_position` / `_ns_x_position`
-      are now 3-line delegating wrappers.  `position.py` is 517 lines;
-      `dot_layout.py` reduced by ~350 lines.  All 715 tests pass,
-      0 overlaps.  Remaining Phase 3 helpers (`_set_ycoords`,
-      `_expand_leaves`, `_insert_flat_label_nodes`,
-      `_bottomup_ns_x_position`, `_compute_cluster_boxes`,
-      `_simple_x_position`, `_median_x_improvement`, `_center_ranks`,
-      `_apply_rankdir`, `_resolve_cluster_overlaps`,
-      `_post_rankdir_keepout`) still live in `dot_layout.py` and are
-      called back via `layout._xxx()`.  Full extraction is a future
-      mechanical pass — the hard part (understanding the bug fix
-      context) is already in the new module.
-- [ ] **Step 3**: Rename `DotLayout` → `DotGraphInfo`, inherit from
-      `LayoutView`, keep `DotLayout = DotGraphInfo` alias
-- [ ] **Step 4b**: Complete extraction of remaining Phase 3 helpers
-      into `position.py`
+      are now 3-line delegating wrappers.
+- [x] **Step 3**: Rename `DotLayout` → `DotGraphInfo`, inherit from
+      `LayoutView`, keep `DotLayout = DotGraphInfo` alias — done
+      2026-04-12.  Added `view_name="dot"` class attribute so the
+      instance attaches under `graph.views["dot"]` by default.  The
+      backward-compat alias `DotLayout = DotGraphInfo` lives at the
+      bottom of `dot_layout.py`; `gvpy/engines/dot/__init__.py` exports
+      both names.  All consumers (tests, renderers, engine registry)
+      continue to work unchanged.
+- [x] **Step 4b**: Complete extraction of remaining Phase 3 helpers
+      into `position.py` — done 2026-04-12.  Moved 11 methods
+      (`_compute_cluster_boxes`, `_expand_leaves`,
+      `_insert_flat_label_nodes`, `_set_ycoords`, `_simple_x_position`,
+      `_median_x_improvement`, `_bottomup_ns_x_position`,
+      `_resolve_cluster_overlaps`, `_post_rankdir_keepout`,
+      `_center_ranks`, `_apply_rankdir`) as free functions via
+      `tools/extract_phase3.py`.  Each class method is now a 3-line
+      delegating wrapper.  Final sizes: `dot_layout.py` 5593 lines
+      (was 6389 before step 4b, 6389+ before step 4), `position.py`
+      1402 lines (was 517 before step 4b).  All 715 tests pass,
+      14/14 sampled test files produce clean layouts with 0 overlaps.
+      `bottomup_ns_x_position` fallback path verified to run without
+      NameError via targeted call.  Three dead-code methods
+      (`_hierarchical_x_position`, `_compact_clusters`,
+      `_keepout_noncluster_nodes`) remain in `dot_layout.py` — they
+      are not called from anywhere and can be deleted in a future
+      cleanup.
 - [ ] **Step 6**: `graph.py` split (this file's first section)
 - [ ] **Step 7**: Extract remaining dot phases (rank, mincross,
       splines, cluster, class2, fastgr, flat, sameport, acyclic)
