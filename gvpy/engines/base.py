@@ -1,10 +1,17 @@
 """
-Abstract base class for all GraphvizPy layout engines.
+Abstract base classes for all GraphvizPy layout engines.
 
-Provides shared utilities used by multiple engines: node sizing,
-post-processing (normalize, rotate, center), label placement,
-edge boundary clipping, component detection/packing, write-back,
-and JSON output generation.
+Two-level hierarchy:
+
+- ``LayoutView`` — abstract intermediate base that extends ``GraphView``
+  with the common layout query API (positions, dimensions, edge routes,
+  bounding boxes).  Layout engines inherit from this so they plug into
+  ``graph.views`` alongside simulation / analysis / rendering views.
+- ``LayoutEngine`` — concrete algorithm-runner base extending
+  ``LayoutView``.  Adds shared algorithm utilities: node sizing,
+  post-processing (normalize/rotate/center), label placement, edge
+  boundary clipping, component detection/packing, write-back, and
+  legacy JSON output generation.
 
 These correspond to Graphviz ``lib/common/`` shared functions
 (postproc.c, utils.c, geomprocs.h).
@@ -15,15 +22,202 @@ import math
 import random
 from abc import ABC, abstractmethod
 from collections import deque, defaultdict
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+from gvpy.core.graph_view import GraphView
 
 if TYPE_CHECKING:
     from gvpy.core.graph import Graph
     from gvpy.core.node import Node
+    from gvpy.core.edge import Edge
 
 
-class LayoutEngine(ABC):
-    """Base class for graph layout engines.
+class LayoutView(GraphView, ABC):
+    """Abstract base class for layout views.
+
+    Extends :class:`GraphView` with the common query API that any layout
+    engine (dot, neato, fdp, circo, twopi, sfdp, osage, patchwork,
+    pictosync) must provide.  Concrete subclasses hold the per-node and
+    per-edge layout state and expose it through these read methods.
+
+    C Graphviz analogue
+    -------------------
+    In C, each layout engine has its own ``Agraphinfo_t`` extension
+    struct and a set of ``GD_*``/``ND_*``/``ED_*`` macros to access
+    positions and dimensions.  ``LayoutView`` is the Python equivalent
+    of those macros promoted to a method-based API so consumers can
+    query layout state without knowing the engine internals.
+
+    Required per-subclass state
+    ---------------------------
+    Subclasses must populate a ``self.lnodes: dict[str, LayoutNode]``
+    dict where each entry has ``.x``, ``.y``, ``.width``, ``.height``,
+    and ``.node`` (the underlying Graph node reference, or ``None``
+    for virtual nodes).
+
+    Round-trip contract
+    -------------------
+    The ``to_json``/``from_json`` pair serializes and restores the layout
+    state — node positions, node dimensions, edge routes, cluster boxes.
+    This is the canonical contract for pictosync's round-trip between
+    the JSON editor and the graphical canvas.
+    """
+
+    view_name: str = "layout"
+
+    # Node sizing constants (inherited by LayoutEngine).
+    _MIN_WIDTH = 54.0    # 0.75in * 72dpi
+    _MIN_HEIGHT = 36.0   # 0.50in * 72dpi
+    _H_PAD = 36.0
+    _V_PAD = 18.0
+
+    # ── Layout query API ──────────────────────────────────────────
+
+    def get_node_position(self, name: str) -> Optional[tuple[float, float]]:
+        """Return ``(x, y)`` center position of node ``name``, or None."""
+        ln = getattr(self, "lnodes", {}).get(name)
+        if ln is None:
+            return None
+        return (ln.x, ln.y)
+
+    def get_node_dimensions(self, name: str) -> Optional[tuple[float, float]]:
+        """Return ``(width, height)`` of node ``name``, or None."""
+        ln = getattr(self, "lnodes", {}).get(name)
+        if ln is None:
+            return None
+        return (ln.width, ln.height)
+
+    def get_bounding_box(self) -> tuple[float, float, float, float]:
+        """Return the axis-aligned bounding box of all real nodes.
+
+        Returns ``(min_x, min_y, max_x, max_y)``.  Virtual nodes and
+        nodes without positions are excluded.  Empty layouts return
+        ``(0, 0, 0, 0)``.
+        """
+        lnodes = getattr(self, "lnodes", {})
+        real = [ln for ln in lnodes.values()
+                if getattr(ln, "node", None) is not None]
+        if not real:
+            return (0.0, 0.0, 0.0, 0.0)
+        return (
+            min(ln.x - ln.width / 2.0 for ln in real),
+            min(ln.y - ln.height / 2.0 for ln in real),
+            max(ln.x + ln.width / 2.0 for ln in real),
+            max(ln.y + ln.height / 2.0 for ln in real),
+        )
+
+    def get_edge_route(self, edge: "Edge") -> list[tuple[float, float]]:
+        """Return the list of route points for ``edge``.
+
+        Default implementation returns a two-point straight line from
+        tail center to head center.  Subclasses override to return
+        spline control points or routed polyline points.
+        """
+        lnodes = getattr(self, "lnodes", {})
+        t = lnodes.get(edge.tail.name) if edge.tail else None
+        h = lnodes.get(edge.head.name) if edge.head else None
+        if t is None or h is None:
+            return []
+        return [(t.x, t.y), (h.x, h.y)]
+
+    def get_cluster_bbox(self, cl_name: str) \
+            -> Optional[tuple[float, float, float, float]]:
+        """Return cluster bounding box ``(min_x, min_y, max_x, max_y)``.
+
+        Default implementation returns ``None``.  Engines that support
+        clusters override this.
+        """
+        return None
+
+    # ── Round-trip serialization (pictosync contract) ────────────
+
+    def to_json(self) -> dict[str, Any]:
+        """Serialize layout state to a JSON-compatible dict.
+
+        Produces ``{"view_name", "nodes": [...], "edges": [...], "bb"}``
+        suitable for persisting to disk or sending to a graphic editor.
+        The ``from_json`` counterpart restores positions/dimensions onto
+        an existing view.
+
+        Subclasses with engine-specific state (ranks, clusters, etc.)
+        may extend this by adding extra keys alongside the standard
+        ``nodes``/``edges``/``bb`` fields.
+        """
+        lnodes = getattr(self, "lnodes", {})
+        nodes_data = []
+        for name, ln in lnodes.items():
+            if getattr(ln, "node", None) is None:
+                continue  # skip virtual nodes
+            nodes_data.append({
+                "name": name,
+                "x": round(ln.x, 4),
+                "y": round(ln.y, 4),
+                "width": round(ln.width, 4),
+                "height": round(ln.height, 4),
+            })
+
+        edges_data = []
+        for edge in getattr(self.graph, "edges", {}).values():
+            route = self.get_edge_route(edge)
+            if not route:
+                continue
+            edges_data.append({
+                "tail": edge.tail.name if edge.tail else None,
+                "head": edge.head.name if edge.head else None,
+                "points": [[round(x, 4), round(y, 4)] for x, y in route],
+            })
+
+        bb = self.get_bounding_box()
+        return {
+            "view_name": self.view_name,
+            "nodes": nodes_data,
+            "edges": edges_data,
+            "bb": [round(v, 4) for v in bb],
+        }
+
+    def from_json(self, data: dict[str, Any]) -> None:
+        """Restore layout state from a JSON-compatible dict.
+
+        Updates positions and dimensions on existing ``self.lnodes``
+        entries whose names appear in ``data["nodes"]``.  Does NOT
+        create new lnodes — the view must already have its lnode
+        skeleton (either from a prior ``layout()`` call or from an
+        explicit initializer that walks the graph).
+
+        To round-trip a fresh view:
+
+            info = DotGraphInfo(g)
+            info.layout()                       # populate lnodes + positions
+            saved = info.to_json()              # capture state
+            info2 = DotGraphInfo(g)
+            info2.layout()                      # new lnodes, new positions
+            info2.from_json(saved)              # replace positions
+            assert info2.to_json() == saved     # round-trip holds
+        """
+        lnodes = getattr(self, "lnodes", None)
+        if lnodes is None:
+            return
+        for entry in data.get("nodes", []):
+            name = entry.get("name")
+            ln = lnodes.get(name)
+            if ln is None:
+                continue
+            if "x" in entry:
+                ln.x = float(entry["x"])
+            if "y" in entry:
+                ln.y = float(entry["y"])
+            if "width" in entry:
+                ln.width = float(entry["width"])
+            if "height" in entry:
+                ln.height = float(entry["height"])
+
+
+class LayoutEngine(LayoutView):
+    """Concrete base class for graph layout engines.
+
+    Extends :class:`LayoutView` with algorithm-runner scaffolding:
+    node sizing, post-processing, label placement, edge clipping,
+    component handling, write-back and legacy JSON output.
 
     Subclasses must:
       - Set ``self.lnodes: dict[str, LayoutNodeBase]`` with objects having
@@ -39,13 +233,10 @@ class LayoutEngine(ABC):
       - Edge clipping: ``_clip_to_boundary()``
       - Components: ``_find_components()``, ``_pack_components()``
       - Output: ``_write_back()``, ``_to_json()``
-    """
 
-    # Node sizing constants
-    _MIN_WIDTH = 54.0    # 0.75in * 72dpi
-    _MIN_HEIGHT = 36.0   # 0.50in * 72dpi
-    _H_PAD = 36.0
-    _V_PAD = 18.0
+    Node sizing constants (``_MIN_WIDTH``, ``_MIN_HEIGHT``, ``_H_PAD``,
+    ``_V_PAD``) are inherited from :class:`LayoutView`.
+    """
 
     # Node attribute passthrough list for JSON output
     _NODE_PASSTHROUGH = (
@@ -86,7 +277,9 @@ class LayoutEngine(ABC):
     )
 
     def __init__(self, graph: "Graph"):
-        self.graph = graph
+        # Chain through LayoutView → GraphView so view-level state
+        # (self.graph) is initialized cleanly.
+        super().__init__(graph)
         self.lnodes: dict = {}  # name → layout node (engine-specific dataclass)
         # Common graph-level settings
         self.pad = 4.0

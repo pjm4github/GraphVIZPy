@@ -64,13 +64,13 @@ class RecordField:
 
     def compute_size(self, fontsize: float = 14.0,
                      char_width_factor: float = 0.52,
-                     field_pad: float = 8.0,
                      min_cell: float = 20.0):
         """Compute natural width/height for this field tree.
 
-        Matches C lib/common/shapes.c size_reclbl() logic:
-        - Leaf fields: sized by text content using per-character
-          font metrics (Times-Roman AFM widths)
+        Matches C lib/common/shapes.c:3526-3569 size_reclbl() logic:
+        - Leaf fields with text: sized by text content + PAD
+          (XPAD=4*GAP=16pt, YPAD=2*GAP=8pt; macros.h:27-29, const.h:251)
+        - Leaf fields without text (empty ports): size={0,0}
         - Container fields: children are laid out LR or TB
         - Each nesting level alternates direction
 
@@ -81,7 +81,6 @@ class RecordField:
             fontsize: Font size in points.
             char_width_factor: Fallback char width factor if font
                 metrics unavailable (fraction of fontsize).
-            field_pad: Horizontal padding per field (points).
             min_cell: Minimum cell dimension (points).
         """
         # Use system font metrics (tkinter/GDI+) when available,
@@ -102,33 +101,90 @@ class RecordField:
             except ImportError:
                 pass
 
-        cell_h = fontsize * 1.4 + 4.0
+        # C PAD values (macros.h:27-29, const.h:251 GAP=4):
+        # XPAD = 4*GAP = 16pt, YPAD = 2*GAP = 8pt
+        _XPAD = 16.0  # 4 * GAP
+        _YPAD = 8.0    # 2 * GAP
 
         if self.is_leaf:
-            if _text_width_fn and self.text:
-                text_w = _text_width_fn(self.text) + field_pad * 2
+            # C size_reclbl (shapes.c:3534-3552):
+            # if f->lp: dimen = f->lp->dimen; if dimen > 0: PAD(dimen)
+            #
+            # C parse_reclbl (shapes.c:3460-3462): empty port fields
+            # (no text, no sub-table) get a space character inserted:
+            #   if (!(mode & (HASTEXT | HASTABLE))) { *tsp++ = ' '; }
+            # So make_label receives " ", giving non-zero font dims.
+            # The space label has width > 0, height > 0, so PAD applies.
+            #
+            # Text height from font engine: C's textspan_size returns
+            # the line height, which is typically fontsize * 1.2 for
+            # standard PostScript fonts. For 14pt → 16.8pt line height.
+            # (Measured against instrumented C: 14 * 1.2 + 8 = 24.8)
+            _LINE_HEIGHT_FACTOR = 1.2
+            effective_text = self.text if self.text else " "
+            text_h = fontsize * _LINE_HEIGHT_FACTOR
+            if _text_width_fn:
+                text_w = _text_width_fn(effective_text)
             else:
                 char_w = fontsize * char_width_factor
-                text_w = len(self.text) * char_w + field_pad * 2
-            self.width = max(text_w, min_cell)
-            self.height = cell_h
+                text_w = len(effective_text) * char_w
+            # Apply PAD (C: PAD(dimen) → dimen.x += XPAD, dimen.y += YPAD)
+            self.width = text_w + _XPAD
+            self.height = text_h + _YPAD
             return
 
         # Compute children sizes first
         for child in self.children:
-            child.compute_size(fontsize, char_width_factor,
-                               field_pad, min_cell)
+            child.compute_size(fontsize, char_width_factor, min_cell)
 
+        # C size_reclbl (shapes.c:3556-3567): aggregate children
         if self.LR:
             # Children arranged left-to-right
             self.width = sum(c.width for c in self.children)
             self.height = max((c.height for c in self.children),
-                              default=cell_h)
+                              default=0.0)
         else:
             # Children arranged top-to-bottom
             self.width = max((c.width for c in self.children),
-                             default=min_cell)
+                             default=0.0)
             self.height = sum(c.height for c in self.children)
+
+    def resize(self, new_w: float, new_h: float):
+        """Fit field tree to given bounds, distributing excess space.
+
+        Matches C lib/common/shapes.c:3571-3606 resize_reclbl().
+        After compute_size() gives natural dimensions, this method
+        redistributes the difference (new_size - natural_size) evenly
+        across children using integer arithmetic to avoid gaps.
+
+        Args:
+            new_w: Target width for this field.
+            new_h: Target height for this field.
+        """
+        # C resize_reclbl (shapes.c:3573-3575):
+        # d.x = sz.x - f->size.x; d.y = sz.y - f->size.y; f->size = sz;
+        dx = new_w - self.width
+        dy = new_h - self.height
+        self.width = new_w
+        self.height = new_h
+
+        if not self.children:
+            return
+
+        # C resize_reclbl (shapes.c:3588-3603):
+        # Distribute delta evenly across children.
+        # Uses integer arithmetic: amt = floor((i+1)*inc) - floor(i*inc)
+        n = len(self.children)
+        if self.LR:
+            inc = dx / n
+            for i, child in enumerate(self.children):
+                amt = int((i + 1) * inc) - int(i * inc)
+                child.resize(child.width + amt, new_h)
+        else:
+            inc = dy / n
+            for i, child in enumerate(self.children):
+                amt = int((i + 1) * inc) - int(i * inc)
+                child.resize(new_w, child.height + amt)
 
     def compute_positions(self, x: float = 0.0, y: float = 0.0,
                           total_w: float = 0.0, total_h: float = 0.0):
@@ -192,31 +248,71 @@ class RecordField:
             return None
         return (f.x + f.width / 2.0, f.y + f.height / 2.0)
 
-    def port_fraction(self, port_name: str) -> Optional[float]:
-        """Return the port's cross-rank position as a fraction [0..1].
+    def port_fraction(self, port_name: str,
+                      rankdir: int = 0) -> Optional[float]:
+        """Return the port.order as a fraction [0..1] of MC_SCALE.
 
-        Used for port.order computation in mincross
-        (C sameport.c:151-152: MC_SCALE * (lw + port.x) / (lw + rw)).
+        Matches C compassPort's pipeline (shapes.c:2856-2872):
 
-        For LR=True (horizontal fields): returns X fraction.
-        For LR=False (vertical fields, LR/RL rankdir): returns Y
-        fraction — matching C which uses the cross-rank axis for
-        port.order (the axis perpendicular to the rank direction).
+            p = mid_pointf(sub_field.b.LL, sub_field.b.UR)
+            p = cwrotatepf(p, 90 * GD_rankdir)
+            angle = atan2(p.y, p.x) + 1.5*PI
+            if angle >= 2*PI: angle -= 2*PI
+            port.order = (int)(MC_SCALE * angle / (2*PI))
+
+        Where (p.x, p.y) is the port center in node-local coordinates
+        with y-axis UP (math convention), then rotated clockwise by
+        90° × rankdir to account for LR/BT/RL rankdir.
+
+        Args:
+            port_name: The port identifier to look up.
+            rankdir: Graphviz rankdir constant — 0=TB, 1=LR, 2=BT, 3=RL.
+                Corresponds to C's GD_rankdir return value.
+
+        The resulting order places the port on a "compass" around the
+        node center: North=0, West=64, South=128, East=192 (for
+        MC_SCALE=256). Going CCW from North (math convention) the
+        order increases.
+
+        NOTE: The field tree must already be in the pre-rotation
+        layout for the given rankdir (i.e., for LR/RL, caller has
+        invoked _flip_record_lr before compute_size). This method
+        then applies the same cwrotate that C's compassPort does.
         """
+        import math
         f = self.find_port(port_name)
         if f is None:
             return None
-        if self.LR:
-            # Horizontal fields → port.order from X position
-            if self.width <= 0:
-                return 0.5
-            return (f.x + f.width / 2.0 - self.x) / self.width
-        else:
-            # Vertical fields (LR/RL) → port.order from Y position
-            # (C: cross-rank axis for GD_flip graphs)
-            if self.height <= 0:
-                return 0.5
-            return (f.y + f.height / 2.0 - self.y) / self.height
+
+        # Compute port center in node-local math coordinates
+        # (y up, origin at root center).
+        # Python positions use top-left origin with y down;
+        # convert: node_y_math = root.cy - field_y_python
+        root_cx = self.x + self.width / 2.0
+        root_cy = self.y + self.height / 2.0
+        px = (f.x + f.width / 2.0) - root_cx
+        # Invert y to math convention (y up)
+        py = root_cy - (f.y + f.height / 2.0)
+
+        # Apply cwrotate(90 * rankdir) — C shapes.c:2856
+        # cwrotate 90°:  (x,y) → (y, -x)
+        # cwrotate 180°: (x,y) → (x, -y)
+        # cwrotate 270°: (x,y) → (y,  x)  (exch_xy)
+        cwrot = 90 * (rankdir % 4)
+        if cwrot == 90:
+            px, py = py, -px
+        elif cwrot == 180:
+            py = -py
+        elif cwrot == 270:
+            px, py = py, px
+
+        # Angle-based port.order (C shapes.c:2864-2872)
+        if px == 0.0 and py == 0.0:
+            return 0.5
+        angle = math.atan2(py, px) + 1.5 * math.pi
+        if angle >= 2.0 * math.pi:
+            angle -= 2.0 * math.pi
+        return angle / (2.0 * math.pi)
 
 
 class _RecordVisitor(RecordParserVisitor):
@@ -226,35 +322,51 @@ class _RecordVisitor(RecordParserVisitor):
         self._lr = top_lr  # current LR direction (alternates)
 
     def visitRecordLabel(self, ctx: RecordParser.RecordLabelContext):
-        """Top-level: may have outer braces or bare."""
+        """Top-level: may have outer braces or bare.
+
+        C shapes.c parse_reclbl: The FIRST call to parse_reclbl starts
+        with LR=flip. If the label starts with `{`, that `{` triggers
+        a recursive call with !LR (shapes.c:3446). So an outer `{...}`
+        effectively inverts the top-level LR direction.
+
+        Our ANTLR grammar consumes the outer LBRACE in the recordLabel
+        rule (not as a separate field), so we need to apply that
+        same LR inversion here to match C's structure.
+        """
+        if ctx.LBRACE():
+            # Outer braces cause LR alternation (matching C's recursion)
+            saved_lr = self._lr
+            self._lr = not self._lr
+            result = self.visitFieldList(ctx.fieldList())
+            self._lr = saved_lr
+            return result
         return self.visitFieldList(ctx.fieldList())
 
     def visitFieldList(self, ctx: RecordParser.FieldListContext):
-        """field ('|' field)* → RecordField with children."""
+        """field ('|' field)* → RecordField with children.
+
+        Creates a container with the CURRENT self._lr value.
+        C parse_reclbl does not do single-child unwrapping — it
+        preserves the structure exactly as parsed.
+        """
         fields = []
         for field_ctx in ctx.field():
             fields.append(self.visitField(field_ctx))
-
-        if len(fields) == 1 and fields[0].children:
-            # Single nested sub-record — unwrap
-            return fields[0]
-
-        container = RecordField(LR=self._lr, children=fields)
-        return container
+        return RecordField(LR=self._lr, children=fields)
 
     def visitField(self, ctx: RecordParser.FieldContext):
         """Single field: nested sub-record or leaf."""
         if ctx.fieldList():
             # Nested: { fieldList } — alternate LR direction
-            # (C parse_reclbl: parse_reclbl(n, !LR, false, text))
+            # C shapes.c:3446: parse_reclbl(n, !LR, false, text)
+            # The nested container is created with the FLIPPED LR,
+            # so its own LR is the opposite of the parent's.
             saved_lr = self._lr
             self._lr = not self._lr
             result = self.visitFieldList(ctx.fieldList())
-            result.LR = saved_lr  # container uses parent's LR
-            self._lr = saved_lr
-            # The children alternate
-            for child in result.children:
-                child.LR = not saved_lr
+            # result.LR is set by visitFieldList using self._lr (the
+            # flipped value), so the container correctly has !saved_lr.
+            self._lr = saved_lr  # restore for siblings
             return result
 
         # Leaf field: optional port + text
