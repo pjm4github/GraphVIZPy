@@ -117,8 +117,24 @@ completion status:
       tests/.  Total 355 lines deleted; dot_layout.py now 5238 lines.
       All 715 tests still pass, 0 overlaps on aa1332.dot.
 - [ ] **Step 6**: `graph.py` split (this file's first section)
-- [ ] **Step 7**: Extract remaining dot phases (rank, mincross,
-      splines, cluster, class2, fastgr, flat, sameport, acyclic)
-      into per-phase modules matching `lib/dotgen/`
+- [x] **Step 7 (partial)**: Extract Phase 2 (mincross) into
+      `gvpy/engines/dot/mincross.py` — done 2026-04-12.  Moved 18
+      methods (~1500 lines) as free functions via
+      `tools/extract_mincross.py` (improved from extract_phase3.py
+      to handle multi-line signatures + wrappers use `*args,
+      **kwargs` for pass-through).  `mincross.py` is 1661 lines;
+      docstring captures the session history (cluster DFS expand
+      order, scoped crossing count, down_first/up_first fixes) and
+      C↔Python file mapping (`lib/dotgen/mincross.c` +
+      `class2.c`/`fastgr.c`/`cluster.c` pieces).  Dead-code cleanup
+      alongside: deleted `_mval` (9 lines), `_count_cluster_crossings`
+      (30 lines), `_cluster_group_ordering` (76 lines) — all
+      unreferenced anywhere.  `dot_layout.py` now 3687 lines (was
+      5238 pre-mincross, 6739 pre-session — net -3052 over the full
+      session).  All 715 tests pass, 14/14 sampled files produce
+      0 node overlaps.
+- [ ] **Step 7b**: Extract remaining dot phases — rank, splines,
+      cluster, class2, fastgr, flat, sameport, acyclic — into
+      per-phase modules matching `lib/dotgen/`
 - [ ] **Step 8**: Add `SimulationView` base + minimal skeleton
 - [ ] **Step 9**: Add `PictoGraphInfo(LayoutView)` pictosync engine
