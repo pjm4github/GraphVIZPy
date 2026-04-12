@@ -145,10 +145,9 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
        separation and keepout edges already handle sibling ordering
        in ranks the clusters share.
     """
-    # Lazy import to avoid circular dependency: dot_layout defines
-    # _NetworkSimplex at module level and imports this module for
-    # the phase3_position entry point.
-    from gvpy.engines.dot.dot_layout import _NetworkSimplex
+    # _NetworkSimplex now lives in its own ns_solver module;
+    # importing directly avoids the dot_layout.py re-export hop.
+    from gvpy.engines.dot.ns_solver import _NetworkSimplex
 
     real_nodes = [n for n in layout.lnodes if not layout.lnodes[n].virtual]
     if len(real_nodes) < 2:
@@ -911,8 +910,8 @@ def bottomup_ns_x_position(layout):
 
     Fallback used only if :func:`ns_x_position` fails to converge.
     """
-    # Lazy import to avoid circular dependency — see ns_x_position.
-    from gvpy.engines.dot.dot_layout import _NetworkSimplex
+    # _NetworkSimplex from its own ns_solver module.
+    from gvpy.engines.dot.ns_solver import _NetworkSimplex
 
     node_sets = {cl.name: set(cl.nodes) for cl in layout._clusters}
     cl_by_name = {cl.name: cl for cl in layout._clusters}

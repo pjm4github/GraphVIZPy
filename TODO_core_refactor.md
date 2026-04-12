@@ -160,10 +160,22 @@ completion status:
       functions that instantiate them.  `dot_layout.py`: 3036 -> 2593
       lines this pass; **6739 -> 2593 over the full session (-4146,
       -62%)**.  All 715 tests pass, 0 overlaps on aa1332.dot.
-- [ ] **Step 7d**: Extract remaining helpers — cluster geometry
-      (cluster.c), init helpers (`_collect_edges`,
+- [x] **Step 7d (NS solver)**: Extract `_NetworkSimplex` class into
+      `gvpy/engines/dot/ns_solver.py` — done 2026-04-12.  448-line
+      class moved to its own module (483 lines including docstring +
+      imports).  C analogue: `lib/dotgen/ns.c`.  A re-export
+      `from gvpy.engines.dot.ns_solver import _NetworkSimplex` is
+      kept in `dot_layout.py` so existing imports
+      (`from gvpy.engines.dot.dot_layout import _NetworkSimplex`)
+      continue to work — used by `tests/test_dot_layout.py`.  The
+      lazy imports inside `rank.py` and `position.py` now import
+      directly from `ns_solver.py` to avoid the re-export hop.
+      `dot_layout.py`: 2593 -> 2167 lines this pass; **6739 -> 2167
+      over the full session (-4572, -68%)**.  All 715 tests pass,
+      0 overlaps on aa1332.dot.
+- [ ] **Step 7e**: Extract remaining helpers — cluster geometry
+      (cluster.c) and init helpers (`_collect_edges`,
       `_collect_clusters`, `_dedup_cluster_nodes`,
-      `_concentrate_edges`), and the `_NetworkSimplex` class itself —
-      into `cluster.py`, `dotinit.py`, and `ns_solver.py`.
+      `_concentrate_edges`) — into `cluster.py` and `dotinit.py`.
 - [ ] **Step 8**: Add `SimulationView` base + minimal skeleton
 - [ ] **Step 9**: Add `PictoGraphInfo(LayoutView)` pictosync engine

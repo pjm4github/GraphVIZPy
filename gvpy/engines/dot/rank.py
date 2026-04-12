@@ -196,8 +196,10 @@ def inject_same_rank_edges(layout):
 
 
 def network_simplex_rank(layout):
-    # Lazy import — _NetworkSimplex class lives in dot_layout.py.
-    from gvpy.engines.dot.dot_layout import _NetworkSimplex
+    # _NetworkSimplex now lives in ns_solver.py — direct import is
+    # cheaper than the dot_layout.py re-export and avoids any
+    # remaining import-cycle risk.
+    from gvpy.engines.dot.ns_solver import _NetworkSimplex
     if not layout.lnodes:
         return
     # Build node group map for weight boosting
@@ -238,8 +240,10 @@ def cluster_aware_rank(layout):
     parent graph is ranked with cluster-internal edges replaced by
     min-length constraints between cluster boundary nodes.
     """
-    # Lazy imports — both classes live in dot_layout.py (circular).
-    from gvpy.engines.dot.dot_layout import _NetworkSimplex, LayoutCluster
+    # _NetworkSimplex from its own ns_solver module; LayoutCluster
+    # still lives in dot_layout.py (circular import for that one).
+    from gvpy.engines.dot.ns_solver import _NetworkSimplex
+    from gvpy.engines.dot.dot_layout import LayoutCluster
     if not layout._clusters:
         layout._network_simplex_rank()
         return
