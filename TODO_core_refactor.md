@@ -110,11 +110,12 @@ completion status:
       1402 lines (was 517 before step 4b).  All 715 tests pass,
       14/14 sampled test files produce clean layouts with 0 overlaps.
       `bottomup_ns_x_position` fallback path verified to run without
-      NameError via targeted call.  Three dead-code methods
-      (`_hierarchical_x_position`, `_compact_clusters`,
-      `_keepout_noncluster_nodes`) remain in `dot_layout.py` — they
-      are not called from anywhere and can be deleted in a future
-      cleanup.
+      NameError via targeted call.  Dead-code cleanup done 2026-04-12:
+      removed `_hierarchical_x_position` (228 lines),
+      `_compact_clusters` (56 lines) and `_keepout_noncluster_nodes`
+      (71 lines) — all three were unreferenced anywhere in gvpy/ or
+      tests/.  Total 355 lines deleted; dot_layout.py now 5238 lines.
+      All 715 tests still pass, 0 overlaps on aa1332.dot.
 - [ ] **Step 6**: `graph.py` split (this file's first section)
 - [ ] **Step 7**: Extract remaining dot phases (rank, mincross,
       splines, cluster, class2, fastgr, flat, sameport, acyclic)
