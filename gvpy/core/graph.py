@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from .error import *
     from .node import Node, CompoundNode, agsplice, save_stack_of, stackpush, NodeDict
     from .edge import Edge
+    from .graph_view import GraphView
 
 from .agobj import Agobj
 from .headers import AgIdDisc, AgSym, Agdesc, GraphEvent, Agcbstack, Agcbdisc
@@ -481,6 +482,13 @@ class Graph(NodeMixin, EdgeMixin, SubgraphMixin, AttrMixin,
         self.edges: Dict[Tuple[str, str, Optional[str]], 'Edge'] = {} # (tail_name, head_name, edge_name) -> 'Edge'
         self.subgraphs: Dict[str, Graph] = {}  # subgraph_name -> Graph
         self.id_to_subgraph: Dict[int, Graph] = {}  # Dictionary to store subgraphs by ID
+        # Attached GraphView instances (C analogue: Agraphinfo_t via AGDATA).
+        # One entry per (graph, view-name) pair.  Layout engines,
+        # simulation state, analysis results, render overrides, etc. all
+        # live here rather than polluting the core data model.
+        # See gvpy/core/graph_view.py for the base class and docstring.
+        from typing import Any as _Any
+        self.views: Dict[str, _Any] = {}  # name -> GraphView (import-avoided)
         # This can be acheived by self.subgraphs[name].id
         # self.subgraph_name_to_id: Dict[str, int] = {}  # Mapping from subgraph names to IDs
         # self._id_counter: int = 1  # Starting ID counter
@@ -563,6 +571,38 @@ class Graph(NodeMixin, EdgeMixin, SubgraphMixin, AttrMixin,
         # self.discipline_stack: Optional["Agcbstack"] = None
         self.initialized: bool = False  # Flag to check if method_init has been called
         self._strdict: Dict[str, Dict[str, Any]] = {}  # String dictionary for reference-counted strings
+
+    # ── Graph views (attached engine / simulation / analysis state) ──
+    # See gvpy/core/graph_view.py for the GraphView base class.
+    # C analogue: aginit()/AGDATA() for Agraphinfo_t extension data.
+
+    def attach_view(self, view: "GraphView", name: Optional[str] = None) -> "GraphView":
+        """Attach a GraphView to this graph under the given name.
+
+        If ``name`` is omitted, uses ``view.view_name``.  Calls the
+        view's ``on_attach`` hook after registration.  Returns the view.
+        """
+        key = name if name is not None else view.view_name
+        self.views[key] = view
+        view.on_attach()
+        return view
+
+    def detach_view(self, name: str) -> Optional["GraphView"]:
+        """Detach the view registered under ``name`` and return it.
+
+        Calls the view's ``on_detach`` hook before removal.  Returns
+        ``None`` if no view with that name is attached.
+        """
+        view = self.views.get(name)
+        if view is None:
+            return None
+        view.on_detach()
+        del self.views[name]
+        return view
+
+    def get_view(self, name: str) -> Optional["GraphView"]:
+        """Return the view registered under ``name``, or None."""
+        return self.views.get(name)
 
     def agopen1(self):
         """
