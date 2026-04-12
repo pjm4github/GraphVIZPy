@@ -31,7 +31,7 @@ from typing import Optional
 
 from gvpy.core.graph import Graph
 from gvpy.core.node import Node
-from gvpy.engines.base import LayoutEngine
+from gvpy.engines.layout.base import LayoutEngine
 
 
 _DFLT_RANKSEP = 1.0 * 72.0  # 1 inch in points

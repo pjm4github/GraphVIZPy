@@ -6,7 +6,7 @@ import pytest
 
 from gvpy.core.graph import Graph
 from gvpy.grammar.gv_reader import read_gv
-from gvpy.engines.circo import CircoLayout
+from gvpy.engines.layout.circo import CircoLayout
 
 
 def circo_dot(dot_text: str) -> dict:

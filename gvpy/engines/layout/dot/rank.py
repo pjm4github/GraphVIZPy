@@ -51,11 +51,11 @@ session's ``TODO_core_refactor.md`` for the full migration plan.
 
 Related modules
 ---------------
-- :mod:`gvpy.engines.dot.mincross` — Phase 2, consumes ``layout.ranks``
+- :mod:`gvpy.engines.layout.dot.mincross` — Phase 2, consumes ``layout.ranks``
   and reorders nodes within each rank.
-- :mod:`gvpy.engines.dot.position` — Phase 3 coordinate assignment.
-- :mod:`gvpy.engines.dot.splines`  — Phase 4 edge routing.
-- :mod:`gvpy.engines.dot.dot_layout` — holds ``DotGraphInfo`` (state
+- :mod:`gvpy.engines.layout.dot.position` — Phase 3 coordinate assignment.
+- :mod:`gvpy.engines.layout.dot.splines`  — Phase 4 edge routing.
+- :mod:`gvpy.engines.layout.dot.dot_layout` — holds ``DotGraphInfo`` (state
   container), Phase 1 init helpers (``_collect_edges``,
   ``_collect_clusters``, ``_dedup_cluster_nodes``), cluster geometry,
   compound-edge handling, and the data types (``LayoutNode``,
@@ -68,7 +68,7 @@ from collections import defaultdict, deque
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from gvpy.engines.dot.dot_layout import DotGraphInfo
+    from gvpy.engines.layout.dot.dot_layout import DotGraphInfo
 
 
 def phase1_rank(layout):
@@ -185,7 +185,7 @@ def inject_same_rank_edges(layout):
     # Lazy import — LayoutEdge class lives in dot_layout.py; rank.py
     # cannot import it at module level (circular: dot_layout imports
     # this module via the delegating wrappers).
-    from gvpy.engines.dot.dot_layout import LayoutEdge
+    from gvpy.engines.layout.dot.dot_layout import LayoutEdge
     for kind, node_names in layout._rank_constraints:
         if kind != "same" or len(node_names) < 2:
             continue
@@ -220,7 +220,7 @@ def network_simplex_rank(layout):
     # _NetworkSimplex now lives in ns_solver.py — direct import is
     # cheaper than the dot_layout.py re-export and avoids any
     # remaining import-cycle risk.
-    from gvpy.engines.dot.ns_solver import _NetworkSimplex
+    from gvpy.engines.layout.dot.ns_solver import _NetworkSimplex
     if not layout.lnodes:
         return
     # Build node group map for weight boosting
@@ -263,8 +263,8 @@ def cluster_aware_rank(layout):
     """
     # _NetworkSimplex from its own ns_solver module; LayoutCluster
     # still lives in dot_layout.py (circular import for that one).
-    from gvpy.engines.dot.ns_solver import _NetworkSimplex
-    from gvpy.engines.dot.dot_layout import LayoutCluster
+    from gvpy.engines.layout.dot.ns_solver import _NetworkSimplex
+    from gvpy.engines.layout.dot.dot_layout import LayoutCluster
     if not layout._clusters:
         layout._network_simplex_rank()
         return
@@ -535,7 +535,7 @@ def add_virtual_nodes(layout):
     in ``layout._vnode_chains`` for Phase 4 spline routing.
     """
     # Lazy imports — both classes live in dot_layout.py (circular).
-    from gvpy.engines.dot.dot_layout import LayoutNode, LayoutEdge
+    from gvpy.engines.layout.dot.dot_layout import LayoutNode, LayoutEdge
     layout._vnode_chains = {}
     new_edges = []
     to_remove = []

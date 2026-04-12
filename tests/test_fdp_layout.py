@@ -6,7 +6,7 @@ import pytest
 
 from gvpy.core.graph import Graph
 from gvpy.grammar.gv_reader import read_gv
-from gvpy.engines.fdp import FdpLayout
+from gvpy.engines.layout.fdp import FdpLayout
 
 
 def fdp_gv(text: str, **attrs) -> dict:

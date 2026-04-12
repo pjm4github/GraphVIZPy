@@ -4,7 +4,7 @@ Tests for the sfdp (scalable force-directed) layout engine.
 import math
 import pytest
 from gvpy.grammar.gv_reader import read_gv
-from gvpy.engines.sfdp import SfdpLayout
+from gvpy.engines.layout.sfdp import SfdpLayout
 
 
 def sfdp_gv(text: str, **attrs) -> dict:

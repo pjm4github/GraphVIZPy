@@ -88,7 +88,7 @@ class RecordField:
         # C uses the system font engine for exact text dimensions.
         _text_width_fn = None
         try:
-            from gvpy.engines.font_metrics import text_width_system
+            from gvpy.engines.layout.font_metrics import text_width_system
             # Test once to see if tkinter works
             if text_width_system("x", fontsize) is not None:
                 _text_width_fn = lambda t: text_width_system(t, fontsize)
@@ -96,7 +96,7 @@ class RecordField:
             pass
         if _text_width_fn is None:
             try:
-                from gvpy.engines.font_metrics import text_width_times_roman
+                from gvpy.engines.layout.font_metrics import text_width_times_roman
                 _text_width_fn = lambda t: text_width_times_roman(t, fontsize)
             except ImportError:
                 pass

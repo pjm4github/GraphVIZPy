@@ -4,7 +4,7 @@ Tests for the twopi (radial) layout engine.
 import math
 import pytest
 from gvpy.grammar.gv_reader import read_gv
-from gvpy.engines.twopi import TwopiLayout
+from gvpy.engines.layout.twopi import TwopiLayout
 
 
 def twopi_gv(text: str, **attrs) -> dict:

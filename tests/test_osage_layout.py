@@ -3,7 +3,7 @@ Tests for the osage (cluster packing) layout engine.
 """
 import pytest
 from gvpy.grammar.gv_reader import read_gv
-from gvpy.engines.osage import OsageLayout
+from gvpy.engines.layout.osage import OsageLayout
 
 
 def osage_gv(text: str) -> dict:

@@ -188,9 +188,9 @@ completion status:
       `gvpy/engines/dot/ns_solver.py` — done 2026-04-12.  448-line
       class moved to its own module (483 lines including docstring +
       imports).  C analogue: `lib/dotgen/ns.c`.  A re-export
-      `from gvpy.engines.dot.ns_solver import _NetworkSimplex` is
+      `from gvpy.engines.layout.dot.ns_solver import _NetworkSimplex` is
       kept in `dot_layout.py` so existing imports
-      (`from gvpy.engines.dot.dot_layout import _NetworkSimplex`)
+      (`from gvpy.engines.layout.dot.dot_layout import _NetworkSimplex`)
       continue to work — used by `tests/test_dot_layout.py`.  The
       lazy imports inside `rank.py` and `position.py` now import
       directly from `ns_solver.py` to avoid the re-export hop.

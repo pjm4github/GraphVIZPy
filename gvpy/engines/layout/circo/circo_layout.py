@@ -23,7 +23,7 @@ from typing import Optional
 
 from gvpy.core.graph import Graph
 from gvpy.core.node import Node
-from gvpy.engines.base import LayoutEngine
+from gvpy.engines.layout.base import LayoutEngine
 
 
 # ── Data structures ────────────────────────────────
@@ -67,7 +67,7 @@ class CircoLayout(LayoutEngine):
 
     Usage::
 
-        from gvpy.engines.circo import CircoLayout
+        from gvpy.engines.layout.circo import CircoLayout
         result = CircoLayout(graph).layout()
     """
 

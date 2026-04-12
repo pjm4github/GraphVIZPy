@@ -39,10 +39,10 @@ as free functions taking ``layout`` as the first argument.
 
 Related modules
 ---------------
-- :mod:`gvpy.engines.dot.cluster` — :func:`init_from_graph` calls
+- :mod:`gvpy.engines.layout.dot.cluster` — :func:`init_from_graph` calls
   ``layout._collect_clusters()`` (which now lives in cluster.py)
   to populate ``layout._clusters``.
-- :mod:`gvpy.engines.dot.rank` — Phase 1 reads the populated
+- :mod:`gvpy.engines.layout.dot.rank` — Phase 1 reads the populated
   ``layout.lnodes`` / ``layout.ledges`` / ``layout._clusters``.
 """
 from __future__ import annotations
@@ -52,7 +52,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from gvpy.core.graph import Graph
-    from gvpy.engines.dot.dot_layout import DotGraphInfo, LayoutNode, LayoutEdge
+    from gvpy.engines.layout.dot.dot_layout import DotGraphInfo, LayoutNode, LayoutEdge
 
 
 def init_from_graph(layout):
@@ -65,7 +65,7 @@ def init_from_graph(layout):
     cluster + rank constraint metadata.
     """
     # Lazy imports — both classes live in dot_layout.py.
-    from gvpy.engines.dot.dot_layout import LayoutNode
+    from gvpy.engines.layout.dot.dot_layout import LayoutNode
     rd = layout.graph.get_graph_attr("rankdir")
     if rd:
         layout.rankdir = rd.upper()
@@ -258,7 +258,7 @@ def collect_edges(layout, g: Graph):
 
 def collect_edges_recursive(layout, g: Graph, seen: set):
     # Lazy import — LayoutEdge lives in dot_layout.py.
-    from gvpy.engines.dot.dot_layout import LayoutEdge
+    from gvpy.engines.layout.dot.dot_layout import LayoutEdge
     for key, edge in g.edges.items():
         if id(edge) in seen:
             continue

@@ -116,7 +116,7 @@ def is_already_wrapper(lines: list[str], start: int, end: int) -> bool:
     if len(body_lines) > 6:
         return False
     body = "".join(body_lines)
-    return ("from gvpy.engines.dot import mincross" in body
+    return ("from gvpy.engines.layout.dot import mincross" in body
             and "mincross." in body)
 
 
@@ -176,8 +176,8 @@ def make_wrapper(method_name: str, lines: list[str],
     sig_lines = lines[start:sig_end + 1]
     indent = "        "
     body = [
-        f'{indent}"""Delegates to gvpy.engines.dot.mincross.{func_name}."""\n',
-        f"{indent}from gvpy.engines.dot import mincross\n",
+        f'{indent}"""Delegates to gvpy.engines.layout.dot.mincross.{func_name}."""\n',
+        f"{indent}from gvpy.engines.layout.dot import mincross\n",
         f"{indent}return mincross.{func_name}(self, *args, **kwargs)\n",
         "\n",
     ]

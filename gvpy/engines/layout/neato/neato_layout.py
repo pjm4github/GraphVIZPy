@@ -36,7 +36,7 @@ API usage
 ::
 
     from gvpy.grammar import read_gv
-    from gvpy.engines.neato import NeatoLayout
+    from gvpy.engines.layout.neato import NeatoLayout
     from gvpy.render import render_svg
 
     graph = read_gv('graph G { a -- b -- c -- a; }')
@@ -71,7 +71,7 @@ from typing import Optional
 
 from gvpy.core.graph import Graph
 from gvpy.core.node import Node
-from gvpy.engines.base import LayoutEngine
+from gvpy.engines.layout.base import LayoutEngine
 
 
 # ── Constants ────────────────────────────────────
@@ -107,7 +107,7 @@ class NeatoLayout(LayoutEngine):
 
     Usage::
 
-        from gvpy.engines.neato import NeatoLayout
+        from gvpy.engines.layout.neato import NeatoLayout
         result = NeatoLayout(graph).layout()
     """
 

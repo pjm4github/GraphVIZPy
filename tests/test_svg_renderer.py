@@ -5,7 +5,7 @@ import pytest
 from pathlib import Path
 
 from gvpy.grammar.gv_reader import read_gv
-from gvpy.engines.dot import DotLayout
+from gvpy.engines.layout.dot import DotLayout
 from gvpy.render.svg_renderer import render_svg, render_svg_file
 
 

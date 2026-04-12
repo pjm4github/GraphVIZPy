@@ -14,14 +14,14 @@ arrays, enabling vectorised hot loops in _compute_all_cutvalues,
 _enter_edge, _feasible_tree, and _update.
 
 Used by:
-  - gvpy.engines.dot.rank      -- network_simplex_rank,
+  - gvpy.engines.layout.dot.rank      -- network_simplex_rank,
                                   cluster_aware_rank
-  - gvpy.engines.dot.position  -- ns_x_position,
+  - gvpy.engines.layout.dot.position  -- ns_x_position,
                                   bottomup_ns_x_position
 
 A re-export _NetworkSimplex is kept in dot_layout.py so any
 existing imports of
-    from gvpy.engines.dot.dot_layout import _NetworkSimplex
+    from gvpy.engines.layout.dot.dot_layout import _NetworkSimplex
 continue to work.  New code should import from this module
 directly.
 """

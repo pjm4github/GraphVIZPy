@@ -84,7 +84,7 @@ def is_already_wrapper(lines: list[str], start: int, end: int,
     if len(body_lines) > 6:
         return False
     body = "".join(body_lines)
-    return (f"from gvpy.engines.dot import {module}" in body
+    return (f"from gvpy.engines.layout.dot import {module}" in body
             and f"{module}." in body)
 
 
@@ -163,8 +163,8 @@ def make_wrapper(method_name: str, lines: list[str],
     sig_lines = lines[start:sig_end + 1]
     indent = "        "
     body = [
-        f'{indent}"""Delegates to gvpy.engines.dot.{module}.{func_name}."""\n',
-        f"{indent}from gvpy.engines.dot import {module}\n",
+        f'{indent}"""Delegates to gvpy.engines.layout.dot.{module}.{func_name}."""\n',
+        f"{indent}from gvpy.engines.layout.dot import {module}\n",
         f"{indent}return {module}.{func_name}(self, *args, **kwargs)\n",
         "\n",
     ]

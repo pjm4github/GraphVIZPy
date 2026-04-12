@@ -95,7 +95,7 @@ def is_already_wrapper(lines: list[str], start: int, end: int) -> bool:
     if len(body_lines) > 6:
         return False
     body = "".join(body_lines)
-    return ("from gvpy.engines.dot import splines" in body
+    return ("from gvpy.engines.layout.dot import splines" in body
             and "splines." in body)
 
 
@@ -127,8 +127,8 @@ def make_wrapper(method_name: str, lines: list[str],
     sig_lines = lines[start:sig_end + 1]
     indent = "        "
     body = [
-        f'{indent}"""Delegates to gvpy.engines.dot.splines.{func_name}."""\n',
-        f"{indent}from gvpy.engines.dot import splines\n",
+        f'{indent}"""Delegates to gvpy.engines.layout.dot.splines.{func_name}."""\n',
+        f"{indent}from gvpy.engines.layout.dot import splines\n",
         f"{indent}return splines.{func_name}(self, *args, **kwargs)\n",
         "\n",
     ]

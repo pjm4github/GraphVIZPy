@@ -55,7 +55,7 @@ API usage
 Parse a DOT file and run the layout::
 
     from gvpy.grammar import read_gv, read_gv_file
-    from gvpy.engines.dot import DotGraphInfo  # or the DotLayout alias
+    from gvpy.engines.layout.dot import DotGraphInfo  # or the DotLayout alias
 
     # From a file
     graph = read_gv_file("input.gv")
@@ -216,7 +216,7 @@ import numpy as np
 from gvpy.core.graph import Graph
 from gvpy.core.node import Node
 from gvpy.core.edge import Edge
-from gvpy.engines.base import LayoutEngine
+from gvpy.engines.layout.base import LayoutEngine
 
 
 # ── Internal data structures ─────────────────────
@@ -287,9 +287,9 @@ _COMPASS = {
 # Network Simplex (extracted) ----------------------
 # The _NetworkSimplex class lives in gvpy/engines/dot/ns_solver.py.
 # Re-exported here so existing
-#   from gvpy.engines.dot.dot_layout import _NetworkSimplex
+#   from gvpy.engines.layout.dot.dot_layout import _NetworkSimplex
 # imports continue to work without modification.
-from gvpy.engines.dot.ns_solver import _NetworkSimplex  # noqa: E402
+from gvpy.engines.layout.dot.ns_solver import _NetworkSimplex  # noqa: E402
 
 
 
@@ -314,7 +314,7 @@ class DotGraphInfo(LayoutEngine):
     takes the ``view_name="dot"`` key by default.  The ``DotLayout``
     alias defined at the bottom of this module preserves the original
     class name for backward compatibility; all existing
-    ``from gvpy.engines.dot import DotLayout`` imports continue to
+    ``from gvpy.engines.layout.dot import DotLayout`` imports continue to
     work unchanged.
     """
 
@@ -415,8 +415,8 @@ class DotGraphInfo(LayoutEngine):
     # ── Initialization ───────────────────────────
 
     def _init_from_graph(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.dotinit.init_from_graph."""
-        from gvpy.engines.dot import dotinit
+        """Delegates to gvpy.engines.layout.dot.dotinit.init_from_graph."""
+        from gvpy.engines.layout.dot import dotinit
         return dotinit.init_from_graph(self, *args, **kwargs)
 
 
@@ -628,32 +628,32 @@ class DotGraphInfo(LayoutEngine):
                 dfs(name)
 
     def _collect_rank_constraints(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.dotinit.collect_rank_constraints."""
-        from gvpy.engines.dot import dotinit
+        """Delegates to gvpy.engines.layout.dot.dotinit.collect_rank_constraints."""
+        from gvpy.engines.layout.dot import dotinit
         return dotinit.collect_rank_constraints(self, *args, **kwargs)
 
 
     def _scan_subgraphs(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.dotinit.scan_subgraphs."""
-        from gvpy.engines.dot import dotinit
+        """Delegates to gvpy.engines.layout.dot.dotinit.scan_subgraphs."""
+        from gvpy.engines.layout.dot import dotinit
         return dotinit.scan_subgraphs(self, *args, **kwargs)
 
 
     def _collect_edges(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.dotinit.collect_edges."""
-        from gvpy.engines.dot import dotinit
+        """Delegates to gvpy.engines.layout.dot.dotinit.collect_edges."""
+        from gvpy.engines.layout.dot import dotinit
         return dotinit.collect_edges(self, *args, **kwargs)
 
 
     def _collect_edges_recursive(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.dotinit.collect_edges_recursive."""
-        from gvpy.engines.dot import dotinit
+        """Delegates to gvpy.engines.layout.dot.dotinit.collect_edges_recursive."""
+        from gvpy.engines.layout.dot import dotinit
         return dotinit.collect_edges_recursive(self, *args, **kwargs)
 
 
     def _collect_clusters(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.cluster.collect_clusters."""
-        from gvpy.engines.dot import cluster
+        """Delegates to gvpy.engines.layout.dot.cluster.collect_clusters."""
+        from gvpy.engines.layout.dot import cluster
         return cluster.collect_clusters(self, *args, **kwargs)
 
 
@@ -664,43 +664,43 @@ class DotGraphInfo(LayoutEngine):
         return sorted(seen)
 
     def _collect_nodes_into(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.cluster.collect_nodes_into."""
-        from gvpy.engines.dot import cluster
+        """Delegates to gvpy.engines.layout.dot.cluster.collect_nodes_into."""
+        from gvpy.engines.layout.dot import cluster
         return cluster.collect_nodes_into(self, *args, **kwargs)
 
 
     def _scan_clusters(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.cluster.scan_clusters."""
-        from gvpy.engines.dot import cluster
+        """Delegates to gvpy.engines.layout.dot.cluster.scan_clusters."""
+        from gvpy.engines.layout.dot import cluster
         return cluster.scan_clusters(self, *args, **kwargs)
 
 
     def _dedup_cluster_nodes(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.cluster.dedup_cluster_nodes."""
-        from gvpy.engines.dot import cluster
+        """Delegates to gvpy.engines.layout.dot.cluster.dedup_cluster_nodes."""
+        from gvpy.engines.layout.dot import cluster
         return cluster.dedup_cluster_nodes(self, *args, **kwargs)
 
 
     def _compute_cluster_boxes(self):
-        """Delegates to gvpy.engines.dot.position.compute_cluster_boxes."""
-        from gvpy.engines.dot import position
+        """Delegates to gvpy.engines.layout.dot.position.compute_cluster_boxes."""
+        from gvpy.engines.layout.dot import position
         return position.compute_cluster_boxes(self)
 
     def _separate_sibling_clusters(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.cluster.separate_sibling_clusters."""
-        from gvpy.engines.dot import cluster
+        """Delegates to gvpy.engines.layout.dot.cluster.separate_sibling_clusters."""
+        from gvpy.engines.layout.dot import cluster
         return cluster.separate_sibling_clusters(self, *args, **kwargs)
 
 
     def _shift_cluster_nodes_y(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.cluster.shift_cluster_nodes_y."""
-        from gvpy.engines.dot import cluster
+        """Delegates to gvpy.engines.layout.dot.cluster.shift_cluster_nodes_y."""
+        from gvpy.engines.layout.dot import cluster
         return cluster.shift_cluster_nodes_y(self, *args, **kwargs)
 
 
     def _shift_cluster_nodes_x(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.cluster.shift_cluster_nodes_x."""
-        from gvpy.engines.dot import cluster
+        """Delegates to gvpy.engines.layout.dot.cluster.shift_cluster_nodes_x."""
+        from gvpy.engines.layout.dot import cluster
         return cluster.shift_cluster_nodes_x(self, *args, **kwargs)
 
 
@@ -843,68 +843,68 @@ class DotGraphInfo(LayoutEngine):
     # ── Phase 1: Rank assignment ─────────────────
 
     def _phase1_rank(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.rank.phase1_rank."""
-        from gvpy.engines.dot import rank
+        """Delegates to gvpy.engines.layout.dot.rank.phase1_rank."""
+        from gvpy.engines.layout.dot import rank
         return rank.phase1_rank(self, *args, **kwargs)
 
 
     def _inject_same_rank_edges(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.rank.inject_same_rank_edges."""
-        from gvpy.engines.dot import rank
+        """Delegates to gvpy.engines.layout.dot.rank.inject_same_rank_edges."""
+        from gvpy.engines.layout.dot import rank
         return rank.inject_same_rank_edges(self, *args, **kwargs)
 
 
     def _classify_flat_edges(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.rank.classify_flat_edges."""
-        from gvpy.engines.dot import rank
+        """Delegates to gvpy.engines.layout.dot.rank.classify_flat_edges."""
+        from gvpy.engines.layout.dot import rank
         return rank.classify_flat_edges(self, *args, **kwargs)
 
 
     def _classify_edges(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.rank.classify_edges."""
-        from gvpy.engines.dot import rank
+        """Delegates to gvpy.engines.layout.dot.rank.classify_edges."""
+        from gvpy.engines.layout.dot import rank
         return rank.classify_edges(self, *args, **kwargs)
 
 
     def _cluster_aware_rank(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.rank.cluster_aware_rank."""
-        from gvpy.engines.dot import rank
+        """Delegates to gvpy.engines.layout.dot.rank.cluster_aware_rank."""
+        from gvpy.engines.layout.dot import rank
         return rank.cluster_aware_rank(self, *args, **kwargs)
 
 
     def _break_cycles(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.rank.break_cycles."""
-        from gvpy.engines.dot import rank
+        """Delegates to gvpy.engines.layout.dot.rank.break_cycles."""
+        from gvpy.engines.layout.dot import rank
         return rank.break_cycles(self, *args, **kwargs)
 
 
     def _network_simplex_rank(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.rank.network_simplex_rank."""
-        from gvpy.engines.dot import rank
+        """Delegates to gvpy.engines.layout.dot.rank.network_simplex_rank."""
+        from gvpy.engines.layout.dot import rank
         return rank.network_simplex_rank(self, *args, **kwargs)
 
 
     def _apply_rank_constraints(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.rank.apply_rank_constraints."""
-        from gvpy.engines.dot import rank
+        """Delegates to gvpy.engines.layout.dot.rank.apply_rank_constraints."""
+        from gvpy.engines.layout.dot import rank
         return rank.apply_rank_constraints(self, *args, **kwargs)
 
 
     def _compact_ranks(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.rank.compact_ranks."""
-        from gvpy.engines.dot import rank
+        """Delegates to gvpy.engines.layout.dot.rank.compact_ranks."""
+        from gvpy.engines.layout.dot import rank
         return rank.compact_ranks(self, *args, **kwargs)
 
 
     def _add_virtual_nodes(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.rank.add_virtual_nodes."""
-        from gvpy.engines.dot import rank
+        """Delegates to gvpy.engines.layout.dot.rank.add_virtual_nodes."""
+        from gvpy.engines.layout.dot import rank
         return rank.add_virtual_nodes(self, *args, **kwargs)
 
 
     def _build_ranks(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.rank.build_ranks."""
-        from gvpy.engines.dot import rank
+        """Delegates to gvpy.engines.layout.dot.rank.build_ranks."""
+        from gvpy.engines.layout.dot import rank
         return rank.build_ranks(self, *args, **kwargs)
 
 
@@ -913,8 +913,8 @@ class DotGraphInfo(LayoutEngine):
     _CL_CROSS = 1000  # Graphviz CL_CROSS: penalty weight for crossing cluster borders
 
     def _mark_low_clusters(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.mincross.mark_low_clusters."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.mark_low_clusters."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.mark_low_clusters(self, *args, **kwargs)
 
 
@@ -940,32 +940,32 @@ class DotGraphInfo(LayoutEngine):
         return True
 
     def _phase2_ordering(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.mincross.phase2_ordering."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.phase2_ordering."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.phase2_ordering(self, *args, **kwargs)
 
 
     def _run_mincross(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.mincross.run_mincross."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.run_mincross."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.run_mincross(self, *args, **kwargs)
 
 
     def _remincross_full(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.mincross.remincross_full."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.remincross_full."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.remincross_full(self, *args, **kwargs)
 
 
     def _skeleton_mincross(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.mincross.skeleton_mincross."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.skeleton_mincross."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.skeleton_mincross(self, *args, **kwargs)
 
 
     def _flat_reorder(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.mincross.flat_reorder."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.flat_reorder."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.flat_reorder(self, *args, **kwargs)
 
 
@@ -985,8 +985,8 @@ class DotGraphInfo(LayoutEngine):
     _port_order_cache: dict[tuple[str, str], int] = {}
 
     def _mval_edge(self, *args, **kwargs) -> int:
-        """Delegates to gvpy.engines.dot.mincross.mval_edge."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.mval_edge."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.mval_edge(self, *args, **kwargs)
 
 
@@ -996,68 +996,68 @@ class DotGraphInfo(LayoutEngine):
 
 
     def _cluster_medians(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.mincross.cluster_medians."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.cluster_medians."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.cluster_medians(self, *args, **kwargs)
 
 
     def _cluster_reorder(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.mincross.cluster_reorder."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.cluster_reorder."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.cluster_reorder(self, *args, **kwargs)
 
 
     def _cluster_build_ranks(self, *args, **kwargs) -> dict[int, list[str]]:
-        """Delegates to gvpy.engines.dot.mincross.cluster_build_ranks."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.cluster_build_ranks."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.cluster_build_ranks(self, *args, **kwargs)
 
 
     def _cluster_transpose(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.mincross.cluster_transpose."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.cluster_transpose."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.cluster_transpose(self, *args, **kwargs)
 
 
     def _order_by_weighted_median(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.mincross.order_by_weighted_median."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.order_by_weighted_median."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.order_by_weighted_median(self, *args, **kwargs)
 
 
     def _transpose_rank(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.mincross.transpose_rank."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.transpose_rank."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.transpose_rank(self, *args, **kwargs)
 
 
     def _count_crossings_for_pair(self, *args, **kwargs) -> int:
-        """Delegates to gvpy.engines.dot.mincross.count_crossings_for_pair."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.count_crossings_for_pair."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.count_crossings_for_pair(self, *args, **kwargs)
 
 
     def _count_all_crossings(self, *args, **kwargs) -> int:
-        """Delegates to gvpy.engines.dot.mincross.count_all_crossings."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.count_all_crossings."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.count_all_crossings(self, *args, **kwargs)
 
 
     def _count_scoped_crossings(self, *args, **kwargs) -> int:
-        """Delegates to gvpy.engines.dot.mincross.count_scoped_crossings."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.count_scoped_crossings."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.count_scoped_crossings(self, *args, **kwargs)
 
 
     def _save_ordering(self, *args, **kwargs) -> dict[str, int]:
-        """Delegates to gvpy.engines.dot.mincross.save_ordering."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.save_ordering."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.save_ordering(self, *args, **kwargs)
 
 
     def _restore_ordering(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.mincross.restore_ordering."""
-        from gvpy.engines.dot import mincross
+        """Delegates to gvpy.engines.layout.dot.mincross.restore_ordering."""
+        from gvpy.engines.layout.dot import mincross
         return mincross.restore_ordering(self, *args, **kwargs)
 
 
@@ -1074,62 +1074,62 @@ class DotGraphInfo(LayoutEngine):
         class and are called by the module via ``layout._xxx()``.  See
         ``TODO_core_refactor.md`` step 4 for the full extraction plan.
         """
-        from gvpy.engines.dot import position
+        from gvpy.engines.layout.dot import position
         position.phase3_position(self)
 
     def _expand_leaves(self):
-        """Delegates to gvpy.engines.dot.position.expand_leaves."""
-        from gvpy.engines.dot import position
+        """Delegates to gvpy.engines.layout.dot.position.expand_leaves."""
+        from gvpy.engines.layout.dot import position
         return position.expand_leaves(self)
 
     def _insert_flat_label_nodes(self) -> bool:
-        """Delegates to gvpy.engines.dot.position.insert_flat_label_nodes."""
-        from gvpy.engines.dot import position
+        """Delegates to gvpy.engines.layout.dot.position.insert_flat_label_nodes."""
+        from gvpy.engines.layout.dot import position
         return position.insert_flat_label_nodes(self)
 
     def _set_ycoords(self):
-        """Delegates to gvpy.engines.dot.position.set_ycoords."""
-        from gvpy.engines.dot import position
+        """Delegates to gvpy.engines.layout.dot.position.set_ycoords."""
+        from gvpy.engines.layout.dot import position
         return position.set_ycoords(self)
 
     def _simple_x_position(self):
-        """Delegates to gvpy.engines.dot.position.simple_x_position."""
-        from gvpy.engines.dot import position
+        """Delegates to gvpy.engines.layout.dot.position.simple_x_position."""
+        from gvpy.engines.layout.dot import position
         return position.simple_x_position(self)
 
     def _median_x_improvement(self):
-        """Delegates to gvpy.engines.dot.position.median_x_improvement."""
-        from gvpy.engines.dot import position
+        """Delegates to gvpy.engines.layout.dot.position.median_x_improvement."""
+        from gvpy.engines.layout.dot import position
         return position.median_x_improvement(self)
 
     def _bottomup_ns_x_position(self):
-        """Delegates to gvpy.engines.dot.position.bottomup_ns_x_position."""
-        from gvpy.engines.dot import position
+        """Delegates to gvpy.engines.layout.dot.position.bottomup_ns_x_position."""
+        from gvpy.engines.layout.dot import position
         return position.bottomup_ns_x_position(self)
 
     def _ns_x_position(self) -> bool:
         """Delegate to position.ns_x_position — see that module."""
-        from gvpy.engines.dot import position
+        from gvpy.engines.layout.dot import position
         return position.ns_x_position(self)
 
     def _resolve_cluster_overlaps(self):
-        """Delegates to gvpy.engines.dot.position.resolve_cluster_overlaps."""
-        from gvpy.engines.dot import position
+        """Delegates to gvpy.engines.layout.dot.position.resolve_cluster_overlaps."""
+        from gvpy.engines.layout.dot import position
         return position.resolve_cluster_overlaps(self)
 
     def _post_rankdir_keepout(self):
-        """Delegates to gvpy.engines.dot.position.post_rankdir_keepout."""
-        from gvpy.engines.dot import position
+        """Delegates to gvpy.engines.layout.dot.position.post_rankdir_keepout."""
+        from gvpy.engines.layout.dot import position
         return position.post_rankdir_keepout(self)
 
     def _center_ranks(self):
-        """Delegates to gvpy.engines.dot.position.center_ranks."""
-        from gvpy.engines.dot import position
+        """Delegates to gvpy.engines.layout.dot.position.center_ranks."""
+        from gvpy.engines.layout.dot import position
         return position.center_ranks(self)
 
     def _apply_rankdir(self):
-        """Delegates to gvpy.engines.dot.position.apply_rankdir."""
-        from gvpy.engines.dot import position
+        """Delegates to gvpy.engines.layout.dot.position.apply_rankdir."""
+        from gvpy.engines.layout.dot import position
         return position.apply_rankdir(self)
 
     def _apply_size(self):
@@ -1411,146 +1411,146 @@ class DotGraphInfo(LayoutEngine):
     # ── Phase 4: Edge routing ────────────────────
 
     def _phase4_routing(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.splines.phase4_routing."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.phase4_routing."""
+        from gvpy.engines.layout.dot import splines
         return splines.phase4_routing(self, *args, **kwargs)
 
 
     def _clip_compound_edges(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.splines.clip_compound_edges."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.clip_compound_edges."""
+        from gvpy.engines.layout.dot import splines
         return splines.clip_compound_edges(self, *args, **kwargs)
 
 
     @staticmethod
     def _clip_to_bb(self, *args, **kwargs) -> tuple | None:
-        """Delegates to gvpy.engines.dot.splines.clip_to_bb."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.clip_to_bb."""
+        from gvpy.engines.layout.dot import splines
         return splines.clip_to_bb(self, *args, **kwargs)
 
 
     @staticmethod
     def _to_bezier(self, *args, **kwargs) -> list[tuple]:
-        """Delegates to gvpy.engines.dot.splines.to_bezier."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.to_bezier."""
+        from gvpy.engines.layout.dot import splines
         return splines.to_bezier(self, *args, **kwargs)
 
 
     def _edge_start_point(self, *args, **kwargs) -> tuple[float, float]:
-        """Delegates to gvpy.engines.dot.splines.edge_start_point."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.edge_start_point."""
+        from gvpy.engines.layout.dot import splines
         return splines.edge_start_point(self, *args, **kwargs)
 
 
     def _edge_end_point(self, *args, **kwargs) -> tuple[float, float]:
-        """Delegates to gvpy.engines.dot.splines.edge_end_point."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.edge_end_point."""
+        from gvpy.engines.layout.dot import splines
         return splines.edge_end_point(self, *args, **kwargs)
 
 
     def _record_port_point(self, *args, **kwargs) -> tuple[float, float] | None:
-        """Delegates to gvpy.engines.dot.splines.record_port_point."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.record_port_point."""
+        from gvpy.engines.layout.dot import splines
         return splines.record_port_point(self, *args, **kwargs)
 
 
     @staticmethod
     def _port_point(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.splines.port_point."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.port_point."""
+        from gvpy.engines.layout.dot import splines
         return splines.port_point(self, *args, **kwargs)
 
 
     @staticmethod
     def _compute_label_pos(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.splines.compute_label_pos."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.compute_label_pos."""
+        from gvpy.engines.layout.dot import splines
         return splines.compute_label_pos(self, *args, **kwargs)
 
 
     def _apply_sameport(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.splines.apply_sameport."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.apply_sameport."""
+        from gvpy.engines.layout.dot import splines
         return splines.apply_sameport(self, *args, **kwargs)
 
 
     def _ortho_route(self, *args, **kwargs) -> list[tuple[float, float]]:
-        """Delegates to gvpy.engines.dot.splines.ortho_route."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.ortho_route."""
+        from gvpy.engines.layout.dot import splines
         return splines.ortho_route(self, *args, **kwargs)
 
 
     def _route_through_chain(self, *args, **kwargs) -> list[tuple[float, float]]:
-        """Delegates to gvpy.engines.dot.splines.route_through_chain."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.route_through_chain."""
+        from gvpy.engines.layout.dot import splines
         return splines.route_through_chain(self, *args, **kwargs)
 
 
     @staticmethod
     def _boundary_point(self, *args, **kwargs) -> tuple[float, float]:
-        """Delegates to gvpy.engines.dot.splines.boundary_point."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.boundary_point."""
+        from gvpy.engines.layout.dot import splines
         return splines.boundary_point(self, *args, **kwargs)
 
 
     @staticmethod
     def _self_loop_points(self, *args, **kwargs) -> list[tuple[float, float]]:
-        """Delegates to gvpy.engines.dot.splines.self_loop_points."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.self_loop_points."""
+        from gvpy.engines.layout.dot import splines
         return splines.self_loop_points(self, *args, **kwargs)
 
 
     def _maximal_bbox(self, *args, **kwargs) -> tuple[float, float, float, float]:
-        """Delegates to gvpy.engines.dot.splines.maximal_bbox."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.maximal_bbox."""
+        from gvpy.engines.layout.dot import splines
         return splines.maximal_bbox(self, *args, **kwargs)
 
 
     def _rank_box(self, *args, **kwargs) -> tuple[float, float, float, float]:
-        """Delegates to gvpy.engines.dot.splines.rank_box."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.rank_box."""
+        from gvpy.engines.layout.dot import splines
         return splines.rank_box(self, *args, **kwargs)
 
 
     def _route_regular_edge(self, *args, **kwargs) -> list[tuple[float, float]]:
-        """Delegates to gvpy.engines.dot.splines.route_regular_edge."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.route_regular_edge."""
+        from gvpy.engines.layout.dot import splines
         return splines.route_regular_edge(self, *args, **kwargs)
 
 
     def _classify_flat_edge(self, *args, **kwargs) -> str:
-        """Delegates to gvpy.engines.dot.splines.classify_flat_edge."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.classify_flat_edge."""
+        from gvpy.engines.layout.dot import splines
         return splines.classify_flat_edge(self, *args, **kwargs)
 
 
     def _count_flat_edge_index(self, *args, **kwargs) -> int:
-        """Delegates to gvpy.engines.dot.splines.count_flat_edge_index."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.count_flat_edge_index."""
+        from gvpy.engines.layout.dot import splines
         return splines.count_flat_edge_index(self, *args, **kwargs)
 
 
     def _flat_edge_route(self, *args, **kwargs) -> list[tuple[float, float]]:
-        """Delegates to gvpy.engines.dot.splines.flat_edge_route."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.flat_edge_route."""
+        from gvpy.engines.layout.dot import splines
         return splines.flat_edge_route(self, *args, **kwargs)
 
 
     def _flat_adjacent(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.splines.flat_adjacent."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.flat_adjacent."""
+        from gvpy.engines.layout.dot import splines
         return splines.flat_adjacent(self, *args, **kwargs)
 
 
     def _flat_labeled(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.splines.flat_labeled."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.flat_labeled."""
+        from gvpy.engines.layout.dot import splines
         return splines.flat_labeled(self, *args, **kwargs)
 
 
     def _flat_arc(self, *args, **kwargs):
-        """Delegates to gvpy.engines.dot.splines.flat_arc."""
-        from gvpy.engines.dot import splines
+        """Delegates to gvpy.engines.layout.dot.splines.flat_arc."""
+        from gvpy.engines.layout.dot import splines
         return splines.flat_arc(self, *args, **kwargs)
 
 
@@ -1773,5 +1773,5 @@ class DotGraphInfo(LayoutEngine):
 # ``DotLayout`` was the original class name; ``DotGraphInfo`` is the
 # new name matching C's Agraphinfo_t convention and the GraphView
 # architecture (gvpy/core/graph_view.py).  Keep the alias so existing
-# imports ``from gvpy.engines.dot import DotLayout`` continue to work.
+# imports ``from gvpy.engines.layout.dot import DotLayout`` continue to work.
 DotLayout = DotGraphInfo

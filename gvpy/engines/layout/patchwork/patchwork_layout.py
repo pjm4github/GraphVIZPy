@@ -29,7 +29,7 @@ from typing import Optional
 
 from gvpy.core.graph import Graph
 from gvpy.core.node import Node
-from gvpy.engines.base import LayoutEngine
+from gvpy.engines.layout.base import LayoutEngine
 
 
 _SCALE = 1000.0  # scale areas for numerical precision

@@ -76,14 +76,14 @@ def is_already_wrapper(lines: list[str], start: int, end: int) -> bool:
     """True if the method body is already a delegating wrapper.
 
     Strict definition: the body (after the signature line) has at most
-    6 lines and contains both ``from gvpy.engines.dot import position``
+    6 lines and contains both ``from gvpy.engines.layout.dot import position``
     and ``position.`` as a function call.
     """
     body_lines = lines[start + 1:end]
     if len(body_lines) > 6:
         return False
     body = "".join(body_lines)
-    return ("from gvpy.engines.dot import position" in body
+    return ("from gvpy.engines.layout.dot import position" in body
             and "position." in body)
 
 
@@ -133,8 +133,8 @@ def make_wrapper(method_name: str, signature_line: str) -> list[str]:
     indent = "        "  # 8 spaces = inside class method body
     return [
         signature_line,  # keeps `def _method(self) -> bool:` intact
-        f'{indent}"""Delegates to gvpy.engines.dot.position.{func_name}."""\n',
-        f"{indent}from gvpy.engines.dot import position\n",
+        f'{indent}"""Delegates to gvpy.engines.layout.dot.position.{func_name}."""\n',
+        f"{indent}from gvpy.engines.layout.dot import position\n",
         f"{indent}return position.{func_name}(self)\n",
         "\n",
     ]

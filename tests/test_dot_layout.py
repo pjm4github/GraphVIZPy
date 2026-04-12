@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from gvpy.grammar.gv_reader import read_gv
-from gvpy.engines.dot.dot_layout import DotLayout, LayoutNode, LayoutEdge, _NetworkSimplex
+from gvpy.engines.layout.dot.dot_layout import DotLayout, LayoutNode, LayoutEdge, _NetworkSimplex
 
 
 # ── Helpers ───────────────────────────────────────

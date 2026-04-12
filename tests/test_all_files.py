@@ -20,7 +20,7 @@ from pathlib import Path
 from gvpy.grammar.gv_reader import read_gv_file, GVParseError
 from gvpy.render.json_io import read_json_file
 from gvpy.render.gxl_io import read_gxl_file
-from gvpy.engines.dot import DotLayout
+from gvpy.engines.layout.dot import DotLayout
 
 TEST_DATA = Path(__file__).parent.parent / "test_data"
 

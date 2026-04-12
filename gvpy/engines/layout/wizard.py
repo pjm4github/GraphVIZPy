@@ -22,7 +22,7 @@ from PyQt6.QtSvgWidgets import QSvgWidget
 
 from gvpy.grammar.gv_reader import read_gv, GVParseError
 from gvpy.engines import get_engine, list_engines
-from gvpy.engines.layout_features import (
+from gvpy.engines.layout.layout_features import (
     _ATTR_TABLE, get_description, is_supported,
 )
 from gvpy.render.svg_renderer import render_svg

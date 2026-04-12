@@ -35,7 +35,7 @@ import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from gvpy.engines.dot.dot_layout import DotGraphInfo
+    from gvpy.engines.layout.dot.dot_layout import DotGraphInfo
 
 
 def phase3_position(layout: "DotGraphInfo") -> None:
@@ -147,7 +147,7 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
     """
     # _NetworkSimplex now lives in its own ns_solver module;
     # importing directly avoids the dot_layout.py re-export hop.
-    from gvpy.engines.dot.ns_solver import _NetworkSimplex
+    from gvpy.engines.layout.dot.ns_solver import _NetworkSimplex
 
     real_nodes = [n for n in layout.lnodes if not layout.lnodes[n].virtual]
     if len(real_nodes) < 2:
@@ -637,7 +637,7 @@ def insert_flat_label_nodes(layout) -> bool:
 
         # Create virtual label node
         vn_name = f"_flatlabel_{le.tail_name}_{le.head_name}_{id(le)}"
-        from gvpy.engines.dot.dot_layout import LayoutNode
+        from gvpy.engines.layout.dot.dot_layout import LayoutNode
         vn = LayoutNode(name=vn_name)
         vn.virtual = True
         vn.width = lw
@@ -662,7 +662,7 @@ def insert_flat_label_nodes(layout) -> bool:
 
         # Create virtual edges from label node to endpoints
         # (these help the crossing minimization and NS positioning)
-        from gvpy.engines.dot.dot_layout import LayoutEdge
+        from gvpy.engines.layout.dot.dot_layout import LayoutEdge
         ve1 = LayoutEdge(edge=None, tail_name=vn_name,
                          head_name=le.tail_name, minlen=0, weight=1)
         ve1.virtual = True
@@ -928,7 +928,7 @@ def bottomup_ns_x_position(layout):
     is rarely if ever exercised on real graphs.
     """
     # _NetworkSimplex from its own ns_solver module.
-    from gvpy.engines.dot.ns_solver import _NetworkSimplex
+    from gvpy.engines.layout.dot.ns_solver import _NetworkSimplex
 
     node_sets = {cl.name: set(cl.nodes) for cl in layout._clusters}
     cl_by_name = {cl.name: cl for cl in layout._clusters}

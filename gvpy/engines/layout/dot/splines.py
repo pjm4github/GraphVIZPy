@@ -59,9 +59,9 @@ Each ``DotGraphInfo._xxx`` method is now a 3-line delegating wrapper.
 
 Related modules
 ---------------
-- :mod:`gvpy.engines.dot.mincross` — Phase 2.  Assigns rank orders.
-- :mod:`gvpy.engines.dot.position` — Phase 3.  Assigns node coords.
-- :mod:`gvpy.engines.dot.dot_layout` — holds ``DotGraphInfo`` (state
+- :mod:`gvpy.engines.layout.dot.mincross` — Phase 2.  Assigns rank orders.
+- :mod:`gvpy.engines.layout.dot.position` — Phase 3.  Assigns node coords.
+- :mod:`gvpy.engines.layout.dot.dot_layout` — holds ``DotGraphInfo`` (state
   container) plus Phase 1 rank assignment, cluster geometry helpers,
   and write-back.  Splines functions here take ``layout: DotGraphInfo``
   as the first argument and read ``layout.lnodes``, ``layout.ledges``,
@@ -75,7 +75,7 @@ import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from gvpy.engines.dot.dot_layout import DotGraphInfo, LayoutEdge, LayoutNode
+    from gvpy.engines.layout.dot.dot_layout import DotGraphInfo, LayoutEdge, LayoutNode
 
 
 def phase4_routing(layout):
@@ -476,7 +476,7 @@ def port_point(ln: "LayoutNode", compass: str):
     direction (n/ne/e/se/s/sw/w/nw/c) on a rectangular node.
     """
     # Lazy import — module-level constant in dot_layout.py.
-    from gvpy.engines.dot.dot_layout import _COMPASS
+    from gvpy.engines.layout.dot.dot_layout import _COMPASS
     offsets = _COMPASS.get(compass)
     if offsets is None:
         return None

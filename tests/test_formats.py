@@ -355,7 +355,7 @@ class TestJsonWriter:
 
     def test_json_with_layout(self, simple_digraph):
         """json output includes layout data when provided."""
-        from gvpy.engines.dot import DotLayout
+        from gvpy.engines.layout.dot import DotLayout
         result = DotLayout(simple_digraph).layout()
         text = write_json(simple_digraph, layout_result=result)
         data = json.loads(text)

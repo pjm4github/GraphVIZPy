@@ -33,7 +33,7 @@ pip install -e /path/to/GraphvizPy
 
 ```python
 from gvpy.core import Graph, Node, Edge
-from gvpy.engines.dot import DotLayout
+from gvpy.engines.layout.dot import DotLayout
 from gvpy.render import render_svg
 ```
 
@@ -186,7 +186,7 @@ digraph G {
 
 ## Layout Engines
 
-### dot — Hierarchical Layout (`gvpy.engines.dot`)
+### dot — Hierarchical Layout (`gvpy.engines.layout.dot`)
 
 **Status:** Implemented
 
@@ -250,7 +250,7 @@ The Sugiyama hierarchical layout algorithm in five phases:
 | `tooltip` | All | — | Hover tooltip text |
 | `URL` | All | — | Clickable URL |
 
-### circo — Circular Layout (`gvpy.engines.circo`)
+### circo — Circular Layout (`gvpy.engines.layout.circo`)
 
 **Status:** Implemented
 
@@ -272,7 +272,7 @@ Biconnected component decomposition with circular node placement.
 | `root` | Graph | (first node) | Root node for DFS — affects block tree orientation |
 | `oneblock` | Graph | `false` | Skip biconnected decomposition |
 
-### neato — Spring-Model Layout (`gvpy.engines.neato`)
+### neato — Spring-Model Layout (`gvpy.engines.layout.neato`)
 
 Stress majorization, Kamada-Kawai, or SGD to minimize stress energy from graph-theoretic distances. Best for undirected graphs up to ~1000 nodes.
 
@@ -284,7 +284,7 @@ Stress majorization, Kamada-Kawai, or SGD to minimize stress energy from graph-t
 | `epsilon` | `0.0001*\|V\|` | Convergence threshold |
 | `len` (edge) | `1.0` | Desired edge length (inches) |
 
-### fdp — Force-Directed Placement (`gvpy.engines.fdp`)
+### fdp — Force-Directed Placement (`gvpy.engines.layout.fdp`)
 
 Fruchterman-Reingold spring-electrical model with grid-accelerated repulsive forces and linear cooling. Two-phase: layout + overlap removal.
 
@@ -295,7 +295,7 @@ Fruchterman-Reingold spring-electrical model with grid-accelerated repulsive for
 | `len` (edge) | K | Desired edge length |
 | `weight` (edge) | `1` | Spring strength multiplier |
 
-### sfdp — Scalable Force-Directed (`gvpy.engines.sfdp`)
+### sfdp — Scalable Force-Directed (`gvpy.engines.layout.sfdp`)
 
 Extends fdp with multilevel coarsening and Barnes-Hut quadtree for O(n log n) repulsive forces. Handles 10K+ nodes.
 
@@ -309,7 +309,7 @@ Extends fdp with multilevel coarsening and Barnes-Hut quadtree for O(n log n) re
 | `beautify` | `false` | Arrange leaves in circle around root |
 | `rotation` | `0` | Rotate final layout (degrees) |
 
-### twopi — Radial Layout (`gvpy.engines.twopi`)
+### twopi — Radial Layout (`gvpy.engines.layout.twopi`)
 
 BFS from root, concentric rings with angular span proportional to subtree size.
 
@@ -318,7 +318,7 @@ BFS from root, concentric rings with angular span proportional to subtree size.
 | `root` | (auto) | Center node (graph or node attribute) |
 | `ranksep` | `1.0` | Ring gap in inches (colon-separated for variable) |
 
-### osage — Cluster Packing (`gvpy.engines.osage`)
+### osage — Cluster Packing (`gvpy.engines.layout.osage`)
 
 Recursive rectangular array packing within nested clusters. No hierarchical ranking.
 
@@ -328,7 +328,7 @@ Recursive rectangular array packing within nested clusters. No hierarchical rank
 | `sortv` | `0` | Sort value for array ordering |
 | `margin` / `pad` | `18pt` | Cluster margin |
 
-### patchwork — Treemap (`gvpy.engines.patchwork`)
+### patchwork — Treemap (`gvpy.engines.layout.patchwork`)
 
 Squarified treemap where node area is proportional to the `area` attribute.
 
@@ -603,8 +603,8 @@ from gvpy.grammar import read_gv, read_gv_file, write_gv, write_gv_file
 from gvpy.render import render_svg, read_json, write_json0, read_gxl, write_gxl
 
 # Layout engines (gvpy.engines)
-from gvpy.engines.dot import DotLayout
-from gvpy.engines.circo import CircoLayout
+from gvpy.engines.layout.dot import DotLayout
+from gvpy.engines.layout.circo import CircoLayout
 from gvpy.engines import get_engine
 
 # Full pipeline

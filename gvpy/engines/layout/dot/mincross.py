@@ -73,10 +73,10 @@ landed primarily in ``skeleton_mincross``, ``cluster_build_ranks``,
 
 Related modules
 ---------------
-- :mod:`gvpy.engines.dot.position` — Phase 3 position assignment.
+- :mod:`gvpy.engines.layout.dot.position` — Phase 3 position assignment.
   Shares no state with mincross; runs after mincross has finalized
   the rank orderings.
-- :mod:`gvpy.engines.dot.dot_layout` — holds ``DotGraphInfo`` (the
+- :mod:`gvpy.engines.layout.dot.dot_layout` — holds ``DotGraphInfo`` (the
   state container) and still has Phase 1 rank assignment, Phase 4
   spline routing, and cluster geometry helpers.  Mincross functions
   here take ``layout: DotGraphInfo`` as their first argument and
@@ -90,7 +90,7 @@ from collections import defaultdict, deque
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from gvpy.engines.dot.dot_layout import DotGraphInfo
+    from gvpy.engines.layout.dot.dot_layout import DotGraphInfo
 
 
 def phase2_ordering(layout):
@@ -311,7 +311,7 @@ def skeleton_mincross(layout):
     # Lazy import — class-level references lost scope when moved out
     # of dot_layout.py.  Both classes are used by the nested
     # _build_skeleton closure below.
-    from gvpy.engines.dot.dot_layout import LayoutNode, LayoutEdge
+    from gvpy.engines.layout.dot.dot_layout import LayoutNode, LayoutEdge
 
     # ── Build skeletons for ALL clusters (all levels) ──
     skeleton_nodes: dict[str, dict[int, str]] = {}

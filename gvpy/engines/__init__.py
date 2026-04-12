@@ -1,8 +1,11 @@
 """
 Layout engine registry — discover and instantiate layout engines.
 
-All layout engines live under ``gvpy.engines.<name>/`` and are registered
-here for dispatch by the CLI (``gvcli.py``) and programmatic use.
+All layout engines live under ``gvpy.engines.layout.<name>/`` and are
+registered here for dispatch by the CLI (``gvcli.py``) and programmatic
+use.  Simulation engines (event-driven and CBD-style) live under the
+sibling ``gvpy.engines.sim`` namespace and are not exposed by this
+registry — they're driven directly by their concrete classes.
 
 Usage::
 
@@ -20,18 +23,18 @@ import importlib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .base import LayoutEngine
+    from .layout.base import LayoutEngine
 
 # Registry: engine name → (module_path, class_name, status)
 _ENGINES: dict[str, tuple[str, str, str]] = {
-    "dot":       ("gvpy.engines.dot",       "DotLayout",       "implemented"),
-    "circo":     ("gvpy.engines.circo",     "CircoLayout",     "implemented"),
-    "neato":     ("gvpy.engines.neato",     "NeatoLayout",     "implemented"),
-    "fdp":       ("gvpy.engines.fdp",       "FdpLayout",       "implemented"),
-    "sfdp":      ("gvpy.engines.sfdp",      "SfdpLayout",      "implemented"),
-    "twopi":     ("gvpy.engines.twopi",     "TwopiLayout",     "implemented"),
-    "osage":     ("gvpy.engines.osage",     "OsageLayout",     "implemented"),
-    "patchwork": ("gvpy.engines.patchwork", "PatchworkLayout", "implemented"),
+    "dot":       ("gvpy.engines.layout.dot",       "DotLayout",       "implemented"),
+    "circo":     ("gvpy.engines.layout.circo",     "CircoLayout",     "implemented"),
+    "neato":     ("gvpy.engines.layout.neato",     "NeatoLayout",     "implemented"),
+    "fdp":       ("gvpy.engines.layout.fdp",       "FdpLayout",       "implemented"),
+    "sfdp":      ("gvpy.engines.layout.sfdp",      "SfdpLayout",      "implemented"),
+    "twopi":     ("gvpy.engines.layout.twopi",     "TwopiLayout",     "implemented"),
+    "osage":     ("gvpy.engines.layout.osage",     "OsageLayout",     "implemented"),
+    "patchwork": ("gvpy.engines.layout.patchwork", "PatchworkLayout", "implemented"),
     # mingle moved to gvpy.tools.mingle (it's a post-processor, not a layout engine)
 }
 

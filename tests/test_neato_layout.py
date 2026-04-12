@@ -6,7 +6,7 @@ import pytest
 
 from gvpy.core.graph import Graph
 from gvpy.grammar.gv_reader import read_gv
-from gvpy.engines.neato import NeatoLayout
+from gvpy.engines.layout.neato import NeatoLayout
 
 
 def neato_gv(text: str, **attrs) -> dict:

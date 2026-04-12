@@ -456,7 +456,7 @@ def main():
 
     # Interactive wizard
     if args.ui:
-        from gvpy.engines.wizard import launch_wizard
+        from gvpy.engines.layout.wizard import launch_wizard
         initial = args.files[0] if args.files else None
         launch_wizard(initial, engine=engine_name)
         return

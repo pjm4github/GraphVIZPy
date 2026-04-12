@@ -34,7 +34,7 @@ from typing import Optional
 
 from gvpy.core.graph import Graph
 from gvpy.core.node import Node
-from gvpy.engines.base import LayoutEngine
+from gvpy.engines.layout.base import LayoutEngine
 
 
 _DFLT_MARGIN = 18.0  # points
@@ -74,7 +74,7 @@ class OsageLayout(LayoutEngine):
 
     Usage::
 
-        from gvpy.engines.osage import OsageLayout
+        from gvpy.engines.layout.osage import OsageLayout
         result = OsageLayout(graph).layout()
     """
 

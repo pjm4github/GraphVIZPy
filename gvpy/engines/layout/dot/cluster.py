@@ -37,12 +37,12 @@ argument.  See ``TODO_core_refactor.md`` for the migration plan.
 
 Related modules
 ---------------
-- :mod:`gvpy.engines.dot.dotinit` — top-level layout init.  Calls
+- :mod:`gvpy.engines.layout.dot.dotinit` — top-level layout init.  Calls
   :func:`collect_clusters` during ``init_from_graph``.
-- :mod:`gvpy.engines.dot.position` — Phase 3.  Calls
+- :mod:`gvpy.engines.layout.dot.position` — Phase 3.  Calls
   :func:`separate_sibling_clusters` (via ``layout._...``) during
   the post-position cleanup.
-- :mod:`gvpy.engines.dot.mincross` — Phase 2.  Reads
+- :mod:`gvpy.engines.layout.dot.mincross` — Phase 2.  Reads
   ``layout._clusters`` to build cluster skeletons for the
   cluster-aware mincross expand pipeline.
 """
@@ -53,7 +53,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from gvpy.core.graph import Graph
-    from gvpy.engines.dot.dot_layout import DotGraphInfo, LayoutCluster
+    from gvpy.engines.layout.dot.dot_layout import DotGraphInfo, LayoutCluster
 
 
 def collect_clusters(layout):
@@ -94,7 +94,7 @@ def scan_clusters(layout, g: Graph):
     ``GD_clust(g)`` and marks each node's cluster ownership).
     """
     # Lazy import — LayoutCluster lives in dot_layout.py.
-    from gvpy.engines.dot.dot_layout import LayoutCluster
+    from gvpy.engines.layout.dot.dot_layout import LayoutCluster
     for sub_name, sub in g.subgraphs.items():
         if sub_name.startswith("cluster"):
             node_names = layout._all_nodes_recursive(sub)
@@ -232,7 +232,7 @@ def separate_sibling_clusters(layout):
     post-pass safety net invoked after the position phase, kept for
     cases where the global NS could not enforce all sibling
     separation constraints (typically when they would create cycles
-    in the constraint graph — see :func:`gvpy.engines.dot.position
+    in the constraint graph — see :func:`gvpy.engines.layout.dot.position
     .ns_x_position`).
 
     Builds a cluster hierarchy, identifies sibling groups, and shifts

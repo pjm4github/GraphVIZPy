@@ -3,7 +3,7 @@ Tests for the patchwork (treemap) layout engine.
 """
 import pytest
 from gvpy.grammar.gv_reader import read_gv
-from gvpy.engines.patchwork import PatchworkLayout
+from gvpy.engines.layout.patchwork import PatchworkLayout
 
 
 def pw_gv(text: str) -> dict:
