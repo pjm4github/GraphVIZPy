@@ -80,9 +80,12 @@ if TYPE_CHECKING:
 
 def phase4_routing(layout):
     print(f"[TRACE spline] phase4 begin: splines={layout.splines} compound={layout.compound}", file=sys.stderr)
-    # Pre-compute rank bounding info for obstacle-aware routing
-    layout._rank_ht1: dict[int, float] = {}  # bottom half-height per rank
-    layout._rank_ht2: dict[int, float] = {}  # top half-height per rank
+    # Pre-compute rank bounding info for obstacle-aware routing.
+    # ``_rank_ht1`` / ``_rank_ht2`` are declared on DotGraphInfo so
+    # PyCharm and mypy see them as proper instance attributes;
+    # clear here to reset any state from a previous layout call.
+    layout._rank_ht1.clear()
+    layout._rank_ht2.clear()
     for ln in layout.lnodes.values():
         r = ln.rank
         hh = ln.height / 2.0

@@ -816,9 +816,10 @@ def cluster_medians(layout, rank: int, adj_rank: int,
     adj_set = set(layout.ranks.get(adj_rank, []))
 
     # Build port lookup for edges: (tail, head) → (headport, tailport)
-    # Used to compute VAL with port.order (C mincross.c:1702,1706)
-    if not hasattr(layout, '_edge_port_lookup'):
-        layout._edge_port_lookup: dict[tuple[str, str], tuple[str, str]] = {}
+    # Used to compute VAL with port.order (C mincross.c:1702,1706).
+    # Pre-declared on DotGraphInfo.__init__; populate lazily on first
+    # call (empty dict means not yet populated for this layout run).
+    if not layout._edge_port_lookup:
         for le in layout.ledges:
             hp = getattr(le, 'headport', '') or ''
             tp = getattr(le, 'tailport', '') or ''
@@ -1610,7 +1611,9 @@ def mark_low_clusters(layout):
     deeply nested) clusters overwrite, leaving each node mapped to
     its innermost containing cluster.
     """
-    layout._node_to_cluster: dict[str, str | None] = {}
+    # ``_node_to_cluster`` is declared on DotGraphInfo.__init__;
+    # clear here to drop any stale mapping from a prior layout run.
+    layout._node_to_cluster.clear()
     if not layout._clusters:
         return
     for cl in sorted(layout._clusters,

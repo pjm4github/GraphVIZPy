@@ -498,9 +498,11 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
         # Store ln/rn X positions for cluster bbox computation.
         # The C code uses these directly as cluster X boundaries
         # (dot_compute_bb: LL.x = ND_rank(GD_ln(g))).
+        # ``_cl_ln_x`` / ``_cl_rn_x`` are declared on DotGraphInfo;
+        # clear here to drop any stale mapping from a prior run.
         if layout._clusters:
-            layout._cl_ln_x = {}
-            layout._cl_rn_x = {}
+            layout._cl_ln_x.clear()
+            layout._cl_rn_x.clear()
             for cl_name, ln_name in cl_ln.items():
                 if ln_name in x_ranks:
                     layout._cl_ln_x[cl_name] = float(x_ranks[ln_name])

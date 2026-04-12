@@ -802,6 +802,22 @@ class DotGraphInfo(LayoutEngine):
         self._clusters: list[LayoutCluster] = []
         # _record_ports removed — port fractions now come from
         # Node.record_fields (parsed at DOT load, sized at layout start)
+        # Per-rank obstacle bounds — populated by phase4 spline routing.
+        # Declared here so PyCharm / mypy see proper type information
+        # when the splines module assigns to ``layout._rank_ht1`` etc.
+        self._rank_ht1: dict[int, float] = {}  # bottom half-height per rank
+        self._rank_ht2: dict[int, float] = {}  # top half-height per rank
+        self._left_bound: float = 0.0
+        self._right_bound: float = 0.0
+        # Mincross caches — populated lazily by mincross.cluster_medians
+        # and mincross.mark_low_clusters.  Pre-declared so PyCharm /
+        # mypy see them as proper instance attributes.
+        self._edge_port_lookup: dict[tuple[str, str], tuple[str, str]] = {}
+        self._node_to_cluster: dict[str, str | None] = {}
+        # Per-cluster X bounds set by position.ns_x_position after the
+        # NS solve, used by compute_cluster_boxes.
+        self._cl_ln_x: dict[str, float] = {}
+        self._cl_rn_x: dict[str, float] = {}
 
     # ── Public API ───────────────────────────────
 
