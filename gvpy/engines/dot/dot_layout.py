@@ -906,7 +906,8 @@ class DotLayout(LayoutEngine):
             ln = LayoutNode(node=node, width=w, height=h)
 
             # Size record fields and store geometry on Node
-            # (C shapes.c:3687-3708 record_init → parse_reclbl/size_reclbl)
+            # (C shapes.c:3687-3731 record_init)
+            # Flow: parse_reclbl → size_reclbl → resize_reclbl → pos_reclbl
             # For LR/RL, C starts with flip=TRUE (shapes.c:3705) which
             # swaps the LR direction at the top level.
             if node.record_fields is not None:
@@ -918,7 +919,19 @@ class DotLayout(LayoutEngine):
                 # Flip for LR/RL (C shapes.c:3705 flip = GD_flip)
                 if self.rankdir in ("LR", "RL"):
                     self._flip_record_lr(node.record_fields)
+                # Step 1: compute natural sizes (C size_reclbl, shapes.c:3711)
                 node.record_fields.compute_size(fontsize=fontsize)
+                # Step 2: resize to fit node bounds (C shapes.c:3712-3724)
+                # sz = max(natural_size, node_default_size)
+                # C: sz.x = INCH2PS(ND_width(n)), sz.y = INCH2PS(ND_height(n))
+                # Default node size: 0.75in × 0.5in = 54pt × 36pt
+                node_w = w  # from _compute_node_size (already in points)
+                node_h = h
+                rw = max(node.record_fields.width, node_w)
+                rh = max(node.record_fields.height, node_h)
+                # C resize_reclbl (shapes.c:3724): distribute excess space
+                node.record_fields.resize(rw, rh)
+                # Step 3: position fields (C pos_reclbl, shapes.c:3725)
                 node.record_fields.compute_positions(
                     0, 0, node.record_fields.width,
                     node.record_fields.height)
@@ -1536,6 +1549,14 @@ class DotLayout(LayoutEngine):
         rf.LR = not rf.LR
         for child in rf.children:
             DotLayout._flip_record_lr(child)
+
+    def _rankdir_int(self) -> int:
+        """Return rankdir as Graphviz integer constant.
+
+        Matches C's GD_rankdir values (const.h:181-184):
+          RANKDIR_TB=0, RANKDIR_LR=1, RANKDIR_BT=2, RANKDIR_RL=3
+        """
+        return {"TB": 0, "LR": 1, "BT": 2, "RL": 3}.get(self.rankdir, 0)
 
     def _compute_node_size(self, name: str, node) -> tuple[float, float]:
         """Compute node dimensions from label text, shape, and explicit width/height."""
@@ -2607,11 +2628,27 @@ class DotLayout(LayoutEngine):
             if skel_parts:
                 print(f"[TRACE order] skeleton rank {r}: {skel_parts}", file=sys.stderr)
 
-        # ── Expand: shallowest to deepest ──
-        for d in range(0, max_depth + 1):
-            for cl_name in skeleton_nodes:
-                if depth_of.get(cl_name, 0) != d:
-                    continue
+        # ── Expand: DFS through cluster tree ──
+        # C mincross.c:574-598 mincross_clust recurses depth-first
+        # through the cluster tree in GD_clust (definition) order:
+        #   mincross_clust(g):
+        #     expand_cluster(g); mincross(g, 2);
+        #     for c in GD_clust(g): mincross_clust(c)
+        # This is different from BFS by depth — for each cluster, we
+        # fully recurse into all its children before moving to the
+        # next sibling.  Mixing up this order changes what's visible
+        # as a skeleton vs a real node at mincross time, and changes
+        # the median/reorder results.
+        cluster_dfs_order: list[str] = []
+        def _dfs_cluster_order(parent: str | None):
+            for child in children_of.get(parent, []):
+                if child in skeleton_nodes:
+                    cluster_dfs_order.append(child)
+                    _dfs_cluster_order(child)
+        _dfs_cluster_order(None)
+
+        for cl_name in cluster_dfs_order:
+            if True:  # preserve existing indentation
                 rank_leaders = skeleton_nodes[cl_name]
 
                 # Collect nodes hidden by this cluster
@@ -2788,14 +2825,35 @@ class DotLayout(LayoutEngine):
                             mc_fg_out[t].append(h)
                             mc_fg_in[h].append(t)
 
-                    # C ncross() counts GLOBAL crossings (mincross.c:1617)
-                    cur_cross = best_cross = self._count_all_crossings()
+                    # C ncross() (mincross.c:1617) uses ND_out which is
+                    # the cluster's scoped fast graph — intra-child-cluster
+                    # edges are excluded (class2.c:199).  We emulate this
+                    # by counting only edges in mc_fg_out.
+                    def _scoped_cross():
+                        return self._count_scoped_crossings(
+                            mc_fg_out, min_r, max_r)
+                    cur_cross = best_cross = _scoped_cross()
                     best_order = self._save_ordering()
 
                     # C mincross.c:774-797: iteration loop.
                     _MIN_QUIT = 8       # mincross.c:1820
                     _CONVERGENCE = 0.995  # mincross.c:159
                     trying = 0
+
+                    # C mincross_step (mincross.c:1534-1546):
+                    # down pass: first = GD_minrank(g) + 1, but for
+                    # sub-clusters (GD_minrank(g) > GD_minrank(Root)),
+                    # first-- (so it includes the cluster's first rank).
+                    # up pass: symmetric with GD_maxrank(g).
+                    # Root's min rank for this graph.
+                    root_min = min(self.ranks.keys()) if self.ranks else 0
+                    root_max = max(self.ranks.keys()) if self.ranks else 0
+                    down_first = min_r + 1
+                    if min_r > root_min:
+                        down_first = min_r
+                    up_first = max_r - 1
+                    if max_r < root_max:
+                        up_first = max_r
 
                     for _pass in range(max_iter):
                         if cur_cross == 0:
@@ -2807,7 +2865,7 @@ class DotLayout(LayoutEngine):
                         # mincross_step (mincross.c:1528-1554)
                         reverse = (_pass % 4) < 2
                         if _pass % 2 == 0:
-                            for r in range(min_r + 1, max_r + 1):
+                            for r in range(down_first, max_r + 1):
                                 if r in self.ranks:
                                     self._cluster_medians(
                                         r, r - 1, cl_node_set,
@@ -2816,7 +2874,7 @@ class DotLayout(LayoutEngine):
                                         r, cl_node_set, child_cl_map,
                                         reverse)
                         else:
-                            for r in range(max_r - 1, min_r - 1, -1):
+                            for r in range(up_first, min_r - 1, -1):
                                 if r in self.ranks:
                                     self._cluster_medians(
                                         r, r + 1, cl_node_set,
@@ -2829,9 +2887,8 @@ class DotLayout(LayoutEngine):
                                 self._cluster_transpose(
                                     r, cl_node_set, child_cl_map)
 
-                        # mincross.c:786-791: check improvement
-                        # C ncross() = global crossing count
-                        cur_cross = self._count_all_crossings()
+                        # mincross.c:786-791: check improvement using scoped count
+                        cur_cross = _scoped_cross()
                         if cur_cross <= best_cross:
                             if cur_cross < _CONVERGENCE * best_cross:
                                 trying = 0
@@ -3071,7 +3128,8 @@ class DotLayout(LayoutEngine):
         # (parsed at DOT load, sized at layout start)
         port_order = self._MC_SCALE // 2  # default center
         if ln.node and ln.node.record_fields is not None:
-            frac = ln.node.record_fields.port_fraction(port_name)
+            frac = ln.node.record_fields.port_fraction(
+                port_name, rankdir=self._rankdir_int())
             if frac is not None:
                 port_order = int(frac * self._MC_SCALE)
 
@@ -3781,6 +3839,41 @@ class DotLayout(LayoutEngine):
                         total += 1
         return total
 
+    def _count_scoped_crossings(self, fg_out: dict[str, list[str]],
+                                 min_r: int, max_r: int) -> int:
+        """Count crossings using only edges in the given fast graph.
+
+        Mirrors C mincross.c:1617-1632 ncross() which iterates
+        ND_out(n) — the subgraph's scoped edge list.  At cluster
+        mincross time, this excludes intra-child-cluster edges
+        (class2.c:199) so reorderings at the parent cluster level
+        are judged only by inter-child crossings.
+        """
+        total = 0
+        for r in range(min_r, max_r):
+            if r not in self.ranks or r + 1 not in self.ranks:
+                continue
+            upper_set = set(self.ranks[r])
+            lower_set = set(self.ranks[r + 1])
+            edges_between = []
+            for t in self.ranks[r]:
+                for h in fg_out.get(t, []):
+                    if h in lower_set:
+                        edges_between.append((self.lnodes[t].order,
+                                              self.lnodes[h].order))
+            for t in self.ranks[r + 1]:
+                for h in fg_out.get(t, []):
+                    if h in upper_set:
+                        edges_between.append((self.lnodes[h].order,
+                                              self.lnodes[t].order))
+            for i in range(len(edges_between)):
+                for j in range(i + 1, len(edges_between)):
+                    o1_t, o1_h = edges_between[i]
+                    o2_t, o2_h = edges_between[j]
+                    if (o1_t - o2_t) * (o1_h - o2_h) < 0:
+                        total += 1
+        return total
+
     def _save_ordering(self) -> dict[str, int]:
         return {name: ln.order for name, ln in self.lnodes.items()}
 
@@ -3797,58 +3890,16 @@ class DotLayout(LayoutEngine):
     _CL_OFFSET = 8.0  # Graphviz CL_OFFSET constant (points)
 
     def _phase3_position(self):
-        print(f"[TRACE position] phase3 begin: rankdir={self.rankdir} ranksep={self.ranksep} nodesep={self.nodesep}", file=sys.stderr)
-        if not self.lnodes:
-            return
+        """Phase 3 entry point — delegates to position module.
 
-        # Y coordinates following Graphviz position.c set_ycoords().
-        self._set_ycoords()
-        # Log Y coords for real nodes
-        for name in sorted(self.lnodes.keys()):
-            ln = self.lnodes[name]
-            if not ln.virtual:
-                print(f"[TRACE position] set_ycoords: {name} y={ln.y:.1f}", file=sys.stderr)
-
-        # Expand leaves: ensure degree-1 nodes have proper spacing
-        # (Graphviz position.c expand_leaves).
-        self._expand_leaves()
-
-        # Insert virtual label nodes for labeled flat edges (Graphviz
-        # position.c flat_edges).  If any were inserted, re-run Y coords.
-        if self._insert_flat_label_nodes():
-            self._set_ycoords()
-
-        # X coordinates: single-pass global NS for clustered graphs,
-        # matching Graphviz position.c create_aux_edges + rank().
-        if self._clusters:
-            if not self._ns_x_position():
-                # Fallback to bottom-up if NS fails
-                self._bottomup_ns_x_position()
-            self._compute_cluster_boxes()
-        else:
-            self._simple_x_position()
-            self._median_x_improvement()
-            self._center_ranks()
-
-        # Log final X,Y coords for real nodes
-        for name in sorted(self.lnodes.keys()):
-            ln = self.lnodes[name]
-            if not ln.virtual:
-                print(f"[TRACE position] final_pos: {name} x={ln.x:.1f} y={ln.y:.1f} w={ln.width:.1f} h={ln.height:.1f}", file=sys.stderr)
-
-        self._apply_rankdir()
-
-        # Post-rankdir: resolve all cluster overlaps and push non-member
-        # nodes out of sibling cluster bboxes.
-        if self._clusters:
-            self._resolve_cluster_overlaps()
-            self._post_rankdir_keepout()
-
-        # Log post-rankdir positions
-        for name in sorted(self.lnodes.keys()):
-            ln = self.lnodes[name]
-            if not ln.virtual:
-                print(f"[TRACE position] post_rankdir: {name} x={ln.x:.1f} y={ln.y:.1f}", file=sys.stderr)
+        The implementation lives in ``gvpy/engines/dot/position.py``
+        (C analogue: ``lib/dotgen/position.c``).  Other Phase 3 helpers
+        (``_set_ycoords``, ``_expand_leaves``, etc.) still live on this
+        class and are called by the module via ``layout._xxx()``.  See
+        ``TODO_core_refactor.md`` step 4 for the full extraction plan.
+        """
+        from gvpy.engines.dot import position
+        position.phase3_position(self)
 
     def _expand_leaves(self):
         """Ensure degree-1 (leaf) nodes have proper separation.
@@ -4702,364 +4753,9 @@ class DotLayout(LayoutEngine):
         _solve_level(None)
 
     def _ns_x_position(self) -> bool:
-        """Assign X coordinates using network simplex on an auxiliary graph.
-
-        Mirrors Graphviz ``position.c``: ``create_aux_edges()`` builds a
-        constraint graph, ``rank()`` solves it with NS, ``set_xcoords()``
-        extracts positions.
-
-        The auxiliary graph is **acyclic by construction** because every
-        edge flows from a lower-order (left) node to a higher-order
-        (right) node, and cluster boundary nodes (ln/rn) are positioned
-        consistently with the mincross ordering.
-        """
-        real_nodes = [n for n in self.lnodes if not self.lnodes[n].virtual]
-        if len(real_nodes) < 2:
-            return False
-
-        aux_nodes: list[str] = list(self.lnodes.keys())
-        aux_edges: list[tuple[str, str, int, int]] = []
-        _vn_counter = [0]
-
-        def _vnode(prefix: str = "_xv") -> str:
-            _vn_counter[0] += 1
-            return f"{prefix}_{_vn_counter[0]}"
-
-        # ── Pre-compute cluster maps ──────────────────────
-        _cl_by_name: dict[str, object] = {}
-        _node_to_cl: dict[str, str] = {}
-        if self._clusters:
-            _cl_by_name = {cl.name: cl for cl in self._clusters}
-            for cl in sorted(self._clusters,
-                             key=lambda c: len(c.nodes), reverse=True):
-                for n in cl.nodes:
-                    if n in self.lnodes:
-                        _node_to_cl[n] = cl.name
-
-        # ── 1. Separation edges (make_LR_constraints) ─────
-        # Adjacent nodes in the same rank: left → right with
-        # minlen = separation needed, weight = 0.
-        # Re-sort each rank to group cluster members contiguously.
-        # This prevents infeasible cycles between separation and
-        # containment edges when mincross interleaves clusters.
-        if self._clusters and _node_to_cl:
-            for rank_val in self.ranks:
-                rank_nodes = self.ranks[rank_val]
-                # Stable sort by innermost cluster name
-                rank_nodes.sort(key=lambda n: (
-                    _node_to_cl.get(n, ""),
-                    self.lnodes[n].order if n in self.lnodes else 0))
-                # Update order fields
-                for i, name in enumerate(rank_nodes):
-                    if name in self.lnodes:
-                        self.lnodes[name].order = i
-
-        for rank_val, rank_nodes in self.ranks.items():
-            for i in range(len(rank_nodes) - 1):
-                left = rank_nodes[i]
-                right = rank_nodes[i + 1]
-                ln_l = self.lnodes[left]
-                ln_r = self.lnodes[right]
-                min_dist = int(ln_l.width / 2.0 + ln_r.width / 2.0
-                               + self.nodesep)
-                left_cl = _node_to_cl.get(left, "")
-                right_cl = _node_to_cl.get(right, "")
-                if left_cl != right_cl:
-                    if left_cl and left_cl in _cl_by_name:
-                        min_dist += int(_cl_by_name[left_cl].margin)
-                    if right_cl and right_cl in _cl_by_name:
-                        min_dist += int(_cl_by_name[right_cl].margin)
-                aux_edges.append((left, right, max(1, min_dist), 0))
-
-        # ── 2. Alignment edges (make_edge_pairs) ──────────
-        # For each real edge, a slack node pulls endpoints together.
-        node_groups: dict[str, str] = {}
-        for name, ln in self.lnodes.items():
-            if ln.node:
-                grp = ln.node.attributes.get("group", "")
-                if grp:
-                    node_groups[name] = grp
-
-        for le in self.ledges:
-            t_ln = self.lnodes.get(le.tail_name)
-            h_ln = self.lnodes.get(le.head_name)
-            if not t_ln or not h_ln:
-                continue
-            w = le.weight
-            t_grp = node_groups.get(le.tail_name, "")
-            h_grp = node_groups.get(le.head_name, "")
-            if t_grp and t_grp == h_grp:
-                w = max(w * 100, 100)
-            # Port offset: difference in cross-rank port positions
-            # (mirrors C make_edge_pairs: m0 = head_port.x - tail_port.x)
-            m0 = int(getattr(le, 'head_port_cross', 0)
-                     - getattr(le, 'tail_port_cross', 0))
-            if m0 > 0:
-                m1 = 0
-            else:
-                m1 = -m0
-                m0 = 0
-            sn = _vnode("_sn")
-            aux_nodes.append(sn)
-            aux_edges.append((sn, le.tail_name, m0 + 1, w))
-            aux_edges.append((sn, le.head_name, m1 + 1, w))
-
-        # ── 3. Cluster boundary edges (pos_clusters) ──────
-        if self._clusters:
-            node_sets = {cl.name: set(cl.nodes) for cl in self._clusters}
-
-            # Build TRUE parent map from subgraph tree
-            cl_names_set = set(node_sets.keys())
-            tree_parent: dict[str, str | None] = {}
-            def _walk(g, parent_cl):
-                for sub_name, sub in g.subgraphs.items():
-                    if sub_name in cl_names_set:
-                        tree_parent[sub_name] = parent_cl
-                        _walk(sub, sub_name)
-                    else:
-                        _walk(sub, parent_cl)
-            _walk(self.graph, None)
-
-            tree_children: dict[str | None, list[str]] = {}
-            for cn, par in tree_parent.items():
-                tree_children.setdefault(par, []).append(cn)
-
-            cl_by_name = {cl.name: cl for cl in self._clusters}
-            cl_ln: dict[str, str] = {}
-            cl_rn: dict[str, str] = {}
-
-            # ── 3a. Create ln/rn boundary nodes ──────────
-            # Compute cluster border widths for labels (C: input.c)
-            # For rankdir=LR/RL, label height becomes cross-rank border.
-            cl_border_l: dict[str, float] = {}
-            cl_border_r: dict[str, float] = {}
-            is_flipped = self.rankdir in ("LR", "RL")
-            for cl in self._clusters:
-                bl = br = 0.0
-                if cl.label:
-                    try:
-                        fontsize = float(cl.attrs.get("fontsize", 14))
-                    except (ValueError, TypeError):
-                        fontsize = 14.0
-                    # Label dimen: width = text_width, height = fontsize
-                    # PAD adds 4pt each side
-                    label_h = fontsize + 8.0
-                    label_w = len(cl.label) * fontsize * 0.6 + 8.0
-                    labelloc = cl.attrs.get("labelloc", "t").lower()
-                    if is_flipped:
-                        # Rotated: TOP→RIGHT, BOTTOM→LEFT
-                        # border.x = dimen.y (label height → cross-rank)
-                        if labelloc != "b":
-                            br = label_h  # label at top → right border
-                        else:
-                            bl = label_h
-                    # TB/BT: borders are in rank direction, not cross-rank
-                cl_border_l[cl.name] = bl
-                cl_border_r[cl.name] = br
-
-            for cl in self._clusters:
-                ln_name = _vnode("_cln")
-                rn_name = _vnode("_crn")
-                aux_nodes.extend([ln_name, rn_name])
-                cl_ln[cl.name] = ln_name
-                cl_rn[cl.name] = rn_name
-                # Label width edge for ln→rn (C: make_lrvn)
-                if cl.label and not is_flipped:
-                    lbl_w = max(cl_border_l.get(cl.name, 0),
-                                cl_border_r.get(cl.name, 0))
-                    if lbl_w > 0:
-                        aux_edges.append((ln_name, rn_name,
-                                          max(1, int(lbl_w)), 0))
-
-            # ── 3b. Containment: ln → node, node → rn ───
-            # (contain_nodes in C code)
-            for cl in self._clusters:
-                margin = int(cl.margin)
-                ln_name = cl_ln[cl.name]
-                rn_name = cl_rn[cl.name]
-                border_l = cl_border_l.get(cl.name, 0.0)
-                border_r = cl_border_r.get(cl.name, 0.0)
-
-                # For each rank, constrain the leftmost and rightmost
-                # cluster nodes (matches C contain_nodes).
-                cl_ranks: dict[int, list[str]] = {}
-                for n in cl.nodes:
-                    if n in self.lnodes:
-                        r = self.lnodes[n].rank
-                        cl_ranks.setdefault(r, []).append(n)
-
-                for r, nodes in cl_ranks.items():
-                    nodes.sort(key=lambda n: self.lnodes[n].order)
-                    leftmost = nodes[0]
-                    rightmost = nodes[-1]
-                    lw = self.lnodes[leftmost].width / 2.0
-                    rw = self.lnodes[rightmost].width / 2.0
-                    aux_edges.append((ln_name, leftmost,
-                                      max(1, int(lw + margin + border_l)), 0))
-                    aux_edges.append((rightmost, rn_name,
-                                      max(1, int(rw + margin + border_r)), 0))
-
-                # ── 3c. Compaction: ln → rn (weight=128) ─
-                aux_edges.append((ln_name, rn_name, 1, 128))
-
-            # ── 3d. Hierarchy: parent.ln → child.ln, child.rn → parent.rn
-            # (contain_subclust in C code — includes parent border)
-            for cl_name, par in tree_parent.items():
-                if par is None:
-                    continue
-                margin = int(cl_by_name[par].margin)
-                par_bl = cl_border_l.get(par, 0.0)
-                par_br = cl_border_r.get(par, 0.0)
-                aux_edges.append((cl_ln[par], cl_ln[cl_name],
-                                  max(1, int(margin + par_bl)), 0))
-                aux_edges.append((cl_rn[cl_name], cl_rn[par],
-                                  max(1, int(margin + par_br)), 0))
-
-            # ── 3e. Sibling separation ────────────────────
-            # For sibling clusters, determine left/right from actual
-            # mincross ordering to avoid cycles.
-            def _avg_order(cl_name: str) -> float:
-                orders = [self.lnodes[n].order
-                          for n in node_sets[cl_name]
-                          if n in self.lnodes]
-                return sum(orders) / len(orders) if orders else 0
-
-            for par in list(tree_children.keys()):
-                siblings = tree_children[par]
-                if len(siblings) < 2:
-                    continue
-                # Sort siblings by average order
-                siblings_sorted = sorted(siblings, key=_avg_order)
-                for i in range(len(siblings_sorted) - 1):
-                    left_cl = siblings_sorted[i]
-                    right_cl = siblings_sorted[i + 1]
-                    # Only add if they overlap in rank range
-                    left_ranks = {self.lnodes[n].rank
-                                  for n in node_sets[left_cl]
-                                  if n in self.lnodes}
-                    right_ranks = {self.lnodes[n].rank
-                                   for n in node_sets[right_cl]
-                                   if n in self.lnodes}
-                    if left_ranks & right_ranks:
-                        m = int(cl_by_name.get(par, cl_by_name.get(
-                            left_cl, self._clusters[0])).margin
-                            if par else 8)
-                        aux_edges.append((cl_rn[left_cl],
-                                          cl_ln[right_cl],
-                                          max(1, m), 0))
-
-            # ── 3f. Keepout: external nodes outside clusters ─
-            # For each rank, if a non-cluster node is adjacent to a
-            # cluster boundary, add separation edge.
-            for rank_val, rank_nodes in self.ranks.items():
-                for cl in self._clusters:
-                    cl_ranks_nodes: dict[int, list[str]] = {}
-                    for n in cl.nodes:
-                        if n in self.lnodes:
-                            r = self.lnodes[n].rank
-                            cl_ranks_nodes.setdefault(r, []).append(n)
-                    if rank_val not in cl_ranks_nodes:
-                        continue
-                    cl_at_rank = cl_ranks_nodes[rank_val]
-                    cl_at_rank.sort(key=lambda n: self.lnodes[n].order)
-                    left_node = cl_at_rank[0]
-                    right_node = cl_at_rank[-1]
-                    left_order = self.lnodes[left_node].order
-                    right_order = self.lnodes[right_node].order
-                    margin = int(cl.margin)
-
-                    # Node to the LEFT of the cluster
-                    if left_order > 0:
-                        ext = rank_nodes[left_order - 1]
-                        if ext not in node_sets[cl.name]:
-                            rw = int(self.lnodes[ext].width / 2.0)
-                            aux_edges.append((ext, cl_ln[cl.name],
-                                              max(1, rw + margin), 0))
-
-                    # Node to the RIGHT of the cluster
-                    if right_order < len(rank_nodes) - 1:
-                        ext = rank_nodes[right_order + 1]
-                        if ext not in node_sets[cl.name]:
-                            lw = int(self.lnodes[ext].width / 2.0)
-                            aux_edges.append((cl_rn[cl.name], ext,
-                                              max(1, lw + margin), 0))
-
-        if not aux_edges:
-            return False
-
-        # ── Seed: use C-style cumulative initialization ───
-        # Match Graphviz make_LR_constraints: for each rank,
-        # set positions cumulatively from left to right.
-        seed: dict[str, int] = {}
-        for rank_val in sorted(self.ranks.keys()):
-            rank_nodes = self.ranks[rank_val]
-            last = 0
-            for j, name in enumerate(rank_nodes):
-                seed[name] = last
-                if j < len(rank_nodes) - 1:
-                    ln_l = self.lnodes[name]
-                    ln_r = self.lnodes[rank_nodes[j + 1]]
-                    width = int(ln_l.width / 2.0 + ln_r.width / 2.0
-                                + self.nodesep)
-                    last += width
-        # Cluster boundary nodes: initialize from member positions
-        if self._clusters:
-            for cl_obj in self._clusters:
-                cn = cl_obj.name
-                member_seeds = [seed.get(n, 0)
-                                for n in cl_obj.nodes
-                                if n in self.lnodes]
-                if member_seeds:
-                    m = int(cl_obj.margin)
-                    if cn in cl_ln:
-                        seed[cl_ln[cn]] = min(member_seeds) - m
-                    if cn in cl_rn:
-                        seed[cl_rn[cn]] = max(member_seeds) + m
-
-        # ── Solve ─────────────────────────────────────────
-        print(f"[TRACE position] aux_graph: total_aux_edges={len(aux_edges)} total_aux_nodes={len(aux_nodes)}", file=sys.stderr)
-        # Log containment edges
-        if self._clusters:
-            for cl in self._clusters:
-                cn = cl.name
-                if cn in cl_ln and cn in cl_rn:
-                    print(f"[TRACE position] contain_nodes: {cn} margin={int(cl.margin)}", file=sys.stderr)
-        # Log pre-NS positions for real nodes
-        for name in sorted(self.lnodes.keys()):
-            ln = self.lnodes[name]
-            if not ln.virtual:
-                print(f"[TRACE position] pre_ns: {name} rank_val={seed.get(name, 0)} lw={ln.width/2:.1f} rw={ln.width/2:.1f}", file=sys.stderr)
-        try:
-            ns = _NetworkSimplex(aux_nodes, aux_edges)
-            ns.SEARCH_LIMIT = self.searchsize
-            x_ranks = ns.solve(max_iter=self.nslimit)
-            for name, xr in x_ranks.items():
-                if name in self.lnodes:
-                    self.lnodes[name].x = float(xr)
-
-            # Log NS-solved positions
-            for name in sorted(self.lnodes.keys()):
-                ln = self.lnodes[name]
-                if not ln.virtual:
-                    print(f"[TRACE position] ns_solved: {name} x_pos={int(ln.x)}", file=sys.stderr)
-
-            # Store ln/rn X positions for cluster bbox computation.
-            # The C code uses these directly as cluster X boundaries
-            # (dot_compute_bb: LL.x = ND_rank(GD_ln(g))).
-            if self._clusters:
-                self._cl_ln_x = {}
-                self._cl_rn_x = {}
-                for cl_name, ln_name in cl_ln.items():
-                    if ln_name in x_ranks:
-                        self._cl_ln_x[cl_name] = float(x_ranks[ln_name])
-                for cl_name, rn_name in cl_rn.items():
-                    if rn_name in x_ranks:
-                        self._cl_rn_x[cl_name] = float(x_ranks[rn_name])
-
-            return True
-        except Exception as e:
-            print(f"[TRACE position] ns_x_position FAILED: {e}", file=sys.stderr)
-            return False
+        """Delegate to position.ns_x_position — see that module."""
+        from gvpy.engines.dot import position
+        return position.ns_x_position(self)
 
     def _compact_clusters(self):
         """Compact cluster nodes: shift members toward the cluster median X.
@@ -6015,7 +5711,8 @@ class DotLayout(LayoutEngine):
         ln_obj = self.lnodes.get(node_name)
         if not ln_obj or not ln_obj.node or ln_obj.node.record_fields is None:
             return None
-        frac = ln_obj.node.record_fields.port_fraction(port_name)
+        frac = ln_obj.node.record_fields.port_fraction(
+            port_name, rankdir=self._rankdir_int())
         if frac is None:
             return None
 
@@ -6590,9 +6287,10 @@ class DotLayout(LayoutEngine):
             if ln.node and ln.node.record_fields is not None:
                 rf = ln.node.record_fields
                 ports_dict = {}
+                rd_int = self._rankdir_int()
                 def _collect_port_fracs(f):
                     if f.port:
-                        frac = rf.port_fraction(f.port)
+                        frac = rf.port_fraction(f.port, rankdir=rd_int)
                         if frac is not None:
                             ports_dict[f.port] = frac
                     for c in f.children:
