@@ -414,151 +414,11 @@ class DotGraphInfo(LayoutEngine):
 
     # ── Initialization ───────────────────────────
 
-    def _init_from_graph(self):
-        rd = self.graph.get_graph_attr("rankdir")
-        if rd:
-            self.rankdir = rd.upper()
+    def _init_from_graph(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.dotinit.init_from_graph."""
+        from gvpy.engines.dot import dotinit
+        return dotinit.init_from_graph(self, *args, **kwargs)
 
-        rs = self.graph.get_graph_attr("ranksep")
-        if rs:
-            try:
-                self.ranksep = float(rs) * 72.0
-            except ValueError:
-                pass
-
-        ns = self.graph.get_graph_attr("nodesep")
-        if ns:
-            try:
-                self.nodesep = float(ns) * 72.0
-            except ValueError:
-                pass
-
-        self.splines = (self.graph.get_graph_attr("splines") or "").lower()
-        self.ordering = (self.graph.get_graph_attr("ordering") or "").lower()
-        self.concentrate = (self.graph.get_graph_attr("concentrate") or "").lower() == "true"
-        self.compound = (self.graph.get_graph_attr("compound") or "").lower() == "true"
-        self.ratio = (self.graph.get_graph_attr("ratio") or "").lower()
-
-        # Optimization parameters
-        for attr, field, conv in [
-            ("nslimit", "nslimit", int), ("nslimit1", "nslimit1", int),
-            ("searchsize", "searchsize", int),
-            ("mclimit", "mclimit", float), ("quantum", "quantum", float),
-        ]:
-            val = self.graph.get_graph_attr(attr)
-            if val:
-                try:
-                    setattr(self, field, conv(val))
-                except ValueError:
-                    pass
-        self.remincross = (self.graph.get_graph_attr("remincross") or "").lower() in ("true", "1", "yes")
-        self.normalize = (self.graph.get_graph_attr("normalize") or "").lower() in ("true", "1", "yes")
-        self.clusterrank = (self.graph.get_graph_attr("clusterrank") or "local").lower()
-        self.newrank = (self.graph.get_graph_attr("newrank") or "").lower() in ("true", "1", "yes")
-        self.center = (self.graph.get_graph_attr("center") or "").lower() in ("true", "1", "yes")
-        self.landscape = (self.graph.get_graph_attr("landscape") or "").lower() in ("true", "1", "yes")
-        self.forcelabels = (self.graph.get_graph_attr("forcelabels") or "true").lower() not in ("false", "0", "no")
-        self.outputorder = (self.graph.get_graph_attr("outputorder") or "breadthfirst").lower()
-
-        pad_str = self.graph.get_graph_attr("pad")
-        if pad_str:
-            try:
-                self.pad = float(pad_str) * 72.0
-            except ValueError:
-                pass
-
-        dpi_str = self.graph.get_graph_attr("dpi") or self.graph.get_graph_attr("resolution")
-        if dpi_str:
-            try:
-                self.dpi = float(dpi_str)
-            except ValueError:
-                pass
-
-        rot_str = self.graph.get_graph_attr("rotate")
-        if rot_str:
-            try:
-                self.rotate_deg = int(rot_str)
-            except ValueError:
-                pass
-
-        size_str = self.graph.get_graph_attr("size")
-        if size_str:
-            try:
-                parts = size_str.rstrip("!").split(",")
-                self.graph_size = (float(parts[0]) * 72.0, float(parts[1]) * 72.0)
-            except (ValueError, IndexError):
-                pass
-
-        for name, node in self.graph.nodes.items():
-            w, h = self._compute_node_size(name, node)
-            ln = LayoutNode(node=node, width=w, height=h)
-
-            # Size record fields and store geometry on Node
-            # (C shapes.c:3687-3731 record_init)
-            # Flow: parse_reclbl → size_reclbl → resize_reclbl → pos_reclbl
-            # For LR/RL, C starts with flip=TRUE (shapes.c:3705) which
-            # swaps the LR direction at the top level.
-            if node.record_fields is not None:
-                fontsize = 14.0
-                try:
-                    fontsize = float(node.attributes.get("fontsize", "14"))
-                except (ValueError, TypeError):
-                    pass
-                # Flip for LR/RL (C shapes.c:3705 flip = GD_flip)
-                if self.rankdir in ("LR", "RL"):
-                    self._flip_record_lr(node.record_fields)
-                # Step 1: compute natural sizes (C size_reclbl, shapes.c:3711)
-                node.record_fields.compute_size(fontsize=fontsize)
-                # Step 2: resize to fit node bounds (C shapes.c:3712-3724)
-                # sz = max(natural_size, node_default_size)
-                # C: sz.x = INCH2PS(ND_width(n)), sz.y = INCH2PS(ND_height(n))
-                # Default node size: 0.75in × 0.5in = 54pt × 36pt
-                node_w = w  # from _compute_node_size (already in points)
-                node_h = h
-                rw = max(node.record_fields.width, node_w)
-                rh = max(node.record_fields.height, node_h)
-                # C resize_reclbl (shapes.c:3724): distribute excess space
-                node.record_fields.resize(rw, rh)
-                # Step 3: position fields (C pos_reclbl, shapes.c:3725)
-                node.record_fields.compute_positions(
-                    0, 0, node.record_fields.width,
-                    node.record_fields.height)
-            # Store computed geometry on Node (C: ND_lw, ND_rw, ND_ht)
-            node.lw = w / 2.0
-            node.rw = w / 2.0
-            node.ht = h
-            # Read pos and pin attributes
-            pos_str = node.attributes.get("pos", "")
-            if pos_str:
-                try:
-                    parts = pos_str.replace("!", "").split(",")
-                    ln.fixed_pos = (float(parts[0]) * 72.0, float(parts[1]) * 72.0)
-                    ln.pinned = "!" in node.attributes.get("pos", "") or \
-                                node.attributes.get("pin", "").lower() in ("true", "1", "yes")
-                except (ValueError, IndexError):
-                    pass
-            elif node.attributes.get("pin", "").lower() in ("true", "1", "yes"):
-                ln.pinned = True
-            self.lnodes[name] = ln
-
-        self._collect_edges(self.graph)
-
-        # Read pack attribute
-        pack_str = self.graph.get_graph_attr("pack")
-        self.pack = pack_str is None or pack_str.lower() not in ("false", "0", "no")
-        pack_sep = self.graph.get_graph_attr("packmode") or ""
-        self.pack_sep = 16.0  # default gap between components
-        if pack_str:
-            try:
-                self.pack_sep = float(pack_str)
-            except ValueError:
-                pass
-
-        if not self.graph.directed:
-            self._orient_undirected()
-
-        self._collect_rank_constraints()
-        self._collect_clusters()
 
     def _find_components(self) -> list[set[str]]:
         """Find connected components using BFS.  Returns list of node-name sets.
@@ -767,75 +627,35 @@ class DotGraphInfo(LayoutEngine):
             if name not in visited:
                 dfs(name)
 
-    def _collect_rank_constraints(self):
-        self._rank_constraints = []
-        self._scan_subgraphs(self.graph)
+    def _collect_rank_constraints(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.dotinit.collect_rank_constraints."""
+        from gvpy.engines.dot import dotinit
+        return dotinit.collect_rank_constraints(self, *args, **kwargs)
 
-    def _scan_subgraphs(self, g: Graph):
-        for sub_name, sub in g.subgraphs.items():
-            rank_attr = sub.get_graph_attr("rank")
-            if rank_attr and rank_attr in ("same", "min", "max", "source", "sink"):
-                node_names = [n for n in sub.nodes if n in self.lnodes]
-                if node_names:
-                    self._rank_constraints.append((rank_attr, node_names))
-            self._scan_subgraphs(sub)
 
-    def _collect_edges(self, g: Graph):
-        """Recursively collect edges from graph and all subgraphs."""
-        seen = set()  # avoid duplicates from shared edges
-        self._collect_edges_recursive(g, seen)
+    def _scan_subgraphs(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.dotinit.scan_subgraphs."""
+        from gvpy.engines.dot import dotinit
+        return dotinit.scan_subgraphs(self, *args, **kwargs)
 
-    def _collect_edges_recursive(self, g: Graph, seen: set):
-        for key, edge in g.edges.items():
-            if id(edge) in seen:
-                continue
-            seen.add(id(edge))
-            tail_name, head_name, _ = key
-            if tail_name not in self.lnodes or head_name not in self.lnodes:
-                continue
-            ml = min(int(edge.attributes.get("minlen", "1")), 100)
-            # Edge label ranks: labeled edges with minlen=1 get minlen=2
-            # to reserve a rank slot for the label.  Only applies to
-            # cross-rank edges (flat edges are handled separately).
-            # Graphviz also halves ranksep to compensate, but we skip
-            # that since our ranksep handling differs.
-            if edge.attributes.get("label") and ml == 1:
-                ml = 2
-            wt = min(int(edge.attributes.get("weight", "1")), 1000)
-            cstr = edge.attributes.get("constraint", "true").lower()
-            has_constraint = cstr not in ("false", "none", "no", "0")
-            label = edge.attributes.get("label", "")
-            tp = edge.attributes.get("tailport", "")
-            hp = edge.attributes.get("headport", "")
-            lh = edge.attributes.get("lhead", "")
-            lt = edge.attributes.get("ltail", "")
-            hc = edge.attributes.get("headclip", "true").lower() not in ("false", "0", "no")
-            tc = edge.attributes.get("tailclip", "true").lower() not in ("false", "0", "no")
-            sh = edge.attributes.get("samehead", "")
-            st = edge.attributes.get("sametail", "")
-            self.ledges.append(LayoutEdge(
-                edge=edge, tail_name=tail_name, head_name=head_name,
-                minlen=ml, weight=wt, constraint=has_constraint,
-                label=label, tailport=tp, headport=hp,
-                lhead=lh, ltail=lt, headclip=hc, tailclip=tc,
-                samehead=sh, sametail=st,
-            ))
-        for sub in g.subgraphs.values():
-            self._collect_edges_recursive(sub, seen)
 
-    def _collect_clusters(self):
-        """Scan subgraphs for cluster_* names and record membership.
+    def _collect_edges(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.dotinit.collect_edges."""
+        from gvpy.engines.dot import dotinit
+        return dotinit.collect_edges(self, *args, **kwargs)
 
-        After scanning, a deduplication pass removes nodes that were
-        spuriously added to a cluster because an edge referencing them
-        appeared in that cluster's subgraph body.  In Graphviz C,
-        a node belongs to a cluster only if it was *defined* there (or
-        in a descendant cluster), not merely *referenced* in an edge.
-        """
-        self._clusters = []
-        if self.clusterrank != "none":
-            self._scan_clusters(self.graph)
-            self._dedup_cluster_nodes()
+
+    def _collect_edges_recursive(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.dotinit.collect_edges_recursive."""
+        from gvpy.engines.dot import dotinit
+        return dotinit.collect_edges_recursive(self, *args, **kwargs)
+
+
+    def _collect_clusters(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.cluster.collect_clusters."""
+        from gvpy.engines.dot import cluster
+        return cluster.collect_clusters(self, *args, **kwargs)
+
 
     def _all_nodes_recursive(self, sub) -> list[str]:
         """Collect all unique node names from a subgraph and its descendants."""
@@ -843,256 +663,46 @@ class DotGraphInfo(LayoutEngine):
         self._collect_nodes_into(sub, seen)
         return sorted(seen)
 
-    def _collect_nodes_into(self, sub, seen: set[str]):
-        for n in sub.nodes:
-            if n in self.lnodes:
-                seen.add(n)
-        for child in sub.subgraphs.values():
-            self._collect_nodes_into(child, seen)
+    def _collect_nodes_into(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.cluster.collect_nodes_into."""
+        from gvpy.engines.dot import cluster
+        return cluster.collect_nodes_into(self, *args, **kwargs)
 
-    def _scan_clusters(self, g: Graph):
-        for sub_name, sub in g.subgraphs.items():
-            if sub_name.startswith("cluster"):
-                node_names = self._all_nodes_recursive(sub)
-                direct_names = [n for n in sub.nodes if n in self.lnodes]
-                label = sub.get_graph_attr("label") or ""
-                margin_str = sub.get_graph_attr("margin")
-                # margin is in points (not inches)
-                margin = float(margin_str) if margin_str else 8.0
-                # Collect visual attributes for rendering
-                cl_attrs = {}
-                for attr in ("color", "fillcolor", "bgcolor", "pencolor",
-                             "fontcolor", "fontname", "fontsize", "style",
-                             "penwidth", "peripheries", "labelloc", "labeljust",
-                             "tooltip", "URL", "href", "target", "id", "class",
-                             "colorscheme", "gradientangle"):
-                    val = sub.get_graph_attr(attr)
-                    if val:
-                        cl_attrs[attr] = val
-                self._clusters.append(LayoutCluster(
-                    name=sub_name, label=label, nodes=node_names,
-                    direct_nodes=direct_names, margin=margin, attrs=cl_attrs,
-                ))
-            self._scan_clusters(sub)
 
-    def _dedup_cluster_nodes(self):
-        """Remove spurious node membership caused by edge references.
+    def _scan_clusters(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.cluster.scan_clusters."""
+        from gvpy.engines.dot import cluster
+        return cluster.scan_clusters(self, *args, **kwargs)
 
-        In DOT, when an edge ``A -> B`` appears inside a subgraph, the
-        parser adds both A and B to that subgraph's node dict even if
-        A was *defined* in a different subgraph.  Graphviz C only adds a
-        node to a cluster if it was created there.
 
-        Strategy: use the **subgraph tree** (not node-set containment)
-        to determine the true cluster hierarchy.  Then for each node,
-        find the deepest cluster that is its true home by checking which
-        cluster's child subgraphs do NOT contain the node.
-        """
-        if not self._clusters:
-            return
+    def _dedup_cluster_nodes(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.cluster.dedup_cluster_nodes."""
+        from gvpy.engines.dot import cluster
+        return cluster.dedup_cluster_nodes(self, *args, **kwargs)
 
-        cl_names = {cl.name for cl in self._clusters}
-
-        # Build the TRUE parent map from the subgraph tree structure,
-        # not from node-set containment (which is corrupted by the bug).
-        tree_parent: dict[str, str | None] = {}
-
-        def _walk_tree(g, parent_cl: str | None):
-            for sub_name, sub in g.subgraphs.items():
-                if sub_name in cl_names:
-                    tree_parent[sub_name] = parent_cl
-                    _walk_tree(sub, sub_name)
-                else:
-                    # Non-cluster subgraph: pass through parent
-                    _walk_tree(sub, parent_cl)
-
-        _walk_tree(self.graph, None)
-
-        tree_children: dict[str | None, list[str]] = {}
-        for cn, par in tree_parent.items():
-            tree_children.setdefault(par, []).append(cn)
-
-        # For each cluster, collect nodes from all descendant clusters
-        _desc_nodes_cache: dict[str, set[str]] = {}
-        def _desc_nodes(cl_name: str) -> set[str]:
-            if cl_name in _desc_nodes_cache:
-                return _desc_nodes_cache[cl_name]
-            result: set[str] = set()
-            for kid in tree_children.get(cl_name, []):
-                cl_obj = next((c for c in self._clusters if c.name == kid), None)
-                if cl_obj:
-                    result.update(cl_obj.nodes)
-                result.update(_desc_nodes(kid))
-            _desc_nodes_cache[cl_name] = result
-            return result
-
-        # A node's true home: the deepest cluster (by tree structure)
-        # where it appears but is NOT in any tree-child cluster.
-        home_of: dict[str, str] = {}
-        for cl in self._clusters:
-            desc = _desc_nodes(cl.name)
-            for n in cl.nodes:
-                if n not in desc:
-                    # n is in this cluster but not in any child → home
-                    # Smallest cluster wins (overwrite from larger to smaller)
-                    if n not in home_of:
-                        home_of[n] = cl.name
-                    else:
-                        # Keep the deeper one (further from root in tree)
-                        cur_depth = 0
-                        p = cl.name
-                        while tree_parent.get(p) is not None:
-                            cur_depth += 1
-                            p = tree_parent[p]
-                        old_depth = 0
-                        p = home_of[n]
-                        while tree_parent.get(p) is not None:
-                            old_depth += 1
-                            p = tree_parent[p]
-                        if cur_depth > old_depth:
-                            home_of[n] = cl.name
-
-        def _tree_ancestors(cl_name: str) -> set[str]:
-            anc: set[str] = set()
-            cur = cl_name
-            while tree_parent.get(cur) is not None:
-                cur = tree_parent[cur]
-                anc.add(cur)
-            return anc
-
-        # Remove nodes whose home is not this cluster or a descendant.
-        for cl in self._clusters:
-            cleaned = []
-            for n in cl.nodes:
-                home = home_of.get(n)
-                if home is None:
-                    cleaned.append(n)
-                    continue
-                # Keep if: home == this cluster, or this cluster is a
-                # tree-ancestor of home.
-                if home == cl.name or cl.name in _tree_ancestors(home):
-                    cleaned.append(n)
-            cl.nodes = cleaned
-            cl.direct_nodes = [n for n in cl.direct_nodes
-                               if n in set(cleaned)]
 
     def _compute_cluster_boxes(self):
         """Delegates to gvpy.engines.dot.position.compute_cluster_boxes."""
         from gvpy.engines.dot import position
         return position.compute_cluster_boxes(self)
 
-    def _separate_sibling_clusters(self):
-        """Push apart sibling clusters whose bounding boxes overlap.
+    def _separate_sibling_clusters(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.cluster.separate_sibling_clusters."""
+        from gvpy.engines.dot import cluster
+        return cluster.separate_sibling_clusters(self, *args, **kwargs)
 
-        Builds a cluster hierarchy, identifies sibling groups, and shifts
-        nodes so that sibling clusters occupy non-overlapping regions.
-        After shifting, ``_compute_cluster_boxes`` should be called again.
-        """
-        if not self._clusters:
-            return
 
-        # Build parent map: for each cluster, find the smallest containing cluster
-        cl_by_name: dict[str, "LayoutCluster"] = {cl.name: cl for cl in self._clusters}
-        node_sets = {cl.name: set(cl.nodes) for cl in self._clusters}
-        parent_of: dict[str, str | None] = {}
+    def _shift_cluster_nodes_y(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.cluster.shift_cluster_nodes_y."""
+        from gvpy.engines.dot import cluster
+        return cluster.shift_cluster_nodes_y(self, *args, **kwargs)
 
-        for cl in self._clusters:
-            best_parent = None
-            best_size = float("inf")
-            for other in self._clusters:
-                if other.name == cl.name:
-                    continue
-                if node_sets[cl.name] < node_sets[other.name]:
-                    if len(node_sets[other.name]) < best_size:
-                        best_parent = other.name
-                        best_size = len(node_sets[other.name])
-            parent_of[cl.name] = best_parent
 
-        # Group siblings (same parent)
-        children_of: dict[str | None, list[str]] = {}
-        for cl_name, par in parent_of.items():
-            children_of.setdefault(par, []).append(cl_name)
+    def _shift_cluster_nodes_x(self, *args, **kwargs):
+        """Delegates to gvpy.engines.dot.cluster.shift_cluster_nodes_x."""
+        from gvpy.engines.dot import cluster
+        return cluster.shift_cluster_nodes_x(self, *args, **kwargs)
 
-        # Only separate leaf-level sibling clusters (those with no children).
-        # This avoids cascading shifts from parent-level separations.
-        gap = 8.0
-
-        # Only separate leaf-level sibling clusters (those with no children)
-        # to avoid cascading shifts from parent-level separation.
-        has_children = set()
-        for par in parent_of.values():
-            if par is not None:
-                has_children.add(par)
-
-        # Always separate on X-axis because this runs BEFORE
-        # _apply_rankdir (coordinates are still in TB space).
-        for _parent, siblings in children_of.items():
-            leaf_sibs = [s for s in siblings if s not in has_children]
-            if len(leaf_sibs) < 2:
-                continue
-            sib_cls = [cl_by_name[s] for s in leaf_sibs if cl_by_name[s].bb]
-            if len(sib_cls) < 2:
-                continue
-
-            sib_cls.sort(key=lambda c: c.bb[0])
-            for i in range(len(sib_cls) - 1):
-                c1 = sib_cls[i]
-                c2 = sib_cls[i + 1]
-                overlap_val = c1.bb[2] + gap - c2.bb[0]
-                if overlap_val > 0:
-                    # Shift all nodes in subsequent siblings rightward
-                    shift_nodes: set[str] = set()
-                    for sib in sib_cls[i + 1:]:
-                        shift_nodes.update(node_sets.get(sib.name, set()))
-                    for name in shift_nodes:
-                        if name in self.lnodes:
-                            self.lnodes[name].x += overlap_val
-                    # Recompute bboxes for shifted clusters
-                    for sib in sib_cls[i + 1:]:
-                        members = [self.lnodes[n] for n in sib.nodes
-                                   if n in self.lnodes]
-                        if members:
-                            sib.bb = (
-                                min(ln.x - ln.width/2 for ln in members) - sib.margin,
-                                min(ln.y - ln.height/2 for ln in members) - sib.margin,
-                                max(ln.x + ln.width/2 for ln in members) + sib.margin,
-                                max(ln.y + ln.height/2 for ln in members) + sib.margin,
-                            )
-
-    def _shift_cluster_nodes_y(self, cl, dy: float, node_sets: dict,
-                                subsequent: list, prior: list):
-        """Shift nodes exclusively in subsequent siblings by dy.
-
-        Nodes shared with prior (already positioned) siblings are not moved.
-        """
-        prior_nodes: set[str] = set()
-        for p in prior:
-            prior_nodes.update(node_sets.get(p.name, set()))
-
-        nodes_to_shift: set[str] = set()
-        for sib in subsequent:
-            nodes_to_shift.update(node_sets.get(sib.name, set()))
-        nodes_to_shift -= prior_nodes
-
-        for name in nodes_to_shift:
-            if name in self.lnodes:
-                self.lnodes[name].y += dy
-
-    def _shift_cluster_nodes_x(self, cl, dx: float, node_sets: dict,
-                                subsequent: list, prior: list):
-        """Shift nodes exclusively in subsequent siblings by dx."""
-        prior_nodes: set[str] = set()
-        for p in prior:
-            prior_nodes.update(node_sets.get(p.name, set()))
-
-        nodes_to_shift: set[str] = set()
-        for sib in subsequent:
-            nodes_to_shift.update(node_sets.get(sib.name, set()))
-        nodes_to_shift -= prior_nodes
-
-        for name in nodes_to_shift:
-            if name in self.lnodes:
-                self.lnodes[name].x += dx
 
     # ── Node sizing ──────────────────────────────
 

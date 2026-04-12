@@ -173,9 +173,25 @@ completion status:
       `dot_layout.py`: 2593 -> 2167 lines this pass; **6739 -> 2167
       over the full session (-4572, -68%)**.  All 715 tests pass,
       0 overlaps on aa1332.dot.
-- [ ] **Step 7e**: Extract remaining helpers — cluster geometry
-      (cluster.c) and init helpers (`_collect_edges`,
-      `_collect_clusters`, `_dedup_cluster_nodes`,
-      `_concentrate_edges`) — into `cluster.py` and `dotinit.py`.
+- [x] **Step 7e**: Extract cluster geometry + init helpers — done
+      2026-04-12.  Moved 7 cluster methods (`_collect_clusters`,
+      `_collect_nodes_into`, `_scan_clusters`, `_dedup_cluster_nodes`,
+      `_separate_sibling_clusters`, `_shift_cluster_nodes_y`,
+      `_shift_cluster_nodes_x`) into `gvpy/engines/dot/cluster.py`
+      (357 lines; C analogue `lib/dotgen/cluster.c`) and 5 init
+      methods (`_init_from_graph`, `_collect_rank_constraints`,
+      `_scan_subgraphs`, `_collect_edges`, `_collect_edges_recursive`)
+      into `gvpy/engines/dot/dotinit.py` (298 lines; C analogue
+      `lib/dotgen/dotinit.c`) via `tools/extract_cluster_init.py`
+      (two-batch driver reusing the string-aware `self`->`layout`
+      substitution from `extract_rank.py`).  C-ref traceability
+      re-established across all 6 extracted modules — `tools/audit_c_refs.py`
+      reports 100% (rank 11/11, mincross 18/18, position 13/13,
+      splines 23/23, cluster 7/7, dotinit 5/5) after re-annotating
+      35 functions whose docstrings had lost their C analogue line.
+      `dot_layout.py`: 2167 -> 1777 lines this pass; **6739 -> 1777
+      over the full session (-4962, -74%)**.  All 715 tests pass,
+      0 overlaps on aa1332.dot (verified via `LayoutNode` bbox
+      intersection over 107 nodes).
 - [ ] **Step 8**: Add `SimulationView` base + minimal skeleton
 - [ ] **Step 9**: Add `PictoGraphInfo(LayoutView)` pictosync engine

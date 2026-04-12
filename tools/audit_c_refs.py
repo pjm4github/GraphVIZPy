@@ -9,7 +9,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-FILES = ["rank.py", "mincross.py", "position.py", "splines.py"]
+FILES = [
+    "rank.py", "mincross.py", "position.py", "splines.py",
+    "cluster.py", "dotinit.py",
+]
 ROOT = Path("gvpy/engines/dot")
 
 # Patterns that count as a C reference
