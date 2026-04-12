@@ -1,13 +1,65 @@
 # GraphvizPy
 
-A pure-Python implementation of the Graphviz graph visualization toolkit, featuring an ANTLR4-based DOT language parser, multiple layout engines, and an interactive PyQt6 GUI.
+A pure-Python implementation of the Graphviz graph visualization toolkit
+plus a graph-attached simulation framework.  Features an ANTLR4-based DOT
+language parser, eight layout engines (dot/neato/fdp/sfdp/circo/twopi/
+osage/patchwork), two simulation paradigms (SimPy-style discrete events
+and PyCBD-style synchronous block diagrams), and an interactive PyQt6 GUI.
 
 ## Purpose
 
-- Port the Graphviz C codebase to Python 3.13+ for exploration and modernization
-- Replace C data structures with Python dicts, sets, and typing constructs
-- Provide an interactive GUI for graph editing and layout visualization
-- Integrate with the [pictosync](https://github.com/pjm4github/pictosync) project for rendering
+- **Port the Graphviz C codebase** to Python 3.13+ for exploration and
+  modernization, replacing C data structures with Python dicts, sets, and
+  typing constructs.
+- **Unify layout and simulation** behind a single ``Graph.views[name]``
+  attachment model so the same graph can be laid out *and* simulated in
+  parallel without polluting the core data model.
+- **Provide an interactive GUI** for graph editing, layout visualization,
+  and (eventually) simulation playback.
+- **Integrate with the [pictosync](https://github.com/pjm4github/pictosync)
+  project** for rendering — every view supports a JSON round-trip so the
+  graphical canvas and the JSON editor stay in lock-step.
+
+## Architecture goals
+
+The long-term direction is a **view-architecture migration** described in
+``TODO_core_refactor.md``.  Every domain-specific projection of a Graph
+(layout, simulation, analysis, render-state) lives behind a uniform
+attachment point:
+
+```
+gvpy.core.graph_view.GraphView                        ← abstract base
+├── gvpy.engines.layout.base.LayoutView               ← abstract intermediate
+│   ├── DotLayout, NeatoLayout, FdpLayout, ...        ← concrete layout engines
+│   └── PictoLayout (planned)                         ← pictosync renderer
+└── gvpy.engines.sim.base.SimulationView              ← abstract intermediate
+    ├── EventSimulationView                           ← SimPy-style discrete events
+    └── CBDSimulationView                             ← PyCBD-style three-phase Mealy
+```
+
+A graph carries its views in ``graph.views[name]``, which mirrors C
+Graphviz's ``Agraphinfo_t`` extension data accessed via ``AGDATA(g)``.
+Each view owns its per-node / per-edge derived state and exposes it
+through a uniform query API; views never write back into the underlying
+``Graph`` so multiple engines can coexist:
+
+```python
+from gvpy.core.graph import Graph
+from gvpy.engines.layout.dot import DotLayout
+from gvpy.engines.sim import CBDSimulationView, CompoundBlock, GainBlock
+
+g = Graph(name="g", directed=True)
+# ...build the graph...
+
+# A layout view and a simulation view, on the same graph, side by side.
+g.attach_view(DotLayout(g))                # graph.views["dot"]
+g.attach_view(CBDSimulationView(g))        # graph.views["sim_cbd"]
+```
+
+Every view supports a ``to_json``/``from_json`` round-trip so a paused
+state (positions for layout, current iteration + block states for sim)
+can be saved, restored, or exchanged with the pictosync graphical
+editor.
 
 ## Quick Start
 
@@ -32,9 +84,19 @@ pip install -e /path/to/GraphvizPy
 ```
 
 ```python
+# Layout (Graphviz parity)
 from gvpy.core import Graph, Node, Edge
 from gvpy.engines.layout.dot import DotLayout
 from gvpy.render import render_svg
+
+# Simulation (event-driven, SimPy-style)
+from gvpy.engines.sim import Environment, EventSimulationView
+
+# Simulation (synchronous block diagrams, PyCBD-style)
+from gvpy.engines.sim import (
+    CBDSimulationView, CompoundBlock,
+    ConstantBlock, GainBlock, AdderBlock, DelayBlock,
+)
 ```
 
 ### Run the CLI
@@ -335,6 +397,138 @@ Squarified treemap where node area is proportional to the `area` attribute.
 | Attribute | Default | Description |
 |-----------|---------|-------------|
 | `area` (node) | `1` | Node area weight |
+
+## Simulation Engines
+
+The simulation engines live under ``gvpy.engines.sim/`` (sibling to
+``gvpy.engines.layout/``) and share the :class:`SimulationView` base
+defined in ``gvpy/engines/sim/base.py``.  Both paradigms attach to a
+:class:`Graph` via ``graph.attach_view(view)`` so a single graph can
+host a layout view and a simulation view simultaneously.
+
+The shared lifecycle contract is:
+
+```python
+class SimulationView(GraphView):
+    def init() -> None        # build runtime state from graph topology
+    def step() -> bool        # advance one event/iteration; False when done
+    def reset() -> None       # restore initial state at t=0
+    def run(until=None, max_steps=None)
+    @property
+    def now -> float          # current simulation time
+    def is_done() -> bool
+    def get_node_state(name) -> dict
+    def to_json() -> dict     # round-trip to JSON (pictosync contract)
+    def from_json(d) -> None
+```
+
+### Event-driven (`gvpy.engines.sim.events`) — SimPy-style
+
+**Status:** Skeleton (working core, no resources/stores yet)
+
+A minimal subset of the [SimPy](https://simpy.readthedocs.io) discrete-
+event simulation API: priority queue keyed by ``(time, sequence)``,
+processes implemented as generators that yield events to wait on,
+callbacks fired when events trigger.
+
+```python
+from gvpy.engines.sim import Environment, EventSimulationView
+from gvpy.core.graph import Graph
+
+g = Graph(name="bench", directed=True)
+view = EventSimulationView(g)
+g.attach_view(view, name="sim")
+
+def producer(env, name, period):
+    while True:
+        yield env.timeout(period)
+        print(f"{name} fired at t={env.now}")
+
+view.processes["A"] = view.env.process(producer(view.env, "A", 5))
+view.processes["B"] = view.env.process(producer(view.env, "B", 3))
+view.run(until=15)
+```
+
+| Class | Purpose |
+|---|---|
+| `Environment` | Heap-based priority queue + step loop |
+| `Event` | Generic future occurrence with callback list |
+| `Timeout` | Event scheduled at ``now + delay`` |
+| `Process` | Wraps a generator; auto-resumes on yielded events |
+| `EventSimulationView` | `SimulationView` wrapper holding the env + per-node processes |
+
+### CBD synchronous block diagrams (`gvpy.engines.sim.cbd`) — PyCBD-style
+
+**Status:** Skeleton (atomic primitives + hierarchical compounds + delay-cycle solver working)
+
+Implements the [PyCBD](https://msdl.uantwerpen.be/git/yentl/PythonPDEVS-CBD)
+Causal Block Diagram model with the **three-phase Mealy** simulation
+semantics from Van Tendeloo & Vangheluwe (2018).  Each iteration runs:
+
+1. **Output phase** — every block computes outputs from current inputs
+   and current state, walked in topological order so upstream outputs
+   are fresh by the time downstream blocks read them.
+2. **Update phase** — every ``StatefulBlock`` computes its next state
+   from the inputs of *this* iteration (Mealy semantics).
+3. **Advance phase** — clock ticks; ``current_iter += 1``.
+
+`DelayBlock` (``z⁻¹``) acts as the cycle-breaker: any feedback loop
+must contain at least one delay so the topological sort can treat
+delay outputs as graph sources.
+
+```python
+from gvpy.engines.sim import (
+    CBDSimulationView, CompoundBlock,
+    ConstantBlock, AdderBlock, DelayBlock,
+)
+
+# Integer ramp via Constant + Adder + Delay feedback
+one   = ConstantBlock("one", value=1.0)
+add   = AdderBlock("add", num_inputs=2)
+delay = DelayBlock("delay", initial_state=0.0)
+
+root = CompoundBlock("ramp")
+root.add_block(one)
+root.add_block(add)
+root.add_block(delay)
+root.add_connection("one",   "OUT", "add",   "IN1")
+root.add_connection("delay", "OUT", "add",   "IN2")
+root.add_connection("add",   "OUT", "delay", "IN")
+
+view = CBDSimulationView(g, delta_t=1.0)
+view.root = root
+view.run(max_steps=5)
+# add.OUT now equals 5.0 (the ramp 1, 2, 3, 4, 5)
+```
+
+| Class | Purpose |
+|---|---|
+| `Port` | Named input/output slot on a `Block` |
+| `Connection` | Explicit `(src_port → dst_port)` link |
+| `Block` | Atomic primitive (override `compute(curIter)`) |
+| `StatefulBlock` | Block with internal state updated in phase 2 |
+| `DelayBlock` | `z⁻¹` unit delay — algebraic-loop cycle breaker |
+| `CompoundBlock` | Hierarchical container of sub-blocks + connections |
+| `ConstantBlock`, `GainBlock`, `AdderBlock`, `NegatorBlock`, `ProductBlock` | Concrete primitives |
+| `CBDSolver` | Three-phase Mealy step driver + topological sort |
+| `CBDSimulationView` | `SimulationView` wrapper holding the root compound |
+
+### Trace recorder (`gvpy.engines.sim.trace`)
+
+`SimulationTrace` is an optional per-signal time-series recorder with
+JSON round-trip.  Either paradigm's view can write samples to it
+during a run for later inspection or regression testing:
+
+```python
+from gvpy.engines.sim import SimulationTrace
+
+trace = SimulationTrace()
+for _ in range(10):
+    view.step()
+    trace.record(view.now, "add.OUT", view.get_node_state("add")["OUT"])
+
+series = trace.get_series("add.OUT")  # [(0.0, 1.0), (1.0, 2.0), ...]
+```
 
 ## Graph Attributes Reference
 
@@ -831,11 +1025,20 @@ GraphvizPy/
 │   │   ├── graph.py              #   Graph class with mixin architecture
 │   │   ├── node.py               #   Node and CompoundNode
 │   │   ├── edge.py               #   Edge with half-edge pairs
+│   │   ├── graph_view.py         #   GraphView abstract base (view-architecture root)
 │   │   ├── headers.py            #   Agclos, Agdesc, AgIdDisc, callbacks
 │   │   ├── defines.py            #   ObjectType, EdgeType, GraphEvent enums
 │   │   ├── agobj.py              #   Base class for graph objects
 │   │   ├── error.py              #   Logging and error handling
-│   │   └── _graph_*.py           #   Mixin modules (nodes, edges, subgraphs, etc.)
+│   │   ├── _graph_apply.py       #   subnode_search, subedge_search, subgraph_search
+│   │   ├── _graph_attrs.py       #   AttrMixin (graph/node/edge attributes)
+│   │   ├── _graph_callbacks.py   #   CallbackMixin (event hooks)
+│   │   ├── _graph_cmpnd.py       #   Agcmpgraph + agfindhidden (compound nodes)
+│   │   ├── _graph_edges.py       #   EdgeMixin + module-level C-API edge functions
+│   │   ├── _graph_id.py          #   IdMixin + agnextseq
+│   │   ├── _graph_nodes.py       #   NodeMixin
+│   │   ├── _graph_subgraphs.py   #   SubgraphMixin
+│   │   └── _graph_traversal.py   #   gather_all_nodes/edges/subgraphs, get_root_graph
 │   │
 │   ├── grammar/                  # ANTLR4 grammar and DOT language I/O
 │   │   ├── GVLexer.g4            #   Lexer grammar
@@ -846,19 +1049,40 @@ GraphvizPy/
 │   │   ├── build_grammar.bat     #   ANTLR4 regeneration script
 │   │   └── generated/            #   Auto-generated GVLexer.py, GVParser.py
 │   │
-│   ├── engines/                  # Layout engines (all implemented)
+│   ├── engines/                  # Engine sub-packages (layout + simulation)
 │   │   ├── __init__.py           #   Engine registry: get_engine(), list_engines()
-│   │   ├── base.py               #   LayoutEngine base class (shared methods)
-│   │   ├── layout_features.py    #   Attribute table per engine (200+ attrs)
-│   │   ├── wizard.py             #   Interactive PyQt6 layout wizard
-│   │   ├── dot/                  #   Hierarchical layout (Sugiyama)
-│   │   ├── neato/                #   Spring-model (stress majorization / KK / SGD)
-│   │   ├── fdp/                  #   Force-directed (Fruchterman-Reingold + grid)
-│   │   ├── sfdp/                 #   Scalable force-directed (multilevel + quadtree)
-│   │   ├── circo/                #   Circular (biconnected decomposition)
-│   │   ├── twopi/                #   Radial (BFS concentric rings)
-│   │   ├── osage/                #   Cluster packing (rectangular array)
-│   │   └── patchwork/            #   Treemap (squarified rectangles)
+│   │   │
+│   │   ├── layout/               # Layout engines (all implemented)
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py           #   LayoutView, LayoutEngine
+│   │   │   ├── font_metrics.py   #   Text width measurement
+│   │   │   ├── layout_features.py#   Attribute table per engine
+│   │   │   ├── wizard.py         #   Interactive PyQt6 layout wizard
+│   │   │   ├── dot/              #   Hierarchical layout (Sugiyama, 5 phases)
+│   │   │   │   ├── dot_layout.py    #     DotGraphInfo / DotLayout entry point
+│   │   │   │   ├── dotinit.py       #     Init helpers (cgraph -> DotGraphInfo)
+│   │   │   │   ├── rank.py          #     Phase 1 — rank assignment
+│   │   │   │   ├── mincross.py      #     Phase 2 — crossing minimization
+│   │   │   │   ├── position.py      #     Phase 3 — coordinate assignment
+│   │   │   │   ├── splines.py       #     Phase 4 — edge routing
+│   │   │   │   ├── cluster.py       #     Cluster discovery + post-pos cleanup
+│   │   │   │   └── ns_solver.py     #     Network simplex solver
+│   │   │   ├── neato/            #   Spring-model (stress majorization / KK / SGD)
+│   │   │   ├── fdp/              #   Force-directed (Fruchterman-Reingold + grid)
+│   │   │   ├── sfdp/             #   Scalable force-directed (multilevel + quadtree)
+│   │   │   ├── circo/            #   Circular (biconnected decomposition)
+│   │   │   ├── twopi/            #   Radial (BFS concentric rings)
+│   │   │   ├── osage/            #   Cluster packing (rectangular array)
+│   │   │   └── patchwork/        #   Treemap (squarified rectangles)
+│   │   │
+│   │   └── sim/                  # Simulation engines (skeleton)
+│   │       ├── __init__.py       #   Public re-exports
+│   │       ├── base.py           #   SimulationView abstract intermediate
+│   │       ├── clock.py          #   Clock protocol + Discrete/Continuous clocks
+│   │       ├── events.py         #   SimPy-style: Environment, Event, Timeout, Process
+│   │       ├── cbd.py            #   PyCBD-style: Block, CompoundBlock, primitives
+│   │       ├── solver.py         #   Three-phase Mealy step + topological sort
+│   │       └── trace.py          #   SimulationTrace per-signal recorder
 │   │
 │   ├── render/                   # Output rendering and format I/O
 │   │   ├── svg_renderer.py       #   Layout dict → SVG
@@ -881,7 +1105,7 @@ GraphvizPy/
 │
 ├── test_data/                    # Test files (.gv, .dot, .json, .gxl)
 │
-├── tests/                        # pytest test suite (685 tests)
+├── tests/                        # pytest test suite (724 tests)
 │   ├── test_cgraph_api.py        #   Core API (76 tests)
 │   ├── test_node_operations.py   #   Node CRUD (31 tests)
 │   ├── test_edge_operations.py   #   Edge CRUD (14 tests)
@@ -901,6 +1125,7 @@ GraphvizPy/
 │   ├── test_osage_layout.py      #   Osage layout (16 tests)
 │   ├── test_patchwork_layout.py  #   Patchwork layout (17 tests)
 │   ├── test_mingle.py            #   Mingle bundling (18 tests)
+│   ├── test_sim_skeleton.py      #   Sim engines smoke tests (9 tests)
 │   └── test_all_files.py         #   Bulk file validation (187 files)
 ```
 
@@ -936,6 +1161,40 @@ GUI extra (installed with `pip install ".[gui]"`):
 
 See `pyproject.toml` for the full dependency specification.
 
+## Current Status
+
+The codebase is in active refactor toward the view-architecture model
+described above.  Recent milestones (see ``TODO_core_refactor.md`` for
+the full timeline):
+
+- ✅ **Core split** — `gvpy/core/graph.py` was 1680 lines mixing the
+  `Graph` class with C-API helpers.  Helpers are now broken out into
+  per-concern modules (`_graph_apply.py`, `_graph_cmpnd.py`,
+  `_graph_traversal.py`, `_graph_edges.py`, `_graph_id.py`) matching
+  Graphviz `lib/cgraph/` factoring.  `graph.py` is now 1329 lines
+  with re-exports for backward compatibility.
+- ✅ **Layout engines under `engines/layout/`** — All eight layout
+  engines plus shared helpers (`base.py`, `font_metrics.py`,
+  `layout_features.py`, `wizard.py`) live under
+  `gvpy/engines/layout/` so the sibling `gvpy/engines/sim/`
+  namespace is free for simulation engines.
+- ✅ **Dot engine extracted into per-phase modules** —
+  `gvpy/engines/layout/dot/dot_layout.py` was 6739 lines; it is now
+  1777 lines after extracting Phase 1 (`rank.py`), Phase 2
+  (`mincross.py`), Phase 3 (`position.py`), Phase 4 (`splines.py`),
+  the network simplex solver (`ns_solver.py`), cluster geometry
+  (`cluster.py`), and init helpers (`dotinit.py`).  Each phase
+  has full C-source traceability.
+- ✅ **`SimulationView` skeleton** — `gvpy/engines/sim/` provides
+  the abstract `SimulationView` base, SimPy-style event-driven
+  primitives (`Environment`, `Event`, `Timeout`, `Process`,
+  `EventSimulationView`), PyCBD-style synchronous block diagrams
+  (`Block`, `StatefulBlock`, `DelayBlock`, `CompoundBlock`,
+  `CBDSimulationView`), and the three-phase Mealy `CBDSolver`.
+  9 smoke tests cover both paradigms end-to-end.
+- ⏳ **Pictosync engine** — `PictoGraphInfo(LayoutView)` is the
+  next planned addition (Step 9 in `TODO_core_refactor.md`).
+
 ## Test Coverage
 
 | Component | Tests | Status |
@@ -953,8 +1212,9 @@ See `pyproject.toml` for the full dependency specification.
 | SVG renderer | 18 | All pass |
 | Core API | 100+ | All pass |
 | Format I/O (DOT/JSON/GXL) | 71 | All pass |
+| Sim engines (event + CBD smoke tests) | 9 | All pass |
 | Bulk file validation | 187 files | 155 pass, 32 skip |
-| **Total** | **685** | **All pass** |
+| **Total** | **724** | **All pass** |
 
 ## Hierarchical Layout Algorithm (dot engine)
 
