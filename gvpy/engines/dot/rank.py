@@ -103,6 +103,13 @@ def phase1_rank(layout):
 
 
 def break_cycles(layout):
+    """Reverse back-edges so the constraint graph becomes a DAG.
+
+    C analogue: ``lib/dotgen/rank.c:break_cycles()`` and ``dfs()``.
+    Standard DFS with three-state colouring (UNVISITED/IN_PROGRESS/
+    DONE).  Any edge that points to an IN_PROGRESS node is a back
+    edge — flip its tail/head and mark ``le.reversed = True``.
+    """
     UNVISITED, IN_PROGRESS, DONE = 0, 1, 2
     state = {n: UNVISITED for n in layout.lnodes}
 
@@ -152,7 +159,13 @@ def classify_edges(layout):
 
 
 def classify_flat_edges(layout):
-    """Post-ranking pass: mark same-rank edges as flat."""
+    """Post-ranking pass: mark same-rank edges as flat.
+
+    C analogue: part of ``lib/dotgen/class2.c:class2()`` — after
+    rank assignment, edges where both endpoints sit at the same rank
+    are flagged so Phase 2 mincross treats them via the flat-edge
+    sub-pipeline rather than the cross-rank median heuristic.
+    """
     for le in layout.ledges:
         if le.virtual:
             continue
@@ -196,6 +209,14 @@ def inject_same_rank_edges(layout):
 
 
 def network_simplex_rank(layout):
+    """Assign ranks via network simplex on the constraint graph.
+
+    C analogue: ``lib/dotgen/rank.c:rank1()`` and ``dot1_rank()``
+    which call into ``lib/dotgen/ns.c:rank2()`` for the NS solve.
+    The flat (no-cluster) path: build edge weights with the
+    ``group`` attribute boost (×100, capped at 1000), call NS,
+    write the ranks back to ``ND_rank``.
+    """
     # _NetworkSimplex now lives in ns_solver.py — direct import is
     # cheaper than the dot_layout.py re-export and avoids any
     # remaining import-cycle risk.
@@ -459,6 +480,16 @@ def cluster_aware_rank(layout):
 
 
 def apply_rank_constraints(layout):
+    """Enforce rank=min/max/source/sink hard constraints post-NS.
+
+    C analogue: ``lib/dotgen/rank.c:rankset_kind()`` and the post-
+    NS rank fix-up loop in ``rank.c:rank()``.  We re-process the
+    rank=same constraint here too even though it's also injected as
+    weight=1000 edges before NS — covers the corner case where two
+    same-rank nodes ended up at different ranks despite the
+    constraint (rare but possible if the edges form a contradictory
+    cycle).
+    """
     if not layout._rank_constraints:
         return
     max_rank = max(ln.rank for ln in layout.lnodes.values()) if layout.lnodes else 0
@@ -479,6 +510,12 @@ def apply_rank_constraints(layout):
 
 
 def compact_ranks(layout):
+    """Shift all ranks down so the minimum rank is zero.
+
+    C analogue: ``lib/dotgen/rank.c:compact_rankset()``.  After NS,
+    the smallest rank may be negative or > 0; renumber so rank 0 is
+    the topmost.
+    """
     if not layout.lnodes:
         return
     min_rank = min(ln.rank for ln in layout.lnodes.values())
@@ -488,7 +525,15 @@ def compact_ranks(layout):
 
 
 def add_virtual_nodes(layout):
-    """Insert virtual nodes for edges spanning multiple ranks."""
+    """Insert virtual nodes for edges spanning multiple ranks.
+
+    C analogue: ``lib/dotgen/mincross.c:make_chain()`` and the
+    long-edge handling in ``lib/dotgen/class2.c``.  For every edge
+    where ``rank(head) - rank(tail) > 1``, insert a chain of virtual
+    nodes at each intermediate rank and replace the original edge
+    with a sequence of rank-adjacent edges.  The chain is recorded
+    in ``layout._vnode_chains`` for Phase 4 spline routing.
+    """
     # Lazy imports — both classes live in dot_layout.py (circular).
     from gvpy.engines.dot.dot_layout import LayoutNode, LayoutEdge
     layout._vnode_chains = {}

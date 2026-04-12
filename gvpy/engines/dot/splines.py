@@ -79,6 +79,15 @@ if TYPE_CHECKING:
 
 
 def phase4_routing(layout):
+    """phase4_routing.
+
+    C analogue: lib/dotgen/dotsplines.c:dot_splines() — the top-level
+    edge routing driver.  Pre-computes per-rank obstacle bounds, then
+    dispatches each edge to the appropriate router (regular polyline /
+    chain / flat / self-loop / ortho), merges samehead/sametail ports,
+    clips compound edges, and optionally converts polylines to Bezier
+    control points.
+    """
     print(f"[TRACE spline] phase4 begin: splines={layout.splines} compound={layout.compound}", file=sys.stderr)
     # Pre-compute rank bounding info for obstacle-aware routing.
     # ``_rank_ht1`` / ``_rank_ht2`` are declared on DotGraphInfo so
@@ -167,7 +176,11 @@ def phase4_routing(layout):
 
 
 def clip_compound_edges(layout):
-    """Clip edges with lhead/ltail to their target cluster bounding box."""
+    """Clip edges with lhead/ltail to their target cluster bounding box.
+    C analogue: lib/dotgen/dotsplines.c compound edge handling. For each
+    edge with lhead or ltail set, clip the route to the target cluster
+    bounding box so the visible endpoint sits at the cluster boundary.
+    """
     cluster_map = {cl.name: cl for cl in layout._clusters}
     all_edges = [le for le in layout.ledges if not le.virtual] + layout._chain_edges
     for le in all_edges:
@@ -192,6 +205,9 @@ def clip_to_bb(inside: tuple, outside: tuple, bb: tuple) -> tuple | None:
 
     bb = (min_x, min_y, max_x, max_y). Returns the intersection point,
     or None if no intersection found.
+    
+    C analogue: utility — line-segment to axis-aligned box clip. Used by
+    :func: for cluster boundary intersection.
     """
     x1, y1 = outside
     x2, y2 = inside
@@ -366,7 +382,12 @@ def to_bezier(pts: list[tuple]) -> list[tuple]:
 
 def edge_start_point(layout, le: LayoutEdge, tail: LayoutNode,
                       head: LayoutNode) -> tuple[float, float]:
-    """Get edge start point — uses tailport if set, else boundary intersection."""
+    """Get edge start point — uses tailport if set, else boundary intersection.
+    C analogue: lib/common/splines.c:place_portbox() and shapes.c port
+    resolution.  Returns the tail-side endpoint of an edge — either the
+    explicit port position from the record fields or the boundary
+    intersection if no port.
+    """
     if le.tailport:
         # Check record port first, then compass
         pt = layout._record_port_point(le.tail_name, le.tailport, tail,
@@ -384,7 +405,10 @@ def edge_start_point(layout, le: LayoutEdge, tail: LayoutNode,
 
 def edge_end_point(layout, le: LayoutEdge, head: LayoutNode,
                     tail: LayoutNode) -> tuple[float, float]:
-    """Get edge end point — uses headport if set, else boundary intersection."""
+    """Get edge end point — uses headport if set, else boundary intersection.
+    C analogue: lib/common/splines.c:place_portbox() and shapes.c port
+    resolution — head-side counterpart of :func:.
+    """
     if le.headport:
         pt = layout._record_port_point(le.head_name, le.headport, head,
                                      is_tail=False)
@@ -411,6 +435,11 @@ def record_port_point(layout, node_name: str, port: str,
 
     ``is_tail`` determines which boundary: tails attach at the
     bottom/right edge (toward the next rank), heads at the top/left.
+    
+    C analogue: lib/common/shapes.c:record_port() and compassPort().
+    Looks up a record-shape port by name in the parsed
+    Node.record_fields tree, returns the port center in node-local
+    coordinates.
     """
     # Look up port fraction from Node.record_fields (source of truth)
     port_name = port.split(":")[0] if ":" in port else port
@@ -441,7 +470,11 @@ def record_port_point(layout, node_name: str, port: str,
 
 
 def port_point(ln: "LayoutNode", compass: str):
-    """Return point on node boundary for a compass direction, or None."""
+    """Return point on node boundary for a compass direction, or None.
+    C analogue: lib/common/shapes.c:compassPort() for the compass-
+    direction case.  Returns the boundary point at the requested compass
+    direction (n/ne/e/se/s/sw/w/nw/c) on a rectangular node.
+    """
     # Lazy import — module-level constant in dot_layout.py.
     from gvpy.engines.dot.dot_layout import _COMPASS
     offsets = _COMPASS.get(compass)
@@ -452,7 +485,11 @@ def port_point(ln: "LayoutNode", compass: str):
 
 
 def compute_label_pos(le: LayoutEdge):
-    """Set label_pos at the midpoint of the edge polyline, offset by labelangle/labeldistance."""
+    """Set label_pos at the midpoint of the edge polyline, offset by labelangle/labeldistance.
+    C analogue: lib/dotgen/dotsplines.c edge label placement. Computes
+    the anchor for an edge label by interpolating along the edge route
+    at the configured labeldistance and labelangle.
+    """
     if not le.label or not le.points:
         return
     n = len(le.points)
@@ -478,7 +515,11 @@ def compute_label_pos(le: LayoutEdge):
 
 
 def apply_sameport(layout):
-    """Merge endpoints for edges with samehead or sametail attributes."""
+    """Merge endpoints for edges with samehead or sametail attributes.
+    C analogue: lib/dotgen/sameport.c:dot_sameports().  Merges edges
+    that share a samehead or sametail group so they all attach at a
+    single port location on the shared node.
+    """
     all_edges = [le for le in layout.ledges if not le.virtual] + layout._chain_edges
 
     # samehead: edges arriving at the same node with same samehead value share endpoint
@@ -504,7 +545,13 @@ def apply_sameport(layout):
 
 def ortho_route(layout, le: LayoutEdge, tail: LayoutNode,
                  head: LayoutNode) -> list[tuple[float, float]]:
-    """Route with right-angle bends only (Z-shaped or L-shaped path)."""
+    """Route with right-angle bends only (Z-shaped or L-shaped path).
+    C analogue: lib/ortho/ortho.c orthogonal routing.  Produces a
+    90-degree polyline route between tail and head, used when
+    splines=ortho.  Currently a simplified version that does NOT do the
+    full ortho channel routing — just places one or two right-angle
+    turns based on rank distance.
+    """
     # Exit point from tail
     p_start = layout._edge_start_point(le, tail, head)
     # Entry point into head
@@ -527,7 +574,11 @@ def ortho_route(layout, le: LayoutEdge, tail: LayoutNode,
 
 def route_through_chain(layout, tail_name: str, chain: list[str],
                          head_name: str) -> list[tuple[float, float]]:
-    """Route an edge through a chain of virtual nodes."""
+    """Route an edge through a chain of virtual nodes.
+    C analogue: lib/dotgen/dotsplines.c chain edge routing. For long
+    edges that were split by :func: into a chain of virtual nodes, route
+    the polyline through each virtual node's position in turn.
+    """
     tail = layout.lnodes[tail_name]
     head = layout.lnodes[head_name]
 
@@ -553,6 +604,12 @@ def route_through_chain(layout, tail_name: str, chain: list[str],
 
 
 def boundary_point(ln: LayoutNode, tx: float, ty: float) -> tuple[float, float]:
+    """boundary_point.
+
+    C analogue: lib/common/splines.c boundary clip helper. Returns the
+    intersection of the line from the node center toward (tx, ty) with
+    the node's bounding rectangle.
+    """
     cx, cy = ln.x, ln.y
     dx, dy = tx - cx, ty - cy
     if dx == 0 and dy == 0:
@@ -567,6 +624,12 @@ def boundary_point(ln: LayoutNode, tx: float, ty: float) -> tuple[float, float]:
 
 
 def self_loop_points(ln: LayoutNode) -> list[tuple[float, float]]:
+    """self_loop_points.
+
+    C analogue: lib/dotgen/dotsplines.c self-loop handling. Returns a
+    small arc of control points that loops back to the same node,
+    anchored just above the node.
+    """
     hw = ln.width / 2.0
     loop = 20.0
     return [
@@ -734,7 +797,12 @@ def classify_flat_edge(layout, le: LayoutEdge, tail: LayoutNode,
 
 
 def count_flat_edge_index(layout, le: LayoutEdge) -> int:
-    """Count how many flat edges between the same pair come before this one."""
+    """Count how many flat edges between the same pair come before this one.
+    C analogue: lib/dotgen/dotsplines.c flat edge ordering. Returns the
+    per-tail-node index of this flat edge among all flat edges from the
+    same tail, used to compute a vertical offset so multiple flat edges
+    from one node don't overlap.
+    """
     idx = 0
     for other in layout.ledges:
         if other is le:
@@ -813,6 +881,10 @@ def flat_labeled(layout, le: LayoutEdge, p1, p2,
     The label node was inserted in the rank above by
     ``_insert_flat_label_nodes``.  The edge routes up to the label
     node's Y, across, and back down.
+    
+    C analogue: lib/dotgen/dotsplines.c flat edge with label. Routes a
+    same-rank edge that has a label by computing a polyline that loops
+    above (or below) the rank to give the label clearance.
     """
     vn_name = getattr(le, '_flat_label_vnode', None)
     if not vn_name or vn_name not in layout.lnodes:

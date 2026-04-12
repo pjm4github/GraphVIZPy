@@ -143,7 +143,15 @@ def phase2_ordering(layout):
 
 
 def run_mincross(layout):
-    """Run crossing minimization sweeps on the current rank arrays."""
+    """Run crossing minimization sweeps on the current rank arrays.
+
+    C analogue: ``lib/dotgen/mincross.c:mincross()`` — the standard
+    non-cluster mincross driver.  Alternates down passes (median +
+    transpose at each rank from min to max) and up passes (max to
+    min), tracking the best ordering seen so far via save_best /
+    restore_best.  Iteration count is bounded by MAX_MINCROSS_ITER ×
+    mclimit (C ``MaxIter``).
+    """
     max_rank = max(layout.ranks.keys()) if layout.ranks else 0
     best_crossings = layout._count_all_crossings()
     best_order = layout._save_ordering()
@@ -1021,10 +1029,13 @@ def cluster_transpose(layout, rank: int, cl_nodes: set[str],
                        child_cl_map: dict[str, str] | None = None):
     """Adjacent-swap transpose restricted to cluster nodes.
 
-    Mirrors C ``transpose_step()`` with ``left2right()`` enforcement:
-    nodes in different child clusters cannot be swapped, UNLESS one
-    is a virtual (skeleton) node.  This preserves child-cluster
-    grouping while allowing skeleton nodes to move freely.
+    C analogue: ``lib/dotgen/mincross.c:transpose_step()`` and the
+    ``left2right()`` enforcement at ``mincross.c:600-625``.
+    Iterates adjacent pairs in the rank, swapping when the swap
+    reduces local crossings.  ``left2right()`` blocks swaps between
+    nodes in different child clusters UNLESS at least one is a
+    cluster-skeleton virtual node, preserving cluster grouping
+    while letting the skeleton nodes float freely.
     """
     nodes = layout.ranks.get(rank, [])
     if len(nodes) < 2:
@@ -1428,6 +1439,14 @@ def transpose_rank(layout, rank: int):
 
 
 def count_crossings_for_pair(layout, u: str, v: str) -> int:
+    """Count crossings on edges incident to u and v.
+
+    C analogue: ``lib/dotgen/mincross.c:in_cross()`` and
+    ``out_cross()`` — used by ``transpose_step()`` to decide whether
+    swapping two adjacent nodes reduces crossings.  Counts edges
+    that go to the rank above and below ``u``/``v`` and tallies
+    pairwise crossings between them.
+    """
     u_rank = layout.lnodes[u].rank
     crossings = 0
     for adj_rank in (u_rank - 1, u_rank + 1):
@@ -1454,6 +1473,14 @@ def count_crossings_for_pair(layout, u: str, v: str) -> int:
 
 
 def count_all_crossings(layout) -> int:
+    """Total edge crossings across all rank-to-rank pairs.
+
+    C analogue: ``lib/dotgen/mincross.c:ncross()`` — uses every
+    edge in ``self.ledges`` rather than the cluster-scoped fast
+    graph.  See :func:`count_scoped_crossings` for the C-equivalent
+    that emulates ``ND_out``-based counting used inside the cluster
+    mincross loop.
+    """
     total = 0
     max_rank = max(layout.ranks.keys()) if layout.ranks else 0
     for r in range(max_rank):
@@ -1515,10 +1542,24 @@ def count_scoped_crossings(layout, fg_out: dict[str, list[str]],
 
 
 def save_ordering(layout) -> dict[str, int]:
+    """Snapshot the current ``ND_order`` of every node.
+
+    C analogue: ``lib/dotgen/mincross.c:save_best()`` — captures the
+    best ordering seen so far in the iteration loop so we can revert
+    if a later pass makes things worse.
+    """
     return {name: ln.order for name, ln in layout.lnodes.items()}
 
 
 def restore_ordering(layout, ordering: dict[str, int]):
+    """Restore a previously-saved snapshot of ``ND_order``.
+
+    C analogue: ``lib/dotgen/mincross.c:restore_best()``.  Sets the
+    order field on every node from the snapshot, then re-sorts each
+    rank list to match the new order and re-assigns sequential
+    indices to keep ``ND_order`` consistent with the rank list
+    position.
+    """
     for name, order in ordering.items():
         layout.lnodes[name].order = order
     for rank_val in layout.ranks:
@@ -1605,11 +1646,13 @@ def flat_reorder(layout):
 
 
 def mark_low_clusters(layout):
-    """Label every node with its innermost cluster (C: mark_lowclusters).
+    """Label every node with its innermost cluster.
 
+    C analogue: ``lib/dotgen/mincross.c:mark_lowclusters()``.
     Largest clusters are processed first so that smaller (more
     deeply nested) clusters overwrite, leaving each node mapped to
-    its innermost containing cluster.
+    its innermost containing cluster.  Used by ReMincross to enforce
+    cluster boundaries during the final remincross pass.
     """
     # ``_node_to_cluster`` is declared on DotGraphInfo.__init__;
     # clear here to drop any stale mapping from a prior layout run.

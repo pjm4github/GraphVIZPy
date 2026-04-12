@@ -521,6 +521,12 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
 def compute_cluster_boxes(layout):
     """Compute bounding boxes for clusters from positioned nodes.
 
+    C analogue: ``lib/dotgen/position.c:dot_compute_bb()`` and
+    ``lib/dotgen/cluster.c`` post-NS bbox finalization.  After the
+    NS X solve has placed nodes and cluster ln/rn boundaries, walk
+    each cluster's members and compute the (LL, UR) box, expanding
+    for cluster labels and margins.
+
     The bbox is always computed from member node positions + margin.
     When a cluster has a label, the box is expanded so the label
     text doesn't overlap internal nodes.
@@ -813,6 +819,15 @@ def set_ycoords(layout):
 
 
 def simple_x_position(layout):
+    """Heuristic X positioning for non-clustered graphs.
+
+    No direct C analogue — this is a Python-specific simple
+    placement used as a starting point for ``median_x_improvement``
+    when there are no clusters.  C uses ``lib/dotgen/position.c``
+    NS-based positioning unconditionally; this Python path is a
+    legacy fallback that pre-dates the NS X solver in
+    :func:`ns_x_position`.
+    """
     # Count edges incident to each node to estimate routing channel space
     edge_count: dict[str, int] = {}
     for le in layout.ledges:
@@ -900,15 +915,17 @@ def median_x_improvement(layout):
 def bottomup_ns_x_position(layout):
     """Assign X coordinates bottom-up through the cluster hierarchy.
 
-    Each cluster level runs a small NS that positions:
-    - Direct nodes (not in any child cluster)
-    - Child cluster "blocks" (rigid, already laid out)
+    No direct C analogue.  C's :func:`ns_x_position` (which mirrors
+    ``lib/dotgen/position.c:create_aux_edges`` + ``rank()`` +
+    ``set_xcoords()``) handles clusters in one global NS solve.
+    This Python function is a fallback for the case where the
+    global NS fails to converge — it solves each cluster level
+    independently bottom-up, treating already-positioned child
+    clusters as rigid blocks.
 
-    After a level is solved, child cluster nodes are shifted to
-    match the block's assigned position.  The process starts at
-    leaf clusters and works up to the root.
-
-    Fallback used only if :func:`ns_x_position` fails to converge.
+    After the cluster-cycle bug fixes of 2026-04-12, the global NS
+    in :func:`ns_x_position` converges reliably and this fallback
+    is rarely if ever exercised on real graphs.
     """
     # _NetworkSimplex from its own ns_solver module.
     from gvpy.engines.dot.ns_solver import _NetworkSimplex
@@ -1190,6 +1207,15 @@ def bottomup_ns_x_position(layout):
 def resolve_cluster_overlaps(layout):
     """Push overlapping sibling clusters apart in the cross-rank direction.
 
+    No direct C analogue.  C avoids the need for this entirely
+    because its NS X solver (``lib/dotgen/position.c``
+    ``create_aux_edges`` / ``pos_clusters``) enforces sibling
+    cluster separation as part of the constraint graph.  This
+    Python helper is a post-pass safety net for cases where the
+    global NS could not enforce all constraints (typically when the
+    cycle-detection in :func:`ns_x_position` had to relax some
+    edges).
+
     Walks the cluster tree top-down.  For each set of siblings,
     detects 2D bbox overlaps and shifts the overlapping cluster
     (and all its internal nodes) in the cross-rank direction until
@@ -1285,7 +1311,15 @@ def resolve_cluster_overlaps(layout):
 def post_rankdir_keepout(layout):
     """Push non-member nodes out of sibling cluster bboxes.
 
-    Runs after ``_apply_rankdir`` so coordinates are in the final
+    No direct C analogue.  C handles non-cluster-member separation
+    within ``lib/dotgen/position.c`` via the keepout edges added by
+    ``create_aux_edges`` (section 3f in our :func:`ns_x_position`).
+    This Python helper is a post-rankdir safety net for cases where
+    the NS solver couldn't enforce all keepout edges (typically
+    because they would have created cycles in the constraint
+    graph).
+
+    Runs after ``apply_rankdir`` so coordinates are in the final
     space.  Only pushes in the **cross-rank** direction (X for LR/RL,
     Y for TB/BT), never in the rank direction, because rank positions
     are fixed by phase 1.  Recomputes cluster boxes after each pass.
@@ -1371,6 +1405,15 @@ def post_rankdir_keepout(layout):
 
 
 def center_ranks(layout):
+    """Horizontally center each rank within the widest rank.
+
+    No direct C analogue.  C's NS X positioning produces ranks that
+    are already balanced left-to-right via the cluster ln/rn
+    constraints in ``lib/dotgen/position.c``.  This Python helper
+    is part of the legacy non-cluster path
+    (:func:`simple_x_position` + :func:`median_x_improvement`) and
+    is only invoked when there are no clusters.
+    """
     rank_widths = {}
     for rank_val, rank_nodes in layout.ranks.items():
         if rank_nodes:
@@ -1389,6 +1432,18 @@ def center_ranks(layout):
 
 
 def apply_rankdir(layout):
+    """Rotate / flip coordinates for the requested rankdir.
+
+    C analogue: ``lib/dotgen/position.c`` rankdir handling and
+    ``lib/common/postproc.c:translate()``.  C's layout pipeline
+    runs internally in TB mode and rotates the final coordinates
+    based on ``GD_rankdir`` at the end.  This Python function does
+    the same:
+      - TB: identity
+      - BT: flip Y (``y -> max_y - y``)
+      - LR: swap (x, y) and swap (width, height)
+      - RL: swap then flip Y
+    """
     if layout.rankdir == "TB":
         return
     elif layout.rankdir == "BT":
