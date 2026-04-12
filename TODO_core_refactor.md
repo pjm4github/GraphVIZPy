@@ -133,8 +133,21 @@ completion status:
       5238 pre-mincross, 6739 pre-session — net -3052 over the full
       session).  All 715 tests pass, 14/14 sampled files produce
       0 node overlaps.
-- [ ] **Step 7b**: Extract remaining dot phases — rank, splines,
-      cluster, class2, fastgr, flat, sameport, acyclic — into
-      per-phase modules matching `lib/dotgen/`
+- [x] **Step 7b (partial)**: Extract Phase 4 (splines/edge routing)
+      into `gvpy/engines/dot/splines.py` — done 2026-04-12.  Moved 23
+      methods (~766 lines) via `tools/extract_splines.py` (same
+      pattern as `extract_mincross.py`).  `splines.py` is 893 lines;
+      C analogue: `lib/dotgen/dotsplines.c` + `lib/common/splines.c`.
+      Covers regular/chain/flat/self-loop routing, endpoint calc,
+      samehead/sametail merging, compound-edge clipping, Bezier
+      conversion, ortho routing.  Post-extraction fix: lazy import
+      for the `_COMPASS` module-level constant inside `port_point`.
+      `dot_layout.py`: 3687 -> 3036 lines this pass; 6739 -> 3036
+      over the full session (-3703, -55%).  All 715 tests pass,
+      14/14 sampled files produce 0 overlaps.
+- [ ] **Step 7c**: Extract remaining dot phases — Phase 1 rank
+      assignment (rank.c), cluster geometry (cluster.c), class2,
+      fastgr, flat, sameport, acyclic — into per-phase modules
+      matching `lib/dotgen/`
 - [ ] **Step 8**: Add `SimulationView` base + minimal skeleton
 - [ ] **Step 9**: Add `PictoGraphInfo(LayoutView)` pictosync engine
