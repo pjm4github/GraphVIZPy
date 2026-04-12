@@ -55,15 +55,15 @@ API usage
 Parse a DOT file and run the layout::
 
     from gvpy.grammar import read_gv, read_gv_file
-    from gvpy.engines.dot import DotLayout
+    from gvpy.engines.dot import DotGraphInfo  # or the DotLayout alias
 
     # From a file
     graph = read_gv_file("input.gv")
-    result = DotLayout(graph).layout()   # returns a JSON-serializable dict
+    result = DotGraphInfo(graph).layout()  # JSON-serializable dict
 
     # From a string
     graph = read_gv('digraph G { a -> b -> c; }')
-    result = DotLayout(graph).layout()
+    result = DotGraphInfo(graph).layout()
 
 Or use the engine registry::
 
@@ -744,9 +744,23 @@ class _NetworkSimplex:
 
 # ── Layout engine ────────────────────────────────
 
-class DotLayout(LayoutEngine):
-    """Hierarchical (dot) layout for directed and undirected graphs."""
+class DotGraphInfo(LayoutEngine):
+    """Hierarchical (dot) layout state container.
 
+    C analogue: ``Agraphinfo_t`` in ``lib/dotgen/dot.h``.  Holds all
+    per-layout state for a dot layout (rank arrays, cluster skeletons,
+    coordinate assignments, etc.) and drives the four-phase pipeline
+    (rank → mincross → position → splines).
+
+    Attaches to a graph via ``graph.attach_view(info, "dot")`` and
+    takes the ``view_name="dot"`` key by default.  The ``DotLayout``
+    alias defined at the bottom of this module preserves the original
+    class name for backward compatibility; all existing
+    ``from gvpy.engines.dot import DotLayout`` imports continue to
+    work unchanged.
+    """
+
+    view_name: str = "dot"
     MAX_MINCROSS_ITER = 24
 
     # Dot-specific sizing constants for record shapes
@@ -1083,7 +1097,7 @@ class DotLayout(LayoutEngine):
                         _copy_subgraphs(sub, new_sub, comp)
             _copy_subgraphs(self.graph, sub_graph, comp_nodes)
 
-            result = DotLayout(sub_graph).layout()
+            result = DotGraphInfo(sub_graph).layout()
             all_results.append(result)
 
             bb = result.get("graph", {}).get("bb", [0, 0, 100, 100])
@@ -1548,7 +1562,7 @@ class DotLayout(LayoutEngine):
         """
         rf.LR = not rf.LR
         for child in rf.children:
-            DotLayout._flip_record_lr(child)
+            DotGraphInfo._flip_record_lr(child)
 
     def _rankdir_int(self) -> int:
         """Return rankdir as Graphviz integer constant.
@@ -6387,3 +6401,11 @@ class DotLayout(LayoutEngine):
         if clusters_json:
             result["clusters"] = clusters_json
         return result
+
+
+# ── Backward-compatibility alias ─────────────────────────────────
+# ``DotLayout`` was the original class name; ``DotGraphInfo`` is the
+# new name matching C's Agraphinfo_t convention and the GraphView
+# architecture (gvpy/core/graph_view.py).  Keep the alias so existing
+# imports ``from gvpy.engines.dot import DotLayout`` continue to work.
+DotLayout = DotGraphInfo

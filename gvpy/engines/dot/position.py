@@ -18,7 +18,7 @@ Other Phase 3 helpers (``_set_ycoords``, ``_expand_leaves``,
 ``_compute_cluster_boxes``, ``_simple_x_position``,
 ``_median_x_improvement``, ``_center_ranks``, ``_apply_rankdir``,
 ``_resolve_cluster_overlaps``, ``_post_rankdir_keepout``) still live in
-``dot_layout.py`` as methods on ``DotLayout``.  They are called from
+``dot_layout.py`` as methods on ``DotGraphInfo``.  They are called from
 here via ``layout._xxx()``.  Subsequent passes will migrate them here.
 
 See ``TODO_core_refactor.md`` step 4 for the full migration plan.
@@ -35,10 +35,10 @@ import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from gvpy.engines.dot.dot_layout import DotLayout
+    from gvpy.engines.dot.dot_layout import DotGraphInfo
 
 
-def phase3_position(layout: "DotLayout") -> None:
+def phase3_position(layout: "DotGraphInfo") -> None:
     """Top-level Phase 3 driver.
 
     C analogue: ``dot_position()`` in ``lib/dotgen/position.c`` calls
@@ -114,7 +114,7 @@ def phase3_position(layout: "DotLayout") -> None:
             )
 
 
-def ns_x_position(layout: "DotLayout") -> bool:
+def ns_x_position(layout: "DotGraphInfo") -> bool:
     """Assign X coordinates using network simplex on an auxiliary graph.
 
     Mirrors Graphviz ``position.c``: ``create_aux_edges()`` builds a
