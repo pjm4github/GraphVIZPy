@@ -30,7 +30,7 @@ class NodeMixin:
             # Check the root graph first — if the node already exists there,
             # reuse the same object so attributes aren't lost when a node
             # created in a child subgraph is later referenced at a parent level.
-            from .graph import get_root_graph
+            from ._graph_traversal import get_root_graph
             root = get_root_graph(self)
             existing = root.nodes.get(n_name) if root is not self else None
             if existing is not None:
@@ -279,7 +279,7 @@ class NodeMixin:
         work_node.compound_node_data.subgraph = sgr
         work_node.compound_node_data.collapsed = False
 
-        from .graph import get_root_graph
+        from ._graph_traversal import get_root_graph
         root_graph = get_root_graph(self)
         root_graph.nodes[work_node.name] = work_node
 

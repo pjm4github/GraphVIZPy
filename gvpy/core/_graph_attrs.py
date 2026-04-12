@@ -80,7 +80,7 @@ class AttrMixin:
                 self.attr_record[name] = value
 
     def get_graph_attr(self, attr_name: str) -> str:
-        from .graph import get_root_graph
+        from ._graph_traversal import get_root_graph
         if attr_name in self.attr_dict_g:
             return self.attr_dict_g[attr_name]
         else:
@@ -181,7 +181,7 @@ class AttrMixin:
 
     def agattr(self, kind: ObjectType, name: str, value: Optional[str] = None):
         """Create or look up an attribute descriptor."""
-        from .graph import get_root_graph
+        from ._graph_traversal import get_root_graph
         root = get_root_graph(self)
         if kind == ObjectType.AGGRAPH:
             adict = root.attr_dict_g
@@ -218,7 +218,7 @@ class AttrMixin:
         Pythonic version of 'agattrsym(obj, name)':
         Return the AgSym corresponding to 'name', or None if not found.
         """
-        from .graph import get_root_graph
+        from ._graph_traversal import get_root_graph
         if obj.obj_type == ObjectType.AGGRAPH:
             # enclosed_node
             root = get_root_graph(obj)

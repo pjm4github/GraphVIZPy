@@ -4,7 +4,8 @@ from typing import Optional, TYPE_CHECKING, Dict
 # Forward declarations: these imports are only for type checking.
 if TYPE_CHECKING:
     from .headers import *
-    from .graph import Graph, get_root_graph
+    from .graph import Graph
+    from ._graph_traversal import get_root_graph
     from .node import Node
 
 

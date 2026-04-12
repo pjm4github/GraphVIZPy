@@ -24,7 +24,7 @@ class IdMixin:
         :param obj_type: The type of object ('AGRAPH', 'AGNODE', 'AGEDGE').
         :param old_id: The ID to free.
         """
-        from .graph import get_root_graph, gather_all_subgraphs
+        from ._graph_traversal import get_root_graph, gather_all_subgraphs
         if obj_type == ObjectType.AGGRAPH:
             g = get_root_graph(self)
             sg_list = gather_all_subgraphs(g)
@@ -273,3 +273,23 @@ class IdMixin:
         for objtype in ObjectType:
             self.clos.lookup_by_name[objtype].clear()
             self.clos.lookup_by_id[objtype].clear()
+
+
+# ── Module-level helpers ────────────────────────────────────────────
+
+def agnextseq(g: "Graph", objtype: ObjectType) -> int:
+    """Increment and return the next sequence number for ``objtype``.
+
+    C analogue: ``lib/cgraph/graph.c:agnextseq()``::
+
+        int agnextseq(Agraph_t *g, int objtype)
+        {
+            return ++(g->clos->seq[objtype]);
+        }
+
+    In gvpy the closure's per-object-type sequence counter lives in
+    ``g.clos`` and is bumped via ``g.get_next_sequence(objtype)``.
+    Extracted from ``graph.py`` as part of the core refactor (TODO
+    ``TODO_core_refactor.md`` step 6).
+    """
+    return g.get_next_sequence(objtype)

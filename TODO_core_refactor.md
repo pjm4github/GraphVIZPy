@@ -116,7 +116,31 @@ completion status:
       (71 lines) — all three were unreferenced anywhere in gvpy/ or
       tests/.  Total 355 lines deleted; dot_layout.py now 5238 lines.
       All 715 tests still pass, 0 overlaps on aa1332.dot.
-- [ ] **Step 6**: `graph.py` split (this file's first section)
+- [x] **Step 6**: `graph.py` split — done 2026-04-12.  Moved 19
+      module-level helpers out of `gvpy/core/graph.py` into per-concern
+      files matching `lib/cgraph/` factoring:
+      - `_graph_apply.py` (61 lines, NEW): `subnode_search`,
+        `subedge_search`, `subgraph_search` (C: `lib/cgraph/apply.c`)
+      - `_graph_cmpnd.py` (84 lines, NEW): `Agcmpgraph`,
+        `agfindhidden` (C: `lib/cgraph/cmpnd.c`)
+      - `_graph_traversal.py` (77 lines, NEW): `gather_all_nodes`,
+        `gather_all_edges`, `gather_all_subgraphs`, `get_root_graph`
+        (no C analogue — Python convenience helpers)
+      - `_graph_edges.py` (281 -> 480 lines): added 11 module-level
+        edge functions `agsubrep`, `agfstout`, `agnxtout`, `agfstin`,
+        `agnxtin`, `agfstedge`, `agnxtedge`, `ok_to_make_edge`,
+        `agedge`, `agidedge`, `agdeledge` (C: `lib/cgraph/edge.c`)
+      - `_graph_id.py` (275 -> 295 lines): added module-level
+        `agnextseq` (C: `lib/cgraph/graph.c`)
+      `graph.py` keeps re-exports of every moved name so existing
+      `from gvpy.core.graph import X` imports continue to work
+      (tests, render code, and other gvpy modules).  Internal
+      `_graph_*.py` modules updated to import directly from the new
+      home (`from ._graph_traversal import get_root_graph` instead of
+      `from .graph import get_root_graph`).  `GraphDict` stays in
+      `graph.py` for now (only used by `_graph_id.py:148`).
+      `graph.py`: 1680 -> 1329 lines (-351, -21%).  All 715 tests
+      pass, aa1332.dot still has 0 node overlaps.
 - [x] **Step 7 (partial)**: Extract Phase 2 (mincross) into
       `gvpy/engines/dot/mincross.py` — done 2026-04-12.  Moved 18
       methods (~1500 lines) as free functions via

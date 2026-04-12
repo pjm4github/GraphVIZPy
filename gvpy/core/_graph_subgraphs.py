@@ -510,7 +510,7 @@ class SubgraphMixin:
         # My immediate parent graph
         parent_graph = cmpnode.parent
         # The tippy top graph
-        from .graph import get_root_graph
+        from ._graph_traversal import get_root_graph
         root = get_root_graph(parent_graph)
 
         # 2) If cmpnode accidentally appears in its own subgraph, remove it
