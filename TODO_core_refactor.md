@@ -217,5 +217,50 @@ completion status:
       over the full session (-4962, -74%)**.  All 715 tests pass,
       0 overlaps on aa1332.dot (verified via `LayoutNode` bbox
       intersection over 107 nodes).
-- [ ] **Step 8**: Add `SimulationView` base + minimal skeleton
+- [x] **Step 8**: Add `SimulationView` base + minimal skeleton —
+      done 2026-04-12.  Created `gvpy/engines/sim/` sibling to
+      `gvpy/engines/layout/` with seven modules (~1200 lines):
+      - `base.py` — `SimulationView(GraphView, ABC)` intermediate
+        base mirroring `LayoutView`'s pattern.  Defines the shared
+        lifecycle contract (`init`/`step`/`reset`/`run`/`is_done`),
+        the `now` property, per-node/per-edge state queries, and
+        the `to_json`/`from_json` round-trip.
+      - `clock.py` — `Clock` protocol with `DiscreteClock`
+        (fixed-step, integer iteration) and `ContinuousClock`
+        (floating-point jump-to-next-event).
+      - `events.py` — SimPy-inspired event-driven primitives:
+        `Event`, `Timeout`, `Process`, `Environment` (priority
+        queue + step loop), and `EventSimulationView` wrapper.
+        Implements process-as-generator with callback-on-yielded-
+        event resumption.  Distinguishes `triggered`
+        (scheduled) from `_processed` (callbacks have run) so
+        late-subscription works correctly.
+      - `cbd.py` — PyCBD-inspired Causal Block Diagram primitives:
+        `Port`, `Connection`, `Block`, `StatefulBlock`, `DelayBlock`,
+        `CompoundBlock` (hierarchical container), and concrete
+        primitives `ConstantBlock`, `GainBlock`, `AdderBlock`,
+        `NegatorBlock`, `ProductBlock`.  Plus `CBDSimulationView`
+        wrapper.
+      - `solver.py` — Three-phase Mealy step (Output → Update →
+        Advance) per Van Tendeloo & Vangheluwe (2018).
+        `topological_sort` uses Kahn's algorithm and treats
+        `DelayBlock` as a graph source so feedback loops with at
+        least one delay sort cleanly; pure algebraic loops raise
+        `ValueError`.
+      - `trace.py` — Optional `SimulationTrace` recorder
+        (per-signal time-series with JSON round-trip).
+      - `__init__.py` — Public re-exports.
+      Smoke tests in `tests/test_sim_skeleton.py` (9 tests):
+      - 4 event-driven: timeout ordering, process waiting on
+        manually-triggered Event, EventSimulationView attach to
+        Graph, JSON round-trip.
+      - 4 CBD: topological sort with delay cycle break, integer
+        ramp via Constant+Adder+Delay feedback verifying three-
+        phase Mealy semantics, CBDSimulationView attach +
+        Constant→Gain pipeline, JSON round-trip with block state.
+      - 1 SimulationTrace recorder round-trip.
+      All 724 tests pass (715 prior + 9 new).  Bound layout vs
+      sim engines now live in clean sibling namespaces:
+      `gvpy.engines.layout.dot` and `gvpy.engines.sim.events` /
+      `gvpy.engines.sim.cbd`.
 - [ ] **Step 9**: Add `PictoGraphInfo(LayoutView)` pictosync engine
