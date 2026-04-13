@@ -912,6 +912,68 @@ def _channel_bbox_for_node(layout, ln: "LayoutNode", le: "LayoutEdge"):
     return (min_cr, min_r, max_cr, max_r)
 
 
+def _edge_node_path(layout, le: "LayoutEdge") -> list[str]:
+    """Return the ordered list of node names an edge traverses.
+
+    - For a regular single-rank edge: ``[tail, head]``.
+    - For a multi-rank edge that was split by ``add_virtual_nodes``:
+      ``[tail, v1, v2, ..., vn, head]`` using the chain recorded
+      in ``layout._vnode_chains[(tail, head)]``.
+    - For a flat (same-rank) or self-loop edge: ``[tail, head]``.
+      Flat/self-loop routing is handled by their specialised
+      routers, not by the channel path; callers should filter
+      those out before calling this.
+    """
+    tail = le.tail_name
+    head = le.head_name
+
+    # Chain edges live on layout._chain_edges and have their
+    # virtual chain recorded separately.  ``le.virtual`` is set on
+    # both the chain bridge edges in ``layout.ledges`` and on the
+    # original edge sitting in ``layout._chain_edges``.  We look up
+    # the chain by the (orig_tail, orig_head) key that
+    # ``add_virtual_nodes`` registered.
+    chain_key = (le.orig_tail or tail, le.orig_head or head)
+    chain = layout._vnode_chains.get(chain_key)
+    if chain:
+        return [chain_key[0], *chain, chain_key[1]]
+    return [tail, head]
+
+
+def build_edge_path(layout, le: "LayoutEdge") -> list[tuple[float, float, float, float]]:
+    """Assemble the channel-box sequence for an edge.
+
+    C analogue: the per-edge box list built in
+    ``lib/dotgen/dotsplines.c:make_regular_edge()`` before handing
+    off to ``lib/common/routespl.c:routesplines()``.  Each element
+    of the returned list is a box ``(min_cr, min_r, max_cr, max_r)``
+    in **cross-rank / rank** axis order as returned by
+    :func:`_channel_bbox_for_node` — callers that need raw (x, y)
+    must remap based on ``layout.rankdir``.
+
+    The sequence runs from tail to head, with one box per node
+    (or virtual node) the edge touches.  For a regular single-rank
+    edge the list has two entries: ``[tail_box, head_box]``.  For
+    a split multi-rank edge it has ``2 + len(chain)`` entries.
+
+    Only regular (directed, multi-rank) and chain edges belong
+    here.  Flat edges, self-loops, ortho, and compound edges have
+    their own routers upstream.
+
+    This function is a building block for the channel-based
+    replacement of ``route_regular_edge`` / ``route_through_chain``;
+    it is not yet wired into ``phase4_routing``.
+    """
+    path_names = _edge_node_path(layout, le)
+    boxes: list[tuple[float, float, float, float]] = []
+    for name in path_names:
+        ln = layout.lnodes.get(name)
+        if ln is None:
+            continue
+        boxes.append(_channel_bbox_for_node(layout, ln, le))
+    return boxes
+
+
 def rank_box(layout, r: int) -> tuple[float, float, float, float]:
     """Inter-rank corridor between rank r and rank r+1.
 
