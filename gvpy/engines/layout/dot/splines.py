@@ -1449,6 +1449,7 @@ def route_through_channel_boxes(
     Not yet wired into ``phase4_routing`` — still dead code.
     """
     is_lr = layout.rankdir in ("LR", "RL")
+    tcl, hcl = _edge_clusters_for_le(layout, le)
 
     # Step 5a: base waypoint per node, clamped to its box.
     base: list[tuple[float, float]] = []
@@ -1467,50 +1468,69 @@ def route_through_channel_boxes(
     if len(base) < 2:
         return base
 
-    # Step 5b / 6b: walk adjacent pairs and insert bridge waypoints
-    # whenever the segment between two base waypoints actually crosses
-    # a non-member cluster bbox.  Step 5b only triggered on disjoint
-    # cross-rank boxes and used :func:`_find_gap_obstacles` which
-    # searched a narrow gap-range strip.  Step 6b promotes this to a
-    # full segment-vs-cluster test via :func:`_find_segment_obstacles`,
-    # catching obstacles a long diagonal segment would sweep through
-    # even when the formal cross-rank "gap" is narrow or empty.
-    tcl, hcl = _edge_clusters_for_le(layout, le)
-    waypoints: list[tuple[float, float]] = [base[0]]
-    for i in range(len(base) - 1):
+    # Build the perpendicular-stub skeleton *first*: replace the tail
+    # and head base waypoints with proper boundary / port attach
+    # points, and add a short rank-axis stub just past each.  The
+    # stubs pin the eventual Bezier tangent to the face normal, but
+    # they also pull the endpoints in toward the node along the rank
+    # axis — so the effective routing polyline is usually narrower
+    # on the cross-rank axis than a raw center-to-center line would
+    # be.  Obstacle detection runs on *this* skeleton (step 6b'), so
+    # an edge whose stubbed path already misses every cluster does
+    # not trigger a bridge detour at all — the curve stays a simple
+    # near-straight spline.  The user-visible payoff: parallel edges
+    # like c3378->c4045 that only *seemed* to cross cluster_5378 on
+    # the center-to-center diagonal now route as plain splines
+    # because the stub-pulled polyline never enters the cluster.
+    tail = layout.lnodes.get(path_names[0]) if path_names else None
+    head = layout.lnodes.get(path_names[-1]) if path_names else None
+    if tail is not None and head is not None:
+        exit_pt = layout._edge_start_point(le, tail, head)
+        entry_pt = layout._edge_end_point(le, head, tail)
+        stub_len = float(getattr(layout, "_CL_OFFSET", 8.0))
+        stub_out = _perp_stub(tail, exit_pt, stub_len)
+        stub_in = _perp_stub(head, entry_pt, stub_len)
+    else:
+        exit_pt = base[0]
+        entry_pt = base[-1]
+        stub_out = base[0]
+        stub_in = base[-1]
+
+    # Starting skeleton: [exit, stub_out, mid-base..., stub_in, entry].
+    # ``mid_base`` is the base waypoints that lie strictly between the
+    # two endpoints; for a 2-node edge it's empty, for a chain it's
+    # the virtual nodes' centers.
+    mid_base = base[1:-1]
+    skeleton: list[tuple[float, float]] = (
+        [exit_pt, stub_out] + list(mid_base) + [stub_in, entry_pt])
+
+    # Step 5b / 6b': walk adjacent pairs of the stub skeleton and
+    # insert bridge waypoints whenever a segment actually crosses a
+    # non-member cluster bbox.  ``_find_segment_obstacles`` sees the
+    # stub-pulled coordinates so it only reports real crossings.
+    waypoints: list[tuple[float, float]] = [skeleton[0]]
+    for i in range(len(skeleton) - 1):
+        p_i = skeleton[i]
+        p_j = skeleton[i + 1]
+        # Segment owner node names for the keepout filter (skip
+        # clusters that contain the segment's own endpoint node).
+        # Stub segments (index 0->1 and last-1->last) belong to the
+        # tail / head; everything in between uses path_names for the
+        # corresponding base index.
+        if i == 0:
+            ni, nj = path_names[0], path_names[0]
+        elif i == len(skeleton) - 2:
+            ni, nj = path_names[-1], path_names[-1]
+        else:
+            ni = path_names[i - 1] if i - 1 < len(path_names) else path_names[0]
+            nj = path_names[i] if i < len(path_names) else path_names[-1]
         obstacles = _find_segment_obstacles(
-            layout, base[i], base[i + 1],
-            path_names[i], path_names[i + 1], tcl, hcl)
+            layout, p_i, p_j, ni, nj, tcl, hcl)
         if obstacles:
             bridges = _bridge_points_for_obstacle(
-                layout, base[i], base[i + 1], obstacles[0],
-                tcl=tcl, hcl=hcl)
+                layout, p_i, p_j, obstacles[0], tcl=tcl, hcl=hcl)
             waypoints.extend(bridges)
-        waypoints.append(base[i + 1])
-
-    # Replace endpoints with proper boundary/port points, and insert
-    # short perpendicular stub waypoints just past each boundary so
-    # the curve leaves / enters the node face at a right angle.  The
-    # stub direction is the outward normal at the attach point (see
-    # :func:`_perp_stub` docstring); the stub length is CL_OFFSET (8pt)
-    # which matches the cluster-margin default and blends visually
-    # with the cluster border separation.
-    if path_names:
-        tail = layout.lnodes.get(path_names[0])
-        head = layout.lnodes.get(path_names[-1])
-        if tail is not None and head is not None:
-            exit_pt = layout._edge_start_point(le, tail, head)
-            entry_pt = layout._edge_end_point(le, head, tail)
-            waypoints[0] = exit_pt
-            waypoints[-1] = entry_pt
-            stub_len = float(getattr(layout, "_CL_OFFSET", 8.0))
-            stub_out = _perp_stub(tail, exit_pt, stub_len)
-            stub_in = _perp_stub(head, entry_pt, stub_len)
-            # Insert stubs between the boundary points and their
-            # adjacent interior waypoints.  For a 2-point polyline
-            # this produces [exit, stub_out, stub_in, entry].
-            interior = waypoints[1:-1]
-            waypoints = [exit_pt, stub_out] + list(interior) + [stub_in, entry_pt]
+        waypoints.append(p_j)
 
     return waypoints
 
