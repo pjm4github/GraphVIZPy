@@ -593,30 +593,55 @@ def record_port_point(layout, node_name: str, port: str,
     Node.record_fields tree, returns the port center in node-local
     coordinates.
     """
-    # Look up port fraction from Node.record_fields (source of truth)
     port_name = port.split(":")[0] if ":" in port else port
     ln_obj = layout.lnodes.get(node_name)
     if not ln_obj or not ln_obj.node or ln_obj.node.record_fields is None:
         return None
-    frac = ln_obj.node.record_fields.port_fraction(
-        port_name, rankdir=layout._rankdir_int())
-    if frac is None:
+    rf = ln_obj.node.record_fields
+    pp = rf.port_position(port_name)
+    if pp is None:
         return None
+    px_rec, py_rec = pp
 
+    # Linear fraction along the record's cross-rank axis is what
+    # determines where on the rank-facing face the edge attaches.  We
+    # deliberately ignore ``port_fraction`` (an angle-based compass
+    # order derived from C's compassPort — correct for mincross port
+    # ordering but wrong for physical attach-point placement because
+    # it returns 0 for dead-centre ports and collapses all of a
+    # column's ports to the top of the node face).
+    #
+    # For an N-port vertical column in a 100pt-tall node, the user-
+    # facing expectation is centres at ``10, 30, 50, 70, 90`` — i.e.
+    # each port's centre sits at ``(i + 0.5) / N`` of the face range.
+    # That mapping falls out naturally from
+    # ``port_position.cr / record.cr_extent``: each field's local
+    # centre is already at that fraction of its parent column.
     if layout.rankdir in ("LR", "RL"):
-        # LR/RL: port fraction → Y position, boundary on X
+        # LR/RL: attach face is east (tail) or west (head), and the
+        # cross-rank axis is the node's Y.  The record tree is in
+        # the pre-rotation frame where the rank direction is still
+        # record.x — so the port's "cross-rank fraction" is its
+        # local Y divided by the record's Y extent.
+        rec_extent = max(rf.height, 1e-9)
+        frac = max(0.0, min(1.0, py_rec / rec_extent))
         y = ln.y - ln.height / 2.0 + frac * ln.height
         if is_tail:
-            x = ln.x + ln.width / 2.0   # right edge (toward next rank)
+            x = ln.x + ln.width / 2.0   # east face
         else:
-            x = ln.x - ln.width / 2.0   # left edge (from prev rank)
+            x = ln.x - ln.width / 2.0   # west face
     else:
-        # TB/BT: port fraction → X position, boundary on Y
+        # TB/BT: attach face is north (head) or south (tail), and
+        # the cross-rank axis is the node's X.  In TB the record is
+        # already in the final frame so the cross-rank fraction is
+        # just port_position.x / record.width.
+        rec_extent = max(rf.width, 1e-9)
+        frac = max(0.0, min(1.0, px_rec / rec_extent))
         x = ln.x - ln.width / 2.0 + frac * ln.width
         if is_tail:
-            y = ln.y + ln.height / 2.0   # bottom edge (toward next rank)
+            y = ln.y + ln.height / 2.0   # south face
         else:
-            y = ln.y - ln.height / 2.0   # top edge (from prev rank)
+            y = ln.y - ln.height / 2.0   # north face
 
     return (x, y)
 
