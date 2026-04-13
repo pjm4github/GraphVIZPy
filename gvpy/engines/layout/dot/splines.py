@@ -179,12 +179,100 @@ def phase4_routing(layout):
                 le.points = layout._to_bezier(le.points)
                 le.spline_type = "bezier"
 
+    # Parallel-edge separation: shift overlapping parallel edges
+    # perpendicular to their axis so they do not draw over each other.
+    _apply_parallel_offsets(layout)
+
     # Log edge routing results
     all_routed = [le for le in layout.ledges if not le.virtual] + layout._chain_edges
     for le in all_routed:
         if le.points:
             pts_str = " ".join(f"({p[0]:.1f},{p[1]:.1f})" for p in le.points[:4])
             print(f"[TRACE spline] edge {le.tail_name}->{le.head_name}: npts={len(le.points)} type={le.spline_type} pts={pts_str}{'...' if len(le.points)>4 else ''}", file=sys.stderr)
+
+
+def _apply_parallel_offsets(layout):
+    """Offset overlapping parallel edges perpendicular to their axis.
+
+    After routing, any two edges that share the same ``(tail, head)``
+    node pair follow identical paths and therefore draw over each
+    other.  This pass groups edges by that pair and shifts each
+    edge's points by ``(i - (n - 1) / 2) * sep`` along the axis
+    perpendicular to the straight tail→head direction, where ``i``
+    is the edge's 0-based index in its group and ``n`` is the
+    group size.
+
+    Endpoints stay fixed so the shifted curves still touch the node
+    boundaries for arrowhead attachment.  The offset magnitude at
+    each interior point is tapered by ``sin(π · t)`` — zero at
+    ``t = 0`` / ``t = 1`` and maximum at the midpoint — producing
+    a symmetric bulge.  Because a Bezier curve is affine-invariant,
+    applying the taper directly to the control-point list (which
+    is what ``le.points`` stores after bezier conversion) produces
+    the same curve translated by the sin-taper displacement field.
+
+    The minimum routing separation defaults to
+    ``max(6, layout.nodesep / 3)`` so adjacent parallel edges are
+    always visually distinguishable.
+    """
+    import math
+    from collections import defaultdict
+
+    groups: dict[tuple[str, str], list] = defaultdict(list)
+    all_edges = [le for le in layout.ledges if not le.virtual] + list(layout._chain_edges)
+    for le in all_edges:
+        if not le.points or len(le.points) < 2:
+            continue
+        # Skip flat (same-rank) edges: flat_edge_route already has
+        # its own fanning logic (adjacent-node straight line vs.
+        # outer-arc variants per flat_edge_classify) and parallel
+        # red/black variants are visually distinguished by colour
+        # and port attributes rather than positional offset.  Adding
+        # a sin-taper on top pushes straight directed flats into a
+        # visible arc and breaks test_241_directed_edges_straight.
+        tail_ln = layout.lnodes.get(le.tail_name)
+        head_ln = layout.lnodes.get(le.head_name)
+        if tail_ln is not None and head_ln is not None \
+                and tail_ln.rank == head_ln.rank:
+            continue
+        groups[(le.tail_name, le.head_name)].append(le)
+
+    sep = max(6.0, layout.nodesep / 3.0)
+
+    for (tail_name, head_name), edges in groups.items():
+        if len(edges) < 2 or tail_name == head_name:
+            continue
+        # Axis = straight line between the first edge's first and
+        # last points.  For bridged polylines the endpoint anchors
+        # are the node boundary exits; this still gives a sensible
+        # "overall direction" vector.
+        le0 = edges[0]
+        p_start = le0.points[0]
+        p_end = le0.points[-1]
+        dx = p_end[0] - p_start[0]
+        dy = p_end[1] - p_start[1]
+        axis_len = math.hypot(dx, dy)
+        if axis_len < 1e-9:
+            continue
+        # Perpendicular unit vector (rotate +90°).
+        nx = -dy / axis_len
+        ny = dx / axis_len
+        n = len(edges)
+        for idx, le in enumerate(edges):
+            offset = (idx - (n - 1) / 2.0) * sep
+            if offset == 0:
+                continue
+            ox = nx * offset
+            oy = ny * offset
+            m = len(le.points)
+            if m < 2:
+                continue
+            shifted: list[tuple[float, float]] = []
+            for j, p in enumerate(le.points):
+                t = j / (m - 1)
+                factor = math.sin(math.pi * t)
+                shifted.append((p[0] + ox * factor, p[1] + oy * factor))
+            le.points = shifted
 
 
 def clip_compound_edges(layout):
@@ -1384,33 +1472,108 @@ def _split_at_sharp_corners(pts, cos_threshold: float = 0.8):
     return runs
 
 
-def _bezier_split_at_corners(pts, cos_threshold: float = 0.8):
-    """Bezier-fit a polyline while preserving sharp corners.
+def _rounded_corner_bezier(pts, radius: float = 8.0,
+                            cos_threshold: float = 0.8):
+    """Convert a polyline to cubic Bezier with rounded sharp corners.
 
-    Wraps :func:`to_bezier` with a pre-pass that splits the polyline at
-    sharp turns (cf. :func:`_split_at_sharp_corners`).  Each smooth run
-    is converted independently; the resulting Bezier control lists are
-    concatenated with the usual one-anchor overlap removal.
+    At each interior vertex ``V`` whose turn angle exceeds the
+    threshold (``cos < cos_threshold``), the hard corner is replaced
+    by a cubic *fillet*:
 
-    Without this, the Schneider least-squares fit in
-    :func:`to_bezier` treats a polyline with a hard 90° bridge corner
-    as a single curve, producing a dominant long chord and wildly
-    extrapolated control points that swing through neighbouring
-    non-member clusters.  Splitting at corners keeps each run's
-    max-alpha guard bounded to its own chord length.
+    - Let ``A = V + r * unit(P_prev - V)`` and
+      ``B = V + r * unit(P_next - V)`` be points on the incoming and
+      outgoing segments at distance ``r`` from the corner.
+    - The straight segments terminate at ``A`` and start from ``B``.
+    - A cubic Bezier ``[A, V, V, B]`` bridges the two — placing both
+      control points exactly at the corner makes the curve tangent
+      to each straight segment at ``A`` and ``B`` (G1 continuous),
+      giving the rounded-corner appearance.
+
+    The radius is clamped per corner to
+    ``0.5 * min(len_incoming, len_outgoing)`` so a fillet never
+    consumes more than half of either adjacent segment.
+
+    Straight runs between corners and straight-through segments are
+    emitted as straight cubics (chord/3 controls).  This function
+    replaces the earlier ``_bezier_split_at_corners`` — it serves
+    the same purpose (preventing sharp-corner overshoot) while
+    producing visibly smoother curves.
     """
-    runs = _split_at_sharp_corners(pts, cos_threshold)
-    if len(runs) <= 1:
+    import math
+    n = len(pts)
+    if n < 2:
+        return list(pts)
+    if n == 2:
+        p0, p1 = pts
+        dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+        return [p0, (p0[0] + dx / 3, p0[1] + dy / 3),
+                (p0[0] + 2 * dx / 3, p0[1] + 2 * dy / 3), p1]
+
+    # Step 1: classify each interior vertex as corner or smooth.
+    corner = [False] * n
+    for i in range(1, n - 1):
+        v1x = pts[i][0] - pts[i - 1][0]
+        v1y = pts[i][1] - pts[i - 1][1]
+        v2x = pts[i + 1][0] - pts[i][0]
+        v2y = pts[i + 1][1] - pts[i][1]
+        len1 = math.hypot(v1x, v1y)
+        len2 = math.hypot(v2x, v2y)
+        if len1 < 1e-9 or len2 < 1e-9:
+            continue
+        cos_t = (v1x * v2x + v1y * v2y) / (len1 * len2)
+        if cos_t < cos_threshold:
+            corner[i] = True
+
+    if not any(corner):
         return to_bezier(pts)
-    out: list[tuple[float, float]] = []
-    for run in runs:
-        bez = to_bezier(run)
-        if not out:
-            out.extend(bez)
-        else:
-            # Skip the duplicate joining anchor (first point of the
-            # new run equals the last anchor of the previous run).
-            out.extend(bez[1:])
+
+    # Step 2: pre-compute fillet anchor points A[i], B[i] at each corner.
+    A: list = [None] * n  # anchor on incoming segment
+    B: list = [None] * n  # anchor on outgoing segment
+    for i in range(n):
+        if not corner[i]:
+            continue
+        V = pts[i]
+        Pp = pts[i - 1]
+        Pn = pts[i + 1]
+        in_x, in_y = Pp[0] - V[0], Pp[1] - V[1]
+        out_x, out_y = Pn[0] - V[0], Pn[1] - V[1]
+        d_in = math.hypot(in_x, in_y)
+        d_out = math.hypot(out_x, out_y)
+        r = min(radius, 0.5 * d_in, 0.5 * d_out)
+        if r < 1e-6:
+            A[i] = V
+            B[i] = V
+            corner[i] = False
+            continue
+        u_in = (in_x / d_in, in_y / d_in)
+        u_out = (out_x / d_out, out_y / d_out)
+        A[i] = (V[0] + u_in[0] * r, V[1] + u_in[1] * r)
+        B[i] = (V[0] + u_out[0] * r, V[1] + u_out[1] * r)
+
+    # Step 3: walk segments, emitting a straight cubic for each
+    # (possibly truncated) segment plus a fillet cubic at each corner.
+    out: list[tuple[float, float]] = [pts[0]]
+    for i in range(n - 1):
+        start = B[i] if corner[i] else pts[i]
+        end = A[i + 1] if corner[i + 1] else pts[i + 1]
+        # Straight cubic from start to end (chord/3 controls).
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        if not out or out[-1] != start:
+            # Carry the anchor forward if the bookkeeping drifted
+            # (e.g. tiny numerical mismatch between last B[i] and
+            # this iteration's start).
+            out.append(start)
+        out.append((start[0] + dx / 3, start[1] + dy / 3))
+        out.append((start[0] + 2 * dx / 3, start[1] + 2 * dy / 3))
+        out.append(end)
+        # Fillet cubic at the corner at pts[i+1].
+        if corner[i + 1]:
+            V = pts[i + 1]
+            out.append(V)
+            out.append(V)
+            out.append(B[i + 1])
     return out
 
 
@@ -1459,16 +1622,20 @@ def channel_route_edge(layout, le: "LayoutEdge",
         return [p1, p2]
     polyline = route_through_channel_boxes(layout, le, path_names, boxes)
 
-    # Step 6b finishing: pre-apply corner-preserving bezier smoothing
+    # Step 6b finishing: pre-apply rounded-corner Bezier smoothing
     # when the splines mode would otherwise do a single-run bezier.
-    # Only act when the polyline actually has a sharp corner — simple
+    # Only act when the polyline actually has a sharp turn — simple
     # regular edges stay on the global pipeline to keep behaviour
     # identical for the non-bridged path.
+    #
+    # The rounded-corner pass uses :func:`_rounded_corner_bezier`,
+    # which replaces each hard turn with a cubic fillet so the
+    # visible edge has smooth curves instead of 90° kinks.
     bezier_modes = ("", "spline", "curved", "true")
     if layout.splines in bezier_modes and len(polyline) >= 3:
         runs = _split_at_sharp_corners(polyline)
         if len(runs) > 1:
-            le.points = _bezier_split_at_corners(polyline)
+            le.points = _rounded_corner_bezier(polyline)
             le.spline_type = "bezier"
             return le.points
     return polyline
