@@ -310,9 +310,19 @@ def to_bezier(pts: list[tuple]) -> list[tuple]:
         alpha0 = (x0*c11 - x1*c01) / det
         alpha1 = (c00*x1 - c10*x0) / det
 
+        # Sanity bounds.  ``alpha`` is the tangent-vector scale factor;
+        # geometrically reasonable values are roughly chord/3 to a small
+        # multiple of the chord length.  Below ``eps`` the system was
+        # near-degenerate (recover with chord/3); above ``max_alpha``
+        # the matrix was technically non-singular but ill-conditioned
+        # enough that the solution extrapolates wildly off-canvas.
+        # Both fall back to the chord/3 heuristic — matches Graphviz
+        # routespl.c:mkspline() which clamps via the same path.
         d = _dist(p0, p3)
         eps = d * 1e-6
-        if alpha0 < eps or alpha1 < eps:
+        max_alpha = 2.0 * d if d > 0 else 0.0
+        if (alpha0 < eps or alpha1 < eps
+                or alpha0 > max_alpha or alpha1 > max_alpha):
             alpha0 = alpha1 = d / 3.0
 
         return (p0,
@@ -340,6 +350,20 @@ def to_bezier(pts: list[tuple]) -> list[tuple]:
             dx, dy = p1[0]-p0[0], p1[1]-p0[1]
             return [p0, (p0[0]+dx/3, p0[1]+dy/3),
                     (p0[0]+2*dx/3, p0[1]+2*dy/3), p1]
+        if n == 3:
+            # Only one interior sample point — the 2x2 normal-equations
+            # system in _fit_cubic is underdetermined and can produce
+            # wildly extrapolated alpha values when the basis vectors
+            # become near-collinear.  Skip the least-squares fit and
+            # use the standard chord/3 tangent-length heuristic
+            # (matches Graphviz routespl.c:mkspline()'s short-polyline
+            # fallback path).
+            p0, p3 = points[0], points[-1]
+            d = _dist(p0, p3) / 3.0
+            return [p0,
+                    (p0[0] + ev0[0]*d, p0[1] + ev0[1]*d),
+                    (p3[0] + ev1[0]*d, p3[1] + ev1[1]*d),
+                    p3]
 
         # Chord-length parameterization
         dists = [0.0]
