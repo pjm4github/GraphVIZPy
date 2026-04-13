@@ -1194,35 +1194,177 @@ def _find_gap_obstacles(layout, box_i, box_j, tcl, hcl):
     return obstacles
 
 
+def _row_crossings(layout, p1, p2, tcl_nodes, hcl_nodes) -> list:
+    """Return non-member real nodes whose bbox the segment crosses."""
+    crossing: list = []
+    for node_name, ln in layout.lnodes.items():
+        if ln.virtual:
+            continue
+        if node_name in tcl_nodes or node_name in hcl_nodes:
+            continue
+        bb = (ln.x - ln.width / 2.0, ln.y - ln.height / 2.0,
+              ln.x + ln.width / 2.0, ln.y + ln.height / 2.0)
+        if _seg_hits_bbox(p1, p2, bb):
+            crossing.append(ln)
+    return crossing
+
+
+def _row_safe_cr(crossing: list, orig_cr: float, is_lr: bool,
+                  margin: float) -> float:
+    """Pick a safe cross-rank value just outside a row of node bboxes.
+
+    Returns the side (above or below the combined row bbox) that is
+    closer to ``orig_cr``, offset by ``margin``.
+    """
+    if is_lr:
+        row_min = min(ln.y - ln.height / 2.0 for ln in crossing)
+        row_max = max(ln.y + ln.height / 2.0 for ln in crossing)
+    else:
+        row_min = min(ln.x - ln.width / 2.0 for ln in crossing)
+        row_max = max(ln.x + ln.width / 2.0 for ln in crossing)
+    safe_above = row_min - margin
+    safe_below = row_max + margin
+    if abs(orig_cr - safe_above) <= abs(orig_cr - safe_below):
+        return safe_above
+    return safe_below
+
+
+def _bridge_row_detour(layout, b1, b2, waypt_i, waypt_j,
+                        tcl, hcl) -> list:
+    """Augment a two-point bridge with detours around any row of nodes.
+
+    After ``_bridge_points_for_obstacle`` picks a side and returns
+    ``[b1, b2]``, either the *top* leg (``waypt_i -> b1``) or the
+    *bottom* leg (``b2 -> waypt_j``) can run straight through a
+    row of real nodes — whenever the bridge column's row lines
+    happen to coincide with a cluster of neighbour nodes on other
+    ranks.  For each leg that crosses nodes we move its cross-rank
+    endpoint to just outside the row's combined bbox and add a
+    short finishing segment back to the original endpoint.
+
+    The result is a variable-length bridge with up to four waypoints
+    arranged as a staircase:
+
+        [b1_adjusted, b2_adjusted, b3 (optional), b4 (optional)]
+
+    Concrete cases on ``aa1332.dot``:
+
+    - ``c0 -> c5359`` bottom leg at y=674.4 crossed c4045/c4046/
+      c4253/c4254 (all at y≈686).  The detour drops to y=655 before
+      running east across the corridor, then rises back to 674.4 at
+      the head column.
+    - ``c6378 -> c6383`` top leg at y=479.2 crossed c6411 (at
+      y≈482).  The detour raises b1 past c6411's top edge before
+      going east, then rises back to 479.2 at the bridge column.
+
+    Returns ``None`` when neither leg needs a detour, leaving the
+    original two-point bridge in place.
+    """
+    is_lr = layout.rankdir in ("LR", "RL")
+    tcl_nodes = set(tcl.nodes) if tcl is not None else set()
+    hcl_nodes = set(hcl.nodes) if hcl is not None else set()
+    margin = float(getattr(layout, "_CL_OFFSET", 8.0))
+
+    top_crossing = _row_crossings(layout, waypt_i, b1, tcl_nodes, hcl_nodes)
+    bot_crossing = _row_crossings(layout, b2, waypt_j, tcl_nodes, hcl_nodes)
+    if not top_crossing and not bot_crossing:
+        return None
+
+    # Staircase points.  We may insert a detour on each leg.
+    points: list = []
+
+    if top_crossing:
+        # Move b1 into the safe cross-rank band, then add a
+        # finishing waypoint at the original b1 cross-rank so the
+        # vertical leg to b2 remains at the chosen bridge column.
+        safe_cr = _row_safe_cr(top_crossing, waypt_i[1] if is_lr else waypt_i[0],
+                                is_lr, margin)
+        if is_lr:
+            new_b1_entry = (waypt_i[0], safe_cr)
+            new_b1_col = (b1[0], safe_cr)
+        else:
+            new_b1_entry = (safe_cr, waypt_i[1])
+            new_b1_col = (safe_cr, b1[1])
+        points.extend([new_b1_entry, new_b1_col, b1])
+    else:
+        points.append(b1)
+
+    if bot_crossing:
+        safe_cr = _row_safe_cr(bot_crossing, b2[1] if is_lr else b2[0],
+                                is_lr, margin)
+        if is_lr:
+            new_b2_col = (b2[0], safe_cr)
+            new_b2_exit = (waypt_j[0], safe_cr)
+        else:
+            new_b2_col = (safe_cr, b2[1])
+            new_b2_exit = (safe_cr, waypt_j[1])
+        points.extend([new_b2_col, new_b2_exit])
+    else:
+        points.append(b2)
+
+    return points
+
+
+class _NodeObstacle:
+    """Adapter exposing a layout node as a cluster-like obstacle.
+
+    ``_find_segment_obstacles`` and ``_bridge_foreign_hits`` iterate
+    cluster-like objects that expose ``.bb``, ``.name``, and
+    ``.nodes``.  This tiny wrapper lets us mix individual node
+    bboxes into the same pipeline without changing the callers' shape.
+
+    The underlying motivation: channel routing used to treat cluster
+    bboxes as obstacles but ignored individual nodes.  A bridge
+    segment that avoided every cluster could still run straight
+    through a row of nodes (e.g. on ``aa1332.dot`` the
+    ``c0 -> c5359`` bridge bottom at y=674.4 ran through the
+    interiors of c4045, c4046, c4253, c4254 because none of their
+    wrapping clusters were flagged as an obstacle on the bridge's
+    own segments).  Including nodes in the obstacle list lets the
+    bridge-side scoring penalise those crossings so the router
+    picks a column that misses the row.
+    """
+    __slots__ = ("name", "bb", "nodes")
+
+    def __init__(self, name: str, ln: "LayoutNode"):
+        self.name = name
+        self.bb = (ln.x - ln.width / 2.0,
+                   ln.y - ln.height / 2.0,
+                   ln.x + ln.width / 2.0,
+                   ln.y + ln.height / 2.0)
+        self.nodes = {name}
+
+
 def _find_segment_obstacles(layout, p1, p2, name_i, name_j, tcl, hcl):
-    """Return non-member clusters whose bbox the segment ``p1→p2`` hits.
+    """Return the obstacles the segment ``p1→p2`` actually crosses.
 
-    Step 6b analogue of :func:`_find_gap_obstacles`.  Instead of looking
-    inside the narrow cross-rank "gap" between two disjoint boxes, we
-    test the actual segment between the two clamped base waypoints
-    against every cluster bbox.  This catches obstacles a straight-line
-    diagonal would cross when the boxes are far apart on the cross-rank
-    axis (e.g. ``c4254→c4258`` on ``aa1332.dot``, where the old gap
-    check saw only the narrow ``[396,428]`` strip and missed a cluster
-    sitting at ``cr≈500-800``).
+    Obstacles are any combination of:
 
-    Skipped:
+    - **Non-member clusters** whose bbox the segment enters.  Skipped:
+      clusters with no bb; ``tcl`` / ``hcl`` and their ancestors
+      (``tcl.nodes ⊆ cl.nodes``); clusters that contain the segment's
+      own endpoint node (the edge naturally exits that cluster's
+      wall on the way past).
 
-    - Clusters with no bb (unpositioned).
-    - Clusters the edge legitimately belongs to: ``tcl`` / ``hcl`` and
-      any of their ancestors (``tcl.nodes ⊆ cl.nodes`` or
-      ``hcl.nodes ⊆ cl.nodes``).
-    - Clusters that contain the segment's own node endpoint (the edge
-      naturally exits that cluster's wall on the way past).
+    - **Non-endpoint real nodes** whose bbox the segment enters,
+      wrapped in :class:`_NodeObstacle`.  This catches cases where a
+      long bridge segment runs along a cross-rank corridor populated
+      by a row of real nodes — the bridge column then gets penalised
+      via :func:`_bridge_foreign_hits` and the opposite side wins.
+      Skipped: virtual nodes; the segment's own endpoints
+      (``name_i`` / ``name_j``); the edge's tail / head (they may be
+      touched at the stub points).
 
-    Returned sorted by decreasing cross-rank extent so the outermost
-    (most constraining) blocker comes first, mirroring
-    :func:`_find_gap_obstacles`.
+    Returned sorted by decreasing cross-rank extent, so the most
+    constraining blocker comes first and the bridge logic wraps
+    around it preferentially.
     """
     is_lr = layout.rankdir in ("LR", "RL")
     tcl_nodes = set(tcl.nodes) if tcl is not None else set()
     hcl_nodes = set(hcl.nodes) if hcl is not None else set()
     hits: list = []
+
+    # Cluster obstacles.
     for cl in layout._clusters:
         if not cl.bb:
             continue
@@ -1235,6 +1377,20 @@ def _find_segment_obstacles(layout, p1, p2, name_i, name_j, tcl, hcl):
             continue
         if _seg_hits_bbox(p1, p2, cl.bb):
             hits.append(cl)
+
+    # Node obstacles — treat each non-endpoint real node as a
+    # cluster-shaped obstacle with its own bbox.
+    for node_name, ln in layout.lnodes.items():
+        if ln.virtual:
+            continue
+        if node_name == name_i or node_name == name_j:
+            continue
+        if node_name in tcl_nodes or node_name in hcl_nodes:
+            continue
+        obs = _NodeObstacle(node_name, ln)
+        if _seg_hits_bbox(p1, p2, obs.bb):
+            hits.append(obs)
+
     if is_lr:
         hits.sort(key=lambda c: -(c.bb[3] - c.bb[1]))
     else:
@@ -1276,7 +1432,8 @@ def _seg_hits_bbox(p1, p2, bb) -> bool:
 
 def _bridge_foreign_hits(layout, waypt_i, waypt_j, bridges,
                           obstacle, tcl, hcl) -> int:
-    """Count non-member clusters the bridge segments would cross.
+    """Count non-member clusters AND non-endpoint nodes the bridge
+    segments would cross.
 
     The bridge consists of three segments:
 
@@ -1284,10 +1441,22 @@ def _bridge_foreign_hits(layout, waypt_i, waypt_j, bridges,
     2. ``bridges[0]`` → ``bridges[1]`` (cross-rank column at side_r)
     3. ``bridges[1]`` → ``waypt_j``   (rank-axis lateral leg)
 
-    A cluster counts as a hit when any of the three segments enters
-    its bbox, **excluding** ``obstacle`` itself, ``tcl``/``hcl`` (the
-    edge's own clusters), and any ancestor cluster of ``tcl`` or
-    ``hcl`` (those legitimately contain the edge).
+    Each cluster or node counts as one hit when *any* of the three
+    segments enters its bbox, **excluding**:
+
+    - the primary ``obstacle`` being bridged around (bridges wrap
+      around it by design);
+    - ``tcl``/``hcl`` and their ancestor clusters (those legitimately
+      contain the edge);
+    - clusters that contain ``obstacle`` itself (wrapping clusters
+      that the bridge path is already grazing).
+    - virtual nodes and the edge's tail / head (they sit at the
+      segment's endpoints).
+
+    Including nodes in the count is what makes the scoring prefer
+    a bridge column that *misses* a row of aligned nodes; without
+    it the bridge could run straight through e.g. c4045/c4046/
+    c4253/c4254 on aa1332.dot without any penalty.
     """
     segs = (
         (waypt_i, bridges[0]),
@@ -1296,7 +1465,12 @@ def _bridge_foreign_hits(layout, waypt_i, waypt_j, bridges,
     )
     tcl_nodes = set(tcl.nodes) if tcl is not None else set()
     hcl_nodes = set(hcl.nodes) if hcl is not None else set()
+    # Identify the edge's own tail / head names so node-scoring
+    # doesn't double-count them as hits.
+    edge_tail_name = next(iter(tcl_nodes)) if len(tcl_nodes) == 1 else None
+    edge_head_name = next(iter(hcl_nodes)) if len(hcl_nodes) == 1 else None
     hits = 0
+    # Cluster hits.
     for cl in layout._clusters:
         if cl is obstacle or not cl.bb:
             continue
@@ -1309,6 +1483,21 @@ def _bridge_foreign_hits(layout, waypt_i, waypt_j, bridges,
             continue
         for s1, s2 in segs:
             if _seg_hits_bbox(s1, s2, cl.bb):
+                hits += 1
+                break
+    # Node hits — a row of aligned nodes in a corridor is the main
+    # offender the cluster-only scoring missed.
+    for node_name, ln in layout.lnodes.items():
+        if ln.virtual:
+            continue
+        if node_name == edge_tail_name or node_name == edge_head_name:
+            continue
+        if node_name in tcl_nodes or node_name in hcl_nodes:
+            continue
+        bb = (ln.x - ln.width / 2.0, ln.y - ln.height / 2.0,
+              ln.x + ln.width / 2.0, ln.y + ln.height / 2.0)
+        for s1, s2 in segs:
+            if _seg_hits_bbox(s1, s2, bb):
                 hits += 1
                 break
     return hits
@@ -1470,16 +1659,28 @@ def _bridge_points_for_obstacle(layout, waypt_i, waypt_j, obstacle,
 
     # Hard face-side preference: if exactly one side complies, use it.
     if left_ok and not right_ok:
-        return left_pts
-    if right_ok and not left_ok:
-        return right_pts
-
+        chosen = left_pts
+    elif right_ok and not left_ok:
+        chosen = right_pts
     # Both comply (or both fail) — fall through to scoring.
-    if left_hits < right_hits:
-        return left_pts
-    if right_hits < left_hits:
-        return right_pts
-    return fallback
+    elif left_hits < right_hits:
+        chosen = left_pts
+    elif right_hits < left_hits:
+        chosen = right_pts
+    else:
+        chosen = fallback
+
+    # Step 6d — row detour.  If the chosen bridge's bottom leg
+    # ``chosen[1] -> waypt_j`` runs straight through a row of
+    # real nodes (happens when the head's rank y-band contains
+    # other nodes on adjacent ranks — cf. c0->c5359 crossing
+    # c4045/c4046/c4253/c4254), augment the bridge with a
+    # staircase detour around the row.
+    detoured = _bridge_row_detour(layout, chosen[0], chosen[1],
+                                   waypt_i, waypt_j, tcl, hcl)
+    if detoured is not None:
+        return detoured
+    return chosen
 
 
 def _perp_stub(ln: "LayoutNode", boundary_pt: tuple[float, float],
