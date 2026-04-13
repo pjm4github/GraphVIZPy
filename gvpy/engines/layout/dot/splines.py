@@ -211,9 +211,11 @@ def _apply_parallel_offsets(layout):
     is what ``le.points`` stores after bezier conversion) produces
     the same curve translated by the sin-taper displacement field.
 
-    The minimum routing separation defaults to
-    ``max(6, layout.nodesep / 3)`` so adjacent parallel edges are
-    always visually distinguishable.
+    The minimum routing separation is ``layout._CL_OFFSET`` (8pt by
+    default) — the same gap the cluster-layout phase uses between a
+    cluster's enclosure bbox and its enclosed nodes.  Matching these
+    two separations keeps the visual "breathing room" consistent
+    between inside-cluster layout and between-parallel-edge routing.
     """
     import math
     from collections import defaultdict
@@ -237,7 +239,7 @@ def _apply_parallel_offsets(layout):
             continue
         groups[(le.tail_name, le.head_name)].append(le)
 
-    sep = max(6.0, layout.nodesep / 3.0)
+    sep = float(getattr(layout, "_CL_OFFSET", 8.0))
 
     for (tail_name, head_name), edges in groups.items():
         if len(edges) < 2 or tail_name == head_name:
@@ -267,12 +269,38 @@ def _apply_parallel_offsets(layout):
             m = len(le.points)
             if m < 2:
                 continue
-            shifted: list[tuple[float, float]] = []
-            for j, p in enumerate(le.points):
-                t = j / (m - 1)
-                factor = math.sin(math.pi * t)
-                shifted.append((p[0] + ox * factor, p[1] + oy * factor))
-            le.points = shifted
+            # Bezier detection: ``[P0, C1, C2, P1, C3, C4, P2, ...]``
+            # has length ``3k + 1`` with k cubic segments.  Anchors
+            # sit at indices ``3k``; control ``C_{k,1}`` (index 3k+1)
+            # shifts with anchor ``P_k`` and control ``C_{k,2}``
+            # (index 3k+2) shifts with anchor ``P_{k+1}``.  Grouping
+            # each control with its nearest anchor preserves the
+            # tangent direction at every anchor, so the perpendicular
+            # stubs at each end still produce a right-angle exit.
+            is_bezier = (le.spline_type == "bezier"
+                         and m >= 4 and (m - 1) % 3 == 0)
+            if is_bezier:
+                num_anchors = (m - 1) // 3 + 1
+                denom = max(num_anchors - 1, 1)
+                shifted: list[tuple[float, float]] = []
+                for i, p in enumerate(le.points):
+                    # Map point index to the anchor index whose
+                    # offset governs this point.
+                    anchor_idx = (i + 1) // 3
+                    t = anchor_idx / denom
+                    factor = math.sin(math.pi * t)
+                    shifted.append((p[0] + ox * factor,
+                                    p[1] + oy * factor))
+                le.points = shifted
+            else:
+                # Raw polyline: per-point sin-taper.
+                shifted = []
+                for j, p in enumerate(le.points):
+                    t = j / (m - 1)
+                    factor = math.sin(math.pi * t)
+                    shifted.append((p[0] + ox * factor,
+                                    p[1] + oy * factor))
+                le.points = shifted
 
 
 def clip_compound_edges(layout):
@@ -1325,6 +1353,54 @@ def _bridge_points_for_obstacle(layout, waypt_i, waypt_j, obstacle,
     return fallback
 
 
+def _perp_stub(ln: "LayoutNode", boundary_pt: tuple[float, float],
+               stub_len: float) -> tuple[float, float]:
+    """Return a stub point just outside ``boundary_pt`` on ``ln``.
+
+    Determines which face of ``ln`` (east/west/north/south) the
+    attach point lies on and offsets the stub along the *axis-aligned*
+    outward normal of that face by ``stub_len``.  Face detection is
+    signed-distance-based: the face whose plane is closest to
+    ``boundary_pt`` wins, and ties fall through east/west before
+    north/south.
+
+    Using the axis-aligned face normal rather than a centre-to-point
+    direction matters for record-shape ports that sit off-centre on
+    a rank face — the geometric normal is still pure east/west/etc,
+    but a centre-to-point vector would pick up a spurious cross-rank
+    component (e.g. (0.987, 0.157) instead of (1, 0) for an Out1
+    port one third down the east face).  That spurious component
+    leaked into ``to_bezier``'s ``ev0`` and made the fitted curve
+    start at an angle instead of perpendicular to the face.
+
+    Inserting this stub point right after (or right before) the
+    boundary point in the edge polyline forces the first (or last)
+    polyline segment to be parallel to the face normal, which becomes
+    ``to_bezier``'s tangent estimate so the fitted Bezier curve
+    leaves / enters the node face at a right angle.
+    """
+    hw = ln.width / 2.0
+    hh = ln.height / 2.0
+    east = ln.x + hw
+    west = ln.x - hw
+    north = ln.y - hh
+    south = ln.y + hh
+    # Signed distance of the attach point to each face plane.  The
+    # smallest absolute value identifies the face the point sits on.
+    d_east = abs(east - boundary_pt[0])
+    d_west = abs(boundary_pt[0] - west)
+    d_north = abs(boundary_pt[1] - north)
+    d_south = abs(south - boundary_pt[1])
+    best = min(d_east, d_west, d_north, d_south)
+    if best == d_east:
+        return (boundary_pt[0] + stub_len, boundary_pt[1])
+    if best == d_west:
+        return (boundary_pt[0] - stub_len, boundary_pt[1])
+    if best == d_north:
+        return (boundary_pt[0], boundary_pt[1] - stub_len)
+    return (boundary_pt[0], boundary_pt[1] + stub_len)
+
+
 def route_through_channel_boxes(
     layout,
     le: "LayoutEdge",
@@ -1412,13 +1488,29 @@ def route_through_channel_boxes(
             waypoints.extend(bridges)
         waypoints.append(base[i + 1])
 
-    # Replace endpoints with proper boundary/port points.
+    # Replace endpoints with proper boundary/port points, and insert
+    # short perpendicular stub waypoints just past each boundary so
+    # the curve leaves / enters the node face at a right angle.  The
+    # stub direction is the outward normal at the attach point (see
+    # :func:`_perp_stub` docstring); the stub length is CL_OFFSET (8pt)
+    # which matches the cluster-margin default and blends visually
+    # with the cluster border separation.
     if path_names:
         tail = layout.lnodes.get(path_names[0])
         head = layout.lnodes.get(path_names[-1])
         if tail is not None and head is not None:
-            waypoints[0] = layout._edge_start_point(le, tail, head)
-            waypoints[-1] = layout._edge_end_point(le, head, tail)
+            exit_pt = layout._edge_start_point(le, tail, head)
+            entry_pt = layout._edge_end_point(le, head, tail)
+            waypoints[0] = exit_pt
+            waypoints[-1] = entry_pt
+            stub_len = float(getattr(layout, "_CL_OFFSET", 8.0))
+            stub_out = _perp_stub(tail, exit_pt, stub_len)
+            stub_in = _perp_stub(head, entry_pt, stub_len)
+            # Insert stubs between the boundary points and their
+            # adjacent interior waypoints.  For a 2-point polyline
+            # this produces [exit, stub_out, stub_in, entry].
+            interior = waypoints[1:-1]
+            waypoints = [exit_pt, stub_out] + list(interior) + [stub_in, entry_pt]
 
     return waypoints
 
