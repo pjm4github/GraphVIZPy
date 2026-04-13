@@ -1314,8 +1314,61 @@ def _bridge_foreign_hits(layout, waypt_i, waypt_j, bridges,
     return hits
 
 
+def _face_constraint_side(ln: "LayoutNode",
+                           face_pt: tuple[float, float],
+                           is_lr: bool) -> float | None:
+    """Return the rank-axis value the bridge column must respect.
+
+    If ``face_pt`` (an attach / stub point) sits on a specific face
+    of ``ln``, returns the rank-axis coordinate the bridge column
+    must stay on the *outside* of so that the final segment from
+    the bridge to ``face_pt`` approaches from outside the node
+    rather than crossing its interior.
+
+    The sign convention returned is:
+      - ``(+1, threshold)`` → bridge.r must be ``>= threshold``
+      - ``(-1, threshold)`` → bridge.r must be ``<= threshold``
+      - ``None``            → ``face_pt`` is not clearly on any
+                              face (diagonal corner, not a port)
+
+    For a west-face attach (``face_pt`` on ln's west face in LR),
+    the bridge column must sit at ``x <= ln.x - ln.width/2`` so the
+    final segment runs east into the face from outside the node.
+    Symmetric for east (``x >= east``), north (``y <= north``), and
+    south (``y >= south``).
+
+    In LR mode ``is_lr=True`` the rank axis is X, so west/east
+    faces yield rank-axis constraints.  In TB mode the rank axis
+    is Y, so north/south faces yield the constraints.  A face
+    whose normal points along the *cross-rank* axis (e.g. north/
+    south in LR) can't be avoided by adjusting the rank-axis
+    bridge column and returns ``None``.
+    """
+    hw = ln.width / 2.0
+    hh = ln.height / 2.0
+    tol = 1e-3
+    on_east = abs(face_pt[0] - (ln.x + hw)) < tol
+    on_west = abs(face_pt[0] - (ln.x - hw)) < tol
+    on_north = abs(face_pt[1] - (ln.y - hh)) < tol
+    on_south = abs(face_pt[1] - (ln.y + hh)) < tol
+    if is_lr:
+        if on_east:
+            return (+1, ln.x + hw)
+        if on_west:
+            return (-1, ln.x - hw)
+        return None
+    else:
+        if on_south:
+            return (+1, ln.y + hh)
+        if on_north:
+            return (-1, ln.y - hh)
+        return None
+
+
 def _bridge_points_for_obstacle(layout, waypt_i, waypt_j, obstacle,
-                                 tcl=None, hcl=None):
+                                 tcl=None, hcl=None,
+                                 tail_ln=None, tail_face_pt=None,
+                                 head_ln=None, head_face_pt=None):
     """Return the two bridge waypoints routing around ``obstacle``.
 
     Step 6a — obstacle-aware side selection
@@ -1333,6 +1386,28 @@ def _bridge_points_for_obstacle(layout, waypt_i, waypt_j, obstacle,
     segments would cross (via :func:`_bridge_foreign_hits`), and
     pick the side with fewer hits.  Ties fall back to the midpoint
     heuristic so behaviour is unchanged when neither side conflicts.
+
+    Step 6c — head/tail face constraint
+    -----------------------------------
+    When this segment's ``waypt_i`` / ``waypt_j`` sits on a node
+    face (identified via the optional ``tail_face_pt`` / ``head_
+    face_pt`` hints the caller passes in), a *hard* face-side
+    preference applies: the bridge column must lie on the face's
+    outside so the final bridge leg approaches the attach point
+    from outside the node rather than crossing its interior.  Both
+    sides are tested against the constraint; only compliant sides
+    are scored by :func:`_bridge_foreign_hits`.  If both sides
+    satisfy (or both fail), we fall through to the scoring +
+    midpoint fallback as before.
+
+    Concrete case: ``c0->c5359`` chain with the head port In0 on
+    c5359's west face at ``x=2466.8``.  Without the constraint the
+    scoring picked the right side (``x=2608``, east of c5359) and
+    the final bridge leg crossed c5359's interior before hitting
+    the west face — producing a visible 8pt stub overshooting the
+    west edge of the node.  With the constraint the head-face
+    bias forces the left side (``x=1730``, west of c5359) so the
+    bridge leg approaches from outside the node.
     """
     is_lr = layout.rankdir in ("LR", "RL")
     ox1, oy1, ox2, oy2 = obstacle.bb
@@ -1360,6 +1435,28 @@ def _bridge_points_for_obstacle(layout, waypt_i, waypt_j, obstacle,
         left_pts = [(cr_i, left_side_r), (cr_j, left_side_r)]
         right_pts = [(cr_i, right_side_r), (cr_j, right_side_r)]
 
+    # Step 6c — face-side constraint.  Compute per-side compliance
+    # with any head/tail attach-face hints the caller provided.  A
+    # non-compliant side would cause the final bridge leg to cross
+    # the head or tail node's interior before reaching the stub, so
+    # we treat compliance as a hard preference over cluster hits.
+    def _side_complies(side_r: float) -> bool:
+        for ln, pt in ((tail_ln, tail_face_pt), (head_ln, head_face_pt)):
+            if ln is None or pt is None:
+                continue
+            constraint = _face_constraint_side(ln, pt, is_lr)
+            if constraint is None:
+                continue
+            sign, threshold = constraint
+            if sign > 0 and side_r < threshold:
+                return False
+            if sign < 0 and side_r > threshold:
+                return False
+        return True
+
+    left_ok = _side_complies(left_side_r)
+    right_ok = _side_complies(right_side_r)
+
     left_hits = _bridge_foreign_hits(
         layout, waypt_i, waypt_j, left_pts, obstacle, tcl, hcl)
     right_hits = _bridge_foreign_hits(
@@ -1371,6 +1468,13 @@ def _bridge_points_for_obstacle(layout, waypt_i, waypt_j, obstacle,
     left_closer = (r_mid - o_r_min) <= (o_r_max - r_mid)
     fallback = left_pts if left_closer else right_pts
 
+    # Hard face-side preference: if exactly one side complies, use it.
+    if left_ok and not right_ok:
+        return left_pts
+    if right_ok and not left_ok:
+        return right_pts
+
+    # Both comply (or both fail) — fall through to scoring.
     if left_hits < right_hits:
         return left_pts
     if right_hits < left_hits:
@@ -1533,8 +1637,18 @@ def route_through_channel_boxes(
     # insert bridge waypoints whenever a segment actually crosses a
     # non-member cluster bbox.  ``_find_segment_obstacles`` sees the
     # stub-pulled coordinates so it only reports real crossings.
+    #
+    # For each segment we also compute whether either endpoint is
+    # "near" the tail or head attach face, so :func:`_bridge_points_
+    # for_obstacle` can apply its face-side constraint (step 6c):
+    # the bridge column must sit on the outside of the head / tail
+    # face so the final bridge leg doesn't cross the node interior
+    # before reaching the stub.  The "near" test is just index-based
+    # because ``skeleton`` is always built as
+    # ``[exit, stub_out, mid..., stub_in, entry]``.
+    last = len(skeleton) - 1
     waypoints: list[tuple[float, float]] = [skeleton[0]]
-    for i in range(len(skeleton) - 1):
+    for i in range(last):
         p_i = skeleton[i]
         p_j = skeleton[i + 1]
         # Segment owner node names for the keepout filter (skip
@@ -1544,7 +1658,7 @@ def route_through_channel_boxes(
         # corresponding base index.
         if i == 0:
             ni, nj = path_names[0], path_names[0]
-        elif i == len(skeleton) - 2:
+        elif i == last - 1:
             ni, nj = path_names[-1], path_names[-1]
         else:
             ni = path_names[i - 1] if i - 1 < len(path_names) else path_names[0]
@@ -1552,8 +1666,31 @@ def route_through_channel_boxes(
         obstacles = _find_segment_obstacles(
             layout, p_i, p_j, ni, nj, tcl, hcl)
         if obstacles:
+            # Pass face hints: p_i touches the tail face iff it's
+            # the first skeleton point (``exit_pt``) or the stub_out
+            # that sits one stub_len outside the face.  Similarly
+            # for p_j at the head end.  We pass the actual attach
+            # point (``exit_pt`` / ``entry_pt``) as the face hint,
+            # not the stub, because the face-side check projects
+            # onto the node's face planes.
+            # The tail face hint applies when the segment's start
+            # point (p_i) is the exit or the stub_out just past it
+            # — segment indices 0 and 1.  The head hint applies
+            # when the segment's end point (p_j) is the stub_in
+            # (at skeleton index last-1) or the entry (at last) —
+            # segment indices last-2 and last-1.  Without this the
+            # bridge inserted on the ``v4 -> stub_in`` segment
+            # wouldn't see any face constraint and would pick the
+            # wrong side of the obstacle.
+            b_tail_ln = tail if i <= 1 else None
+            b_tail_pt = exit_pt if i <= 1 else None
+            b_head_ln = head if i >= last - 2 else None
+            b_head_pt = entry_pt if i >= last - 2 else None
             bridges = _bridge_points_for_obstacle(
-                layout, p_i, p_j, obstacles[0], tcl=tcl, hcl=hcl)
+                layout, p_i, p_j, obstacles[0],
+                tcl=tcl, hcl=hcl,
+                tail_ln=b_tail_ln, tail_face_pt=b_tail_pt,
+                head_ln=b_head_ln, head_face_pt=b_head_pt)
             waypoints.extend(bridges)
         waypoints.append(p_j)
 
