@@ -1752,6 +1752,113 @@ def _bridge_points_for_obstacle(layout, waypt_i, waypt_j, obstacle,
     return chosen
 
 
+def _remove_polyline_spikes(pts: list) -> list:
+    """Drop per-axis overshoot spikes from a polyline.
+
+    Iteratively scans every triplet ``(p0, p1, p2)`` and removes
+    ``p1`` whenever it is an *overshoot* on either axis, i.e. the
+    route walks past ``p2``'s rank-axis (or cross-rank-axis) value
+    at ``p1`` and then backtracks to ``p2``.  The formal test on
+    each axis ``a`` is:
+
+        sign(p1_a - p0_a) != sign(p2_a - p1_a)     # direction reverses
+        sign(p1_a - p0_a) == sign(p2_a - p0_a)     # but the overall
+                                                  # net displacement
+                                                  # still points the
+                                                  # same way as the
+                                                  # first segment
+
+    i.e. going ``p0 -> p1`` overshoots ``p2_a`` on axis ``a`` and
+    the second segment ``p1 -> p2`` corrects that overshoot.  This
+    strictly generalises the collinear-backtrack case (where both
+    axes satisfy the test) to off-axis detours like
+    ``stub_out (1670.8, 42.7) -> v1 (1802.5, 31) -> bridge1
+    (1730, 31)``: the virtual ``v1`` overshoots ``bridge1``'s x by
+    72.5 units even though the three points aren't strictly
+    collinear.
+
+    Each removal restarts the scan so multi-point spikes collapse
+    step by step: a run like ``A -> east -> east -> east -> east
+    -> west to B`` peels off one east-going point per pass until
+    only ``[A, B]`` remains.  Removal is safe because ``p2`` is
+    still reachable from ``p0`` directly — we're just dropping the
+    out-of-way detour that the channel router produced when a
+    bridge column landed behind the chain virtuals.
+
+    Why this is needed: when the channel router inserts a bridge
+    whose column lies on the opposite side of the chain virtuals
+    — e.g. ``c0 -> c5359`` with virtuals at x=1802..2348 and a
+    bridge column at x=1730 — the pre-bezier polyline threads
+    through the virtuals first and then U-turns back to the
+    bridge.  After bezier smoothing this shows up as a visible
+    stub that "goes nowhere": an eastward excursion spiking out
+    from the bridge column with no connection on the other end.
+    Dropping the east-side virtuals collapses the U-turn to a
+    clean ``stub_out -> bridge1 -> bridge2 -> ...`` path.
+
+    Safe to run on any polyline: if no triplet is an overshoot
+    the input is returned unchanged.
+    """
+    if len(pts) < 3:
+        return list(pts)
+    result = list(pts)
+    eps = 1e-6
+    # 5% slack on the projection test.  A point whose scalar
+    # projection onto the ``p0 -> p2`` line is in ``[-tol, 1+tol]``
+    # is considered on-route — this prevents us from peeling off
+    # legitimate bridge corners whose projection lands just barely
+    # outside [0, 1] due to a small cross-rank misalignment (e.g.
+    # ``bridge1`` at (1730, 31) projects to t = -0.0096 on the
+    # segment stub_out(1670.8, 42.7) -> bridge2(1730, 701) because
+    # the tail stub is 11.7pt below the bridge column's top row).
+    # Only real overshoots (t well outside [0, 1]) get removed.
+    proj_tol = 0.05
+    changed = True
+    while changed:
+        changed = False
+        i = 1
+        while i < len(result) - 1:
+            p0 = result[i - 1]
+            p1 = result[i]
+            p2 = result[i + 1]
+            # Scalar projection of p1 onto the straight line from
+            # p0 to p2.  If ``t`` falls well outside [0, 1] then
+            # ``p1`` is *off-route* — it lies before p0 or after
+            # p2 along the direction from p0 to p2 — which is the
+            # signature of a backtrack detour.  A t in [0, 1]
+            # means p1 sits on the segment and is a legitimate
+            # interior waypoint.
+            v02x = p2[0] - p0[0]
+            v02y = p2[1] - p0[1]
+            seg_len_sq = v02x * v02x + v02y * v02y
+            is_spike = False
+            if seg_len_sq < eps:
+                # p0 and p2 coincide — p1 is a zero-length detour
+                # unless it's also at the same point.
+                v01x = p1[0] - p0[0]
+                v01y = p1[1] - p0[1]
+                if (v01x * v01x + v01y * v01y) > eps:
+                    is_spike = True
+            else:
+                v01x = p1[0] - p0[0]
+                v01y = p1[1] - p0[1]
+                t = (v01x * v02x + v01y * v02y) / seg_len_sq
+                if t < -proj_tol or t > 1.0 + proj_tol:
+                    is_spike = True
+            if is_spike:
+                # Removing p1 shortcuts to the straight line from
+                # p0 to p2, dropping the out-of-way detour.  Back
+                # up one index so multi-point U-turns peel off
+                # head-to-tail.
+                del result[i]
+                changed = True
+                if i > 1:
+                    i -= 1
+                continue
+            i += 1
+    return result
+
+
 def _perp_stub(ln: "LayoutNode", boundary_pt: tuple[float, float],
                stub_len: float) -> tuple[float, float]:
     """Return a stub point just outside ``boundary_pt`` on ``ln``.
@@ -1974,7 +2081,15 @@ def route_through_channel_boxes(
             waypoints.extend(bridges)
         waypoints.append(p_j)
 
-    return waypoints
+    # Step 6e — spike removal.  If a bridge column landed on the
+    # opposite side of the chain virtuals, the polyline now
+    # contains an axis-aligned U-turn where the route walks east
+    # through the virtuals, reverses course at the last virtual,
+    # and heads back west to the bridge column.  The resulting
+    # bezier draws as a visible stub spiking out from the bridge
+    # column with no connection on the other end.  Collapse any
+    # such backtrack before returning.
+    return _remove_polyline_spikes(waypoints)
 
 
 def _split_at_sharp_corners(pts, cos_threshold: float = 0.8):
