@@ -681,6 +681,30 @@ def skeleton_mincross(layout):
                 mc_fg_out: dict[str, list[str]] = defaultdict(list)
                 mc_fg_in: dict[str, list[str]] = defaultdict(list)
                 mc_seen: set[tuple[str, str]] = set()
+
+                def _skel_sub(name: str) -> str:
+                    """Map a real node that's currently hidden by a
+                    child cluster's skeleton to that skeleton node at
+                    the node's rank.
+
+                    During ``cl_name``'s local mincross, every child
+                    sub-cluster is collapsed to a row of ``_skel_*``
+                    nodes and its real members are recorded in
+                    ``hidden_by``.  When we hand ``mc_fg_in`` /
+                    ``mc_fg_out`` to ``cluster_medians`` it walks
+                    ``layout.ranks[adj_rank]`` looking for neighbours;
+                    a hidden real node will not be there, so its mval
+                    contribution gets silently dropped.  Substitute
+                    the live skeleton representation so the median
+                    computation sees something at the right order.
+                    """
+                    hider = hidden_by.get(name)
+                    if hider is None:
+                        return name
+                    r = layout.lnodes[name].rank
+                    skel = skeleton_nodes.get(hider, {}).get(r)
+                    return skel if skel is not None else name
+
                 for le in layout.ledges:
                     t, h = le.tail_name, le.head_name
                     if t not in cl_node_set and h not in cl_node_set:
@@ -706,11 +730,20 @@ def skeleton_mincross(layout):
                     h_ch = child_cl_map.get(h)
                     if t_ch and h_ch and t_ch == h_ch:
                         continue
-                    pair = (t, h)
+                    # Substitute hidden real nodes with their
+                    # currently-active skeleton representation so
+                    # cluster_medians can find them in layout.ranks
+                    # at the right rank+order.  Without this, virtual
+                    # nodes whose upstream/downstream neighbour lives
+                    # in a sibling child cluster get mval=-1 and drift
+                    # to the end of their rank.
+                    t_sub = _skel_sub(t)
+                    h_sub = _skel_sub(h)
+                    pair = (t_sub, h_sub)
                     if pair not in mc_seen:
                         mc_seen.add(pair)
-                        mc_fg_out[t].append(h)
-                        mc_fg_in[h].append(t)
+                        mc_fg_out[t_sub].append(h_sub)
+                        mc_fg_in[h_sub].append(t_sub)
 
                 # C ncross() (mincross.c:1617) uses ND_out which is
                 # the cluster's scoped fast graph — intra-child-cluster
