@@ -211,11 +211,11 @@ def _apply_parallel_offsets(layout):
     is what ``le.points`` stores after bezier conversion) produces
     the same curve translated by the sin-taper displacement field.
 
-    The minimum routing separation is ``layout._CL_OFFSET`` (8pt by
-    default) — the same gap the cluster-layout phase uses between a
-    cluster's enclosure bbox and its enclosed nodes.  Matching these
-    two separations keeps the visual "breathing room" consistent
-    between inside-cluster layout and between-parallel-edge routing.
+    The minimum routing separation is ``layout._routing_channel``
+    (defaulting to ``_CL_OFFSET`` = 8pt).  This is the same settable
+    knob the channel router uses for stub length, bridge column
+    margin, and row-detour margin — changing it dials every routing
+    clearance in one place.
     """
     import math
     from collections import defaultdict
@@ -239,7 +239,8 @@ def _apply_parallel_offsets(layout):
             continue
         groups[(le.tail_name, le.head_name)].append(le)
 
-    sep = float(getattr(layout, "_CL_OFFSET", 8.0))
+    sep = float(getattr(layout, "_routing_channel",
+                         getattr(layout, "_CL_OFFSET", 8.0)))
 
     for (tail_name, head_name), edges in groups.items():
         if len(edges) < 2 or tail_name == head_name:
@@ -1194,13 +1195,20 @@ def _find_gap_obstacles(layout, box_i, box_j, tcl, hcl):
     return obstacles
 
 
-def _row_crossings(layout, p1, p2, tcl_nodes, hcl_nodes) -> list:
-    """Return non-member real nodes whose bbox the segment crosses."""
+def _row_crossings(layout, p1, p2, skip_names: set[str]) -> list:
+    """Return real nodes whose bbox the segment crosses.
+
+    ``skip_names`` is the set of node names to exclude — typically
+    the edge's specific tail and head nodes plus the virtual-node
+    endpoints of the current segment.  We do NOT exclude *siblings*
+    of the tail/head that happen to share a wrapping cluster, since
+    those sibling nodes are still obstacles the route must avoid.
+    """
     crossing: list = []
     for node_name, ln in layout.lnodes.items():
         if ln.virtual:
             continue
-        if node_name in tcl_nodes or node_name in hcl_nodes:
+        if node_name in skip_names:
             continue
         bb = (ln.x - ln.width / 2.0, ln.y - ln.height / 2.0,
               ln.x + ln.width / 2.0, ln.y + ln.height / 2.0)
@@ -1230,7 +1238,7 @@ def _row_safe_cr(crossing: list, orig_cr: float, is_lr: bool,
 
 
 def _bridge_row_detour(layout, b1, b2, waypt_i, waypt_j,
-                        tcl, hcl) -> list:
+                        tcl, hcl, skip_names: set[str] | None = None) -> list:
     """Augment a two-point bridge with detours around any row of nodes.
 
     After ``_bridge_points_for_obstacle`` picks a side and returns
@@ -1261,14 +1269,61 @@ def _bridge_row_detour(layout, b1, b2, waypt_i, waypt_j,
     original two-point bridge in place.
     """
     is_lr = layout.rankdir in ("LR", "RL")
-    tcl_nodes = set(tcl.nodes) if tcl is not None else set()
-    hcl_nodes = set(hcl.nodes) if hcl is not None else set()
-    margin = float(getattr(layout, "_CL_OFFSET", 8.0))
+    margin = float(getattr(layout, "_routing_channel",
+                            getattr(layout, "_CL_OFFSET", 8.0)))
+    skip = set(skip_names) if skip_names else set()
 
-    top_crossing = _row_crossings(layout, waypt_i, b1, tcl_nodes, hcl_nodes)
-    bot_crossing = _row_crossings(layout, b2, waypt_j, tcl_nodes, hcl_nodes)
-    if not top_crossing and not bot_crossing:
+    top_crossing = _row_crossings(layout, waypt_i, b1, skip)
+    mid_crossing = _row_crossings(layout, b1, b2, skip)
+    bot_crossing = _row_crossings(layout, b2, waypt_j, skip)
+    if not top_crossing and not mid_crossing and not bot_crossing:
         return None
+
+    # Vertical-leg detour.  When the b1 -> b2 column passes through
+    # a node's rank-axis range, we shift the column to just outside
+    # the node's rank-axis bbox so the column runs in free space.
+    # This also forces the top and bottom legs to extend to the new
+    # column, so a shifted column propagates into their row-detour
+    # inputs naturally.
+    shifted_b1 = b1
+    shifted_b2 = b2
+    if mid_crossing:
+        # Pick the outermost (largest rank-axis extent) node to
+        # dodge around.  The bridge's current rank-axis coordinate
+        # is ``b1[0]`` (LR) or ``b1[1]`` (TB) — same for b2 since
+        # both share the column.
+        if is_lr:
+            mid_crossing.sort(key=lambda n: -n.width)
+            nd = mid_crossing[0]
+            nl = nd.x - nd.width / 2.0
+            nr = nd.x + nd.width / 2.0
+            orig_r = b1[0]
+            if abs(orig_r - (nl - margin)) <= abs(orig_r - (nr + margin)):
+                safe_r = nl - margin
+            else:
+                safe_r = nr + margin
+            shifted_b1 = (safe_r, b1[1])
+            shifted_b2 = (safe_r, b2[1])
+        else:
+            mid_crossing.sort(key=lambda n: -n.height)
+            nd = mid_crossing[0]
+            nt = nd.y - nd.height / 2.0
+            nb = nd.y + nd.height / 2.0
+            orig_r = b1[1]
+            if abs(orig_r - (nt - margin)) <= abs(orig_r - (nb + margin)):
+                safe_r = nt - margin
+            else:
+                safe_r = nb + margin
+            shifted_b1 = (b1[0], safe_r)
+            shifted_b2 = (b2[0], safe_r)
+        # Re-check top / bottom legs against the shifted column —
+        # the shift changes both legs' endpoints so their crossings
+        # may have changed too.
+        top_crossing = _row_crossings(layout, waypt_i, shifted_b1, skip)
+        bot_crossing = _row_crossings(layout, shifted_b2, waypt_j, skip)
+
+    b1 = shifted_b1
+    b2 = shifted_b2
 
     # Staircase points.  We may insert a detour on each leg.
     points: list = []
@@ -1379,13 +1434,16 @@ def _find_segment_obstacles(layout, p1, p2, name_i, name_j, tcl, hcl):
             hits.append(cl)
 
     # Node obstacles — treat each non-endpoint real node as a
-    # cluster-shaped obstacle with its own bbox.
+    # cluster-shaped obstacle with its own bbox.  Only the segment's
+    # actual endpoints (``name_i`` / ``name_j``) are exempt.  Sibling
+    # nodes in the same wrapping cluster as the edge's tail / head
+    # are NOT exempt: the edge still has to avoid them even though
+    # they live in the same cluster as its endpoints (e.g. c5373
+    # sitting between c5372 and c5374 under cluster_5376).
     for node_name, ln in layout.lnodes.items():
         if ln.virtual:
             continue
         if node_name == name_i or node_name == name_j:
-            continue
-        if node_name in tcl_nodes or node_name in hcl_nodes:
             continue
         obs = _NodeObstacle(node_name, ln)
         if _seg_hits_bbox(p1, p2, obs.bb):
@@ -1486,13 +1544,13 @@ def _bridge_foreign_hits(layout, waypt_i, waypt_j, bridges,
                 hits += 1
                 break
     # Node hits — a row of aligned nodes in a corridor is the main
-    # offender the cluster-only scoring missed.
+    # offender the cluster-only scoring missed.  Only the edge's
+    # actual tail and head are exempt; sibling cluster members are
+    # still valid obstacles the route has to avoid.
     for node_name, ln in layout.lnodes.items():
         if ln.virtual:
             continue
         if node_name == edge_tail_name or node_name == edge_head_name:
-            continue
-        if node_name in tcl_nodes or node_name in hcl_nodes:
             continue
         bb = (ln.x - ln.width / 2.0, ln.y - ln.height / 2.0,
               ln.x + ln.width / 2.0, ln.y + ln.height / 2.0)
@@ -1557,7 +1615,8 @@ def _face_constraint_side(ln: "LayoutNode",
 def _bridge_points_for_obstacle(layout, waypt_i, waypt_j, obstacle,
                                  tcl=None, hcl=None,
                                  tail_ln=None, tail_face_pt=None,
-                                 head_ln=None, head_face_pt=None):
+                                 head_ln=None, head_face_pt=None,
+                                 skip_names: set[str] | None = None):
     """Return the two bridge waypoints routing around ``obstacle``.
 
     Step 6a — obstacle-aware side selection
@@ -1613,7 +1672,16 @@ def _bridge_points_for_obstacle(layout, waypt_i, waypt_j, obstacle,
         r_i, cr_i = waypt_i[1], waypt_i[0]
         r_j, cr_j = waypt_j[1], waypt_j[0]
 
-    margin = layout.nodesep / 2.0 + 4.0
+    # The bridge column must sit at least ``_routing_channel`` away
+    # from the obstacle's rank-axis face so the channel between the
+    # column and the obstacle can hold an edge without overlap.
+    # Using max(_routing_channel, nodesep/2+4) keeps backward
+    # compatibility for old default setups where nodesep/2+4 > 8,
+    # and lets the user dial the bridge margin up via
+    # ``layout._routing_channel``.
+    _rc = float(getattr(layout, "_routing_channel",
+                        getattr(layout, "_CL_OFFSET", 8.0)))
+    margin = max(_rc, layout.nodesep / 2.0 + 4.0)
     left_side_r = o_r_min - margin
     right_side_r = o_r_max + margin
 
@@ -1677,7 +1745,8 @@ def _bridge_points_for_obstacle(layout, waypt_i, waypt_j, obstacle,
     # c4045/c4046/c4253/c4254), augment the bridge with a
     # staircase detour around the row.
     detoured = _bridge_row_detour(layout, chosen[0], chosen[1],
-                                   waypt_i, waypt_j, tcl, hcl)
+                                   waypt_i, waypt_j, tcl, hcl,
+                                   skip_names=skip_names)
     if detoured is not None:
         return detoured
     return chosen
@@ -1817,7 +1886,8 @@ def route_through_channel_boxes(
     if tail is not None and head is not None:
         exit_pt = layout._edge_start_point(le, tail, head)
         entry_pt = layout._edge_end_point(le, head, tail)
-        stub_len = float(getattr(layout, "_CL_OFFSET", 8.0))
+        stub_len = float(getattr(layout, "_routing_channel",
+                                 getattr(layout, "_CL_OFFSET", 8.0)))
         stub_out = _perp_stub(tail, exit_pt, stub_len)
         stub_in = _perp_stub(head, entry_pt, stub_len)
     else:
@@ -1887,11 +1957,20 @@ def route_through_channel_boxes(
             b_tail_pt = exit_pt if i <= 1 else None
             b_head_ln = head if i >= last - 2 else None
             b_head_pt = entry_pt if i >= last - 2 else None
+            # Detour skip-names: only the edge's specific tail and
+            # head node names, plus the current segment's own node
+            # endpoints (which may be the same, for stub segments,
+            # or virtual nodes in the middle of a chain).  We do
+            # NOT skip nodes that merely share a wrapping cluster
+            # with tail / head — those siblings are still obstacles
+            # the route must detour around.
+            skip = {path_names[0], path_names[-1], ni, nj}
             bridges = _bridge_points_for_obstacle(
                 layout, p_i, p_j, obstacles[0],
                 tcl=tcl, hcl=hcl,
                 tail_ln=b_tail_ln, tail_face_pt=b_tail_pt,
-                head_ln=b_head_ln, head_face_pt=b_head_pt)
+                head_ln=b_head_ln, head_face_pt=b_head_pt,
+                skip_names=skip)
             waypoints.extend(bridges)
         waypoints.append(p_j)
 

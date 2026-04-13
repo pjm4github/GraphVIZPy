@@ -919,6 +919,18 @@ class DotGraphInfo(LayoutEngine):
 
     _CL_OFFSET = 8.0  # Graphviz CL_OFFSET constant (points)
 
+    # Settable routing-channel width.  This is the minimum clearance
+    # the channel router maintains between edges and any non-endpoint
+    # (cluster or node) — it controls the stub length, bridge column
+    # margin, row-detour margin, and parallel-edge separation, and is
+    # also the floor enforced by the position phase on node-to-node,
+    # node-to-cluster-border, and sibling-cluster separations.
+    #
+    # Defaulting to ``_CL_OFFSET`` keeps behaviour unchanged; users
+    # who want wider corridors can bump this single value instead of
+    # editing the separate constants the router used to read.
+    _routing_channel: float = _CL_OFFSET
+
     def _phase3_position(self):
         """Phase 3 entry point — delegates to position module.
 

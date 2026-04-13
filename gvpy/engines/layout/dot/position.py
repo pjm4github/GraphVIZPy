@@ -195,6 +195,17 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
                     min_dist += int(_cl_by_name[left_cl].margin)
                 if right_cl and right_cl in _cl_by_name:
                     min_dist += int(_cl_by_name[right_cl].margin)
+            # Enforce the settable routing-channel floor: the
+            # cross-rank gap between adjacent node bboxes must be at
+            # least ``_routing_channel`` so a routing channel fits
+            # between them.  ``nodesep`` is already typically larger
+            # (18pt default vs 8pt), so this only kicks in when the
+            # user shrinks nodesep or raises _routing_channel.
+            _rc = float(getattr(layout, "_routing_channel",
+                                getattr(layout, "_CL_OFFSET", 8.0)))
+            min_gap = int(ln_l.width / 2.0 + ln_r.width / 2.0 + _rc)
+            if min_gap > min_dist:
+                min_dist = min_gap
             aux_edges.append((left, right, max(1, min_dist), 0))
 
     # ── 2. Alignment edges (make_edge_pairs) ──────────
@@ -297,10 +308,17 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
                     aux_edges.append((ln_name, rn_name,
                                       max(1, int(lbl_w)), 0))
 
+        # Settable routing-channel width floor applied to every
+        # cluster-boundary gap below.  The user can bump this via
+        # ``layout._routing_channel`` to widen every cluster margin
+        # and sibling-cluster separation in one knob.
+        _rc_floor = float(getattr(layout, "_routing_channel",
+                                   getattr(layout, "_CL_OFFSET", 8.0)))
+
         # ── 3b. Containment: ln → node, node → rn ───
         # (contain_nodes in C code)
         for cl in layout._clusters:
-            margin = int(cl.margin)
+            margin = max(int(cl.margin), int(_rc_floor))
             ln_name = cl_ln[cl.name]
             rn_name = cl_rn[cl.name]
             border_l = cl_border_l.get(cl.name, 0.0)
@@ -333,7 +351,7 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
         for cl_name, par in tree_parent.items():
             if par is None:
                 continue
-            margin = int(cl_by_name[par].margin)
+            margin = max(int(cl_by_name[par].margin), int(_rc_floor))
             par_bl = cl_border_l.get(par, 0.0)
             par_br = cl_border_r.get(par, 0.0)
             aux_edges.append((cl_ln[par], cl_ln[cl_name],
@@ -380,6 +398,7 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
             else:
                 m = int(max(
                     cl_by_name[s].margin for s in siblings))
+            m = max(m, int(_rc_floor))
             for i in range(len(siblings)):
                 for j in range(i + 1, len(siblings)):
                     a_name = siblings[i]
