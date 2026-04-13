@@ -385,7 +385,26 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
 
         # ── 3f. Keepout: external nodes outside clusters ─
         # For each rank, if a non-cluster node is adjacent to a
-        # cluster boundary, add separation edge.
+        # cluster boundary, add a separation edge so the external
+        # node can't penetrate the cluster's bbox.
+        #
+        # Only fires when ``ext`` is truly external — i.e., not in
+        # any cluster at all.  When ``ext`` is itself inside another
+        # cluster (a sibling or cousin of ``cl``) the separation is
+        # already handled by the cluster-hierarchy constraints
+        # (section 3d: parent.ln → child.ln and child.rn → parent.rn,
+        # plus the per-rank ordering edges built in section 1).
+        # Firing this keepout for an in-cluster ``ext`` was the root
+        # cause of the ``cluster_6413`` compaction bug on aa1332:
+        # at rank 18 the edge ``_crn_cluster_6409 → c6411`` (where
+        # c6411 is the rank-adjacent neighbour in a sibling cluster)
+        # forced c6411 to sit ~240pt below its paired c6412 because
+        # cluster_6409 has multiple rank-spanning members whose
+        # rightmost boundary is far from c6412's rank neighbours.
+        any_cluster_members: set[str] = set()
+        for _cs in node_sets.values():
+            any_cluster_members.update(_cs)
+
         for rank_val, rank_nodes in layout.ranks.items():
             for cl in layout._clusters:
                 cl_ranks_nodes: dict[int, list[str]] = {}
@@ -406,7 +425,8 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
                 # Node to the LEFT of the cluster
                 if left_order > 0:
                     ext = rank_nodes[left_order - 1]
-                    if ext not in node_sets[cl.name]:
+                    if (ext not in node_sets[cl.name]
+                            and ext not in any_cluster_members):
                         rw = int(layout.lnodes[ext].width / 2.0)
                         aux_edges.append((ext, cl_ln[cl.name],
                                           max(1, rw + margin), 0))
@@ -414,7 +434,8 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
                 # Node to the RIGHT of the cluster
                 if right_order < len(rank_nodes) - 1:
                     ext = rank_nodes[right_order + 1]
-                    if ext not in node_sets[cl.name]:
+                    if (ext not in node_sets[cl.name]
+                            and ext not in any_cluster_members):
                         lw = int(layout.lnodes[ext].width / 2.0)
                         aux_edges.append((cl_rn[cl.name], ext,
                                           max(1, lw + margin), 0))
