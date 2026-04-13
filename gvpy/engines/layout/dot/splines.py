@@ -692,6 +692,226 @@ def maximal_bbox(layout, ln: LayoutNode) -> tuple[float, float, float, float]:
     return (left_x, top_y, right_x, bot_y)
 
 
+# ── Channel routing helpers (port of Graphviz lib/dotgen/dotsplines.c)
+# These functions are the building blocks for cluster-aware edge
+# routing — the replacement for ``route_regular_edge`` /
+# ``route_through_chain``.  They're introduced in stages so each
+# commit is reviewable; the final ``channel_route_edge`` that uses
+# them is added later.
+
+def _innermost_cluster(layout, node_name: str):
+    """Return the smallest cluster containing ``node_name`` or None.
+
+    The "smallest" cluster by ``len(cl.nodes)`` is the innermost in
+    the cluster hierarchy (after dedup): ``cl.nodes`` includes all
+    transitively-contained nodes, so a cluster with fewer members
+    is nested deeper in the tree.
+    """
+    best = None
+    best_size = None
+    for cl in layout._clusters:
+        if node_name in cl.nodes:
+            size = len(cl.nodes)
+            if best is None or size < best_size:
+                best = cl
+                best_size = size
+    return best
+
+
+def _edge_clusters_for_le(layout, le: "LayoutEdge"):
+    """Return ``(tail_cluster, head_cluster)`` for an edge.
+
+    For a real edge this is the tail's and head's innermost clusters.
+    For a virtual chain edge, look up the *original* edge's tail/head
+    via ``orig_tail`` / ``orig_head`` so every edge in the chain
+    shares the same cluster context.
+
+    Mirrors the ``tcl``/``hcl`` setup inside Graphviz
+    ``dotsplines.c:cl_bound()``::
+
+        if (ND_node_type(n) == NORMAL)
+            tcl = hcl = ND_clust(n);
+        else {
+            orig = ED_to_orig(ND_out(n).list[0]);
+            tcl = ND_clust(agtail(orig));
+            hcl = ND_clust(aghead(orig));
+        }
+    """
+    if le.orig_tail and le.orig_head:
+        t_name, h_name = le.orig_tail, le.orig_head
+    else:
+        t_name, h_name = le.tail_name, le.head_name
+    return (_innermost_cluster(layout, t_name),
+            _innermost_cluster(layout, h_name))
+
+
+def _cl_bound(layout, adj_name: str, tcl, hcl):
+    """Return the cluster that bounds a channel box at ``adj_name``.
+
+    C analogue: ``lib/dotgen/dotsplines.c:cl_bound()``.  The C
+    version only checks the single ``REAL_CLUSTER(adj)`` value,
+    but it relies on C's hierarchical routing where
+    ``mark_clusters`` relabels ``ND_clust`` per routing level —
+    at the root level every node inside cluster_6754 gets
+    ``ND_clust = cluster_6754``, so a foreign-cluster check at
+    the root sees only the top-level cluster.
+
+    Python runs routing in a single pass at the root level, so we
+    have to do the level walk ourselves: walk ``adj``'s cluster
+    chain from **outermost to innermost** and return the outermost
+    cluster that is NOT an ancestor of either ``tcl`` or ``hcl``.
+    That outermost non-member cluster is the correct "wall" — its
+    bounding box is the furthest the edge can extend toward the
+    neighbour without crossing into foreign territory.
+
+    Returns None if no wall is found (``adj`` is in the same
+    cluster hierarchy as the edge, or not in any cluster).
+    """
+    tcl_nodes = set(tcl.nodes) if tcl else set()
+    hcl_nodes = set(hcl.nodes) if hcl else set()
+
+    # adj's cluster chain, outermost (largest) first.
+    adj_clusters = sorted(
+        [cl for cl in layout._clusters if adj_name in cl.nodes],
+        key=lambda c: -len(c.nodes),
+    )
+    for cl in adj_clusters:
+        cl_nodes = set(cl.nodes)
+        # If cl contains tcl or hcl's endpoints, it's an ancestor
+        # of the edge's home cluster — the edge is legitimately
+        # inside cl, so cl is not a wall.
+        if tcl is not None and tcl_nodes <= cl_nodes:
+            continue
+        if hcl is not None and hcl_nodes <= cl_nodes:
+            continue
+        # cl contains neither endpoint — it's a foreign cluster
+        # that the edge must stay out of.  Since we iterated
+        # outermost first, this is the outermost valid wall.
+        return cl
+    return None
+
+
+def _rank_neighbor_at(layout, node_name: str, direction: int):
+    """Return the immediate rank neighbour at ``order±direction``.
+
+    C analogue: ``lib/dotgen/dotsplines.c:neighbor()``, simplified.
+    C's version recurses past virtuals that belong to the same edge
+    (via ``pathscross``) so those virtuals don't block the box from
+    extending.  For this first port we just take the immediate
+    neighbour; the ``pathscross`` refinement can come later.
+    """
+    ln = layout.lnodes.get(node_name)
+    if ln is None:
+        return None
+    rank_nodes = layout.ranks.get(ln.rank, [])
+    target_idx = ln.order + direction
+    if 0 <= target_idx < len(rank_nodes):
+        return rank_nodes[target_idx]
+    return None
+
+
+def _channel_bbox_for_node(layout, ln: "LayoutNode", le: "LayoutEdge"):
+    """Compute the channel bbox around ``ln`` for edge ``le``.
+
+    C analogue: ``lib/dotgen/dotsplines.c:maximal_bbox()``.
+
+    Returns a rectangle ``(min_cr, min_r, max_cr, max_r)`` in the
+    *cross-rank / rank* axis frame (not raw x/y — see below).  The
+    bbox is the node's "slot" — a rectangle of free space the edge
+    can occupy while passing through ``ln``'s rank.  It's bounded:
+
+    - On the cross-rank axis: by the rank neighbours on either
+      side, clipped at any non-member cluster's bounding box
+      (cluster = wall).
+    - On the rank axis: by the rank's own height band.
+
+    Axis frame (Python runs phase 4 *after* ``apply_rankdir``, so
+    coordinates are already in LR-final / TB-final frame):
+
+    - TB/BT: cross-rank = X, rank = Y.
+    - LR/RL: cross-rank = Y, rank = X.
+
+    The function returns a tuple in **cross-rank / rank** order
+    regardless of rankdir — callers must remap to ``(x, y)`` when
+    storing the bbox.
+    """
+    # Extract axis-aware coordinates.
+    is_lr = layout.rankdir in ("LR", "RL")
+    if is_lr:
+        # LR-final: cross-rank axis is Y, rank axis is X.
+        cr = ln.y
+        cr_half = ln.height / 2.0
+        r = ln.x
+        r_half = ln.width / 2.0
+    else:
+        # TB-final: cross-rank axis is X, rank axis is Y.
+        cr = ln.x
+        cr_half = ln.width / 2.0
+        r = ln.y
+        r_half = ln.height / 2.0
+
+    # Initial cross-rank extent: the node's own footprint.
+    min_cr = cr - cr_half
+    max_cr = cr + cr_half
+
+    # Edge's tail/head clusters — used to identify foreign clusters
+    # that should act as walls.
+    tcl, hcl = _edge_clusters_for_le(layout, le)
+
+    # Extend ``min_cr`` toward the "low" (order-1) rank neighbour.
+    # The neighbour's order is lower → its cross-rank value is
+    # smaller (visually higher on screen in LR).  We want the box
+    # to reach as far as possible toward the neighbour without
+    # crossing into it or into a foreign cluster that sits between
+    # us and it.
+    rank_nodes = layout.ranks.get(ln.rank, [])
+    low_name = rank_nodes[ln.order - 1] if ln.order > 0 else None
+    if low_name is not None:
+        wall = _cl_bound(layout, low_name, tcl, hcl)
+        if wall is not None and wall.bb:
+            # Foreign cluster on the low side — stop at the edge
+            # of the cluster nearer to us (its larger-cr edge).
+            cx1, cy1, cx2, cy2 = wall.bb
+            wall_near = cy2 if is_lr else cx2
+            candidate = wall_near + layout.nodesep / 2.0
+        else:
+            low_ln = layout.lnodes[low_name]
+            if is_lr:
+                candidate = low_ln.y + low_ln.height / 2.0 + layout.nodesep / 2.0
+            else:
+                candidate = low_ln.x + low_ln.width / 2.0 + layout.nodesep / 2.0
+        # candidate is the largest cr value the obstacle occupies
+        # +nodesep/2 — it's the lower bound of our free space.
+        # Since obstacle is below us, candidate < cr-cr_half in a
+        # well-formed layout, so this always extends (shrinks) min_cr.
+        if candidate < min_cr:
+            min_cr = candidate
+
+    # Symmetric extension on the "high" (order+1) side.
+    high_name = (rank_nodes[ln.order + 1]
+                 if ln.order < len(rank_nodes) - 1 else None)
+    if high_name is not None:
+        wall = _cl_bound(layout, high_name, tcl, hcl)
+        if wall is not None and wall.bb:
+            cx1, cy1, cx2, cy2 = wall.bb
+            wall_near = cy1 if is_lr else cx1
+            candidate = wall_near - layout.nodesep / 2.0
+        else:
+            high_ln = layout.lnodes[high_name]
+            if is_lr:
+                candidate = high_ln.y - high_ln.height / 2.0 - layout.nodesep / 2.0
+            else:
+                candidate = high_ln.x - high_ln.width / 2.0 - layout.nodesep / 2.0
+        if candidate > max_cr:
+            max_cr = candidate
+
+    # Rank extent: the rank's own height band.
+    min_r = r - layout._rank_ht2.get(ln.rank, r_half)
+    max_r = r + layout._rank_ht1.get(ln.rank, r_half)
+
+    return (min_cr, min_r, max_cr, max_r)
+
+
 def rank_box(layout, r: int) -> tuple[float, float, float, float]:
     """Inter-rank corridor between rank r and rank r+1.
 
