@@ -974,6 +974,79 @@ def build_edge_path(layout, le: "LayoutEdge") -> list[tuple[float, float, float,
     return boxes
 
 
+def route_through_channel_boxes(
+    layout,
+    le: "LayoutEdge",
+    path_names: list[str],
+    boxes: list[tuple[float, float, float, float]],
+) -> list[tuple[float, float]]:
+    """Produce polyline waypoints from a channel box sequence.
+
+    C analogue: the final output of
+    ``lib/dotgen/dotsplines.c:make_regular_edge()`` after
+    ``completeregularpath`` and ``adjustregularpath`` have walked
+    the box list.
+
+    For each node in the edge's path, the waypoint is the node's
+    current ``(x, y)`` with the cross-rank coordinate **clamped to
+    the channel box's cross-rank range**.  This keeps every
+    waypoint inside its box (so it respects the cluster walls
+    computed in :func:`_channel_bbox_for_node`) without moving
+    waypoints further than necessary when the existing virtual
+    position is already legal.
+
+    The first and last waypoints are replaced by proper tail/head
+    boundary/port points via ``edge_start_point`` /
+    ``edge_end_point`` to match the existing routers' endpoint
+    handling.
+
+    Limitations of this step-5a implementation
+    ------------------------------------------
+    When two consecutive boxes have **disjoint cross-rank ranges**
+    (an obstacle cluster sits between them), the straight segment
+    between their clamped waypoints still crosses the obstacle —
+    no intermediate waypoints are inserted yet.  Step 5b will
+    add bridge-waypoint logic that detects disjoint transitions
+    and routes around the intervening cluster along its perimeter.
+
+    For well-behaved edges (all boxes share a common cross-rank
+    interval), this function already produces a cluster-safe
+    polyline: every waypoint is inside its box, and consecutive
+    boxes overlap so the segment between waypoints is also inside
+    the box union.
+
+    Not yet wired into ``phase4_routing``.
+    """
+    is_lr = layout.rankdir in ("LR", "RL")
+    waypoints: list[tuple[float, float]] = []
+    for name, box in zip(path_names, boxes):
+        ln = layout.lnodes.get(name)
+        if ln is None:
+            continue
+        min_cr, min_r, max_cr, max_r = box
+        if is_lr:
+            # LR: cross-rank is Y, rank is X.
+            cr_clamped = max(min_cr, min(max_cr, ln.y))
+            waypoints.append((ln.x, cr_clamped))
+        else:
+            # TB: cross-rank is X, rank is Y.
+            cr_clamped = max(min_cr, min(max_cr, ln.x))
+            waypoints.append((cr_clamped, ln.y))
+
+    # Replace endpoints with proper boundary/port points so the
+    # route starts and ends on the node perimeter rather than the
+    # node center (matches existing ``route_regular_edge`` /
+    # ``route_through_chain`` behaviour).
+    if len(waypoints) >= 2 and path_names:
+        tail = layout.lnodes.get(path_names[0])
+        head = layout.lnodes.get(path_names[-1])
+        if tail is not None and head is not None:
+            waypoints[0] = layout._edge_start_point(le, tail, head)
+            waypoints[-1] = layout._edge_end_point(le, head, tail)
+
+    return waypoints
+
+
 def rank_box(layout, r: int) -> tuple[float, float, float, float]:
     """Inter-rank corridor between rank r and rank r+1.
 
