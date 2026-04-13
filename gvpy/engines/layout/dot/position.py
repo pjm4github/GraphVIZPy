@@ -341,47 +341,85 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
             aux_edges.append((cl_rn[cl_name], cl_rn[par],
                               max(1, int(margin + par_br)), 0))
 
-        # ── 3e. Sibling separation ────────────────────
-        # DISABLED: average-order-based sibling separation conflicts
-        # with per-rank separation when two sibling clusters have
-        # their average X order differ across ranks.  That creates
-        # cycles in the constraint graph (cl_A._crn → cl_B._cln via
-        # avg-order sibling sep, while at some rank c_B_mem → c_A_mem
-        # via rank separation, producing cl_A → cl_B → cl_A).
-        # Per-rank separation edges already ensure sibling clusters
-        # don't overlap in ranks they share.  For ranks they don't
-        # share, keepout edges (3f) handle adjacent external nodes.
-        _sibling_separation_enabled = False
-        def _avg_order(cl_name: str) -> float:
+        # ── 3e. Sibling separation (separate_subclust) ──
+        # C analogue: lib/dotgen/position.c:separate_subclust().  For
+        # every pair of sibling clusters under a common parent, if
+        # their rank ranges overlap, pick which one sits left/right
+        # by comparing ND_order at a *single* rank — specifically
+        # the minimum rank where both clusters are present.  Add a
+        # weight-0 edge ``left._crn → right._cln`` with minlen equal
+        # to the parent's margin.
+        #
+        # The earlier Python attempt used an AVERAGE-order comparator
+        # which could flip the left/right pick across ranks and create
+        # cycles (cl_A._crn → cl_B._cln via avg-order sep, and at some
+        # rank c_B_mem → c_A_mem via per-rank separation, giving
+        # cl_A → cl_B → cl_A).  C sidesteps this by construction
+        # because its comparator uses a single rank, so the relative
+        # order is consistent everywhere the edge lives.
+        def _ranks_of(cl_name: str) -> set[int]:
+            return {layout.lnodes[n].rank
+                    for n in node_sets[cl_name]
+                    if n in layout.lnodes}
+
+        def _min_order_at_rank(cl_name: str, r: int) -> int | None:
             orders = [layout.lnodes[n].order
                       for n in node_sets[cl_name]
-                      if n in layout.lnodes]
-            return sum(orders) / len(orders) if orders else 0
+                      if n in layout.lnodes
+                      and layout.lnodes[n].rank == r]
+            return min(orders) if orders else None
 
-        if _sibling_separation_enabled:
-            for par in list(tree_children.keys()):
-                siblings = tree_children[par]
-                if len(siblings) < 2:
-                    continue
-                # Sort siblings by average order
-                siblings_sorted = sorted(siblings, key=_avg_order)
-                for i in range(len(siblings_sorted) - 1):
-                    left_cl = siblings_sorted[i]
-                    right_cl = siblings_sorted[i + 1]
-                    # Only add if they overlap in rank range
-                    left_ranks = {layout.lnodes[n].rank
-                                  for n in node_sets[left_cl]
-                                  if n in layout.lnodes}
-                    right_ranks = {layout.lnodes[n].rank
-                                   for n in node_sets[right_cl]
-                                   if n in layout.lnodes}
-                    if left_ranks & right_ranks:
-                        m = int(cl_by_name.get(par, cl_by_name.get(
-                            left_cl, layout._clusters[0])).margin
-                            if par else 8)
-                        aux_edges.append((cl_rn[left_cl],
-                                          cl_ln[right_cl],
-                                          max(1, m), 0))
+        for par in list(tree_children.keys()):
+            siblings = tree_children[par]
+            if len(siblings) < 2:
+                continue
+            # margin comes from the common parent; fall back to a
+            # child margin when the parent is the virtual root.
+            if par is not None and par in cl_by_name:
+                m = int(cl_by_name[par].margin)
+            else:
+                m = int(max(
+                    cl_by_name[s].margin for s in siblings))
+            for i in range(len(siblings)):
+                for j in range(i + 1, len(siblings)):
+                    a_name = siblings[i]
+                    b_name = siblings[j]
+                    a_ranks = _ranks_of(a_name)
+                    b_ranks = _ranks_of(b_name)
+                    overlap = a_ranks & b_ranks
+                    if not overlap:
+                        continue
+                    # Mirror C's SWAP(low, high) so ``low`` always
+                    # starts on the earlier rank.
+                    if min(a_ranks) > min(b_ranks):
+                        low_name, high_name = b_name, a_name
+                    else:
+                        low_name, high_name = a_name, b_name
+                    # Compare orders at high.minrank — the first
+                    # rank where both clusters are present.  C uses
+                    # v[0] (the smallest-order member at that rank),
+                    # which is what _min_order_at_rank returns.
+                    decision_rank = min(high_ranks := _ranks_of(high_name))
+                    # (``decision_rank`` is always in ``overlap``
+                    # because it's the smaller end of ``high``'s
+                    # range and ``overlap`` is non-empty.)
+                    lo_ord = _min_order_at_rank(low_name, decision_rank)
+                    hi_ord = _min_order_at_rank(high_name, decision_rank)
+                    if lo_ord is None or hi_ord is None:
+                        # ``low`` might not reach decision_rank; fall
+                        # back to any common rank.
+                        decision_rank = min(overlap)
+                        lo_ord = _min_order_at_rank(low_name, decision_rank)
+                        hi_ord = _min_order_at_rank(high_name, decision_rank)
+                        if lo_ord is None or hi_ord is None:
+                            continue
+                    if lo_ord < hi_ord:
+                        left_cl, right_cl = low_name, high_name
+                    else:
+                        left_cl, right_cl = high_name, low_name
+                    aux_edges.append((cl_rn[left_cl],
+                                      cl_ln[right_cl],
+                                      max(1, m), 0))
 
         # ── 3f. Keepout: external nodes outside clusters ─
         # For each rank, if a non-cluster node is adjacent to a
