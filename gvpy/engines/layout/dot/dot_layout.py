@@ -376,6 +376,14 @@ class DotGraphInfo(LayoutEngine):
         # NS solve, used by compute_cluster_boxes.
         self._cl_ln_x: dict[str, float] = {}
         self._cl_rn_x: dict[str, float] = {}
+        # Phase 4 feature flag: use the new cluster-aware channel
+        # router (splines.channel_route_edge) in place of the old
+        # route_regular_edge / route_through_chain.  Defaults to
+        # False so existing behaviour is unchanged; flip to True
+        # to A/B compare cluster avoidance.  The current session
+        # will switch the default after the integration commit
+        # lands and regression tests pass.
+        self._use_channel_routing: bool = False
 
     # ── Public API ───────────────────────────────
 

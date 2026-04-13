@@ -111,6 +111,8 @@ def phase4_routing(layout):
         layout._left_bound = -16
         layout._right_bound = 16
 
+    use_channel = getattr(layout, "_use_channel_routing", False)
+
     # Route regular (non-virtual, non-chain) edges
     for le in layout.ledges:
         if le.virtual:
@@ -129,6 +131,13 @@ def phase4_routing(layout):
             p1 = layout._edge_start_point(le, tail, head)
             p2 = layout._edge_end_point(le, head, tail)
             le.points = [p1, p2]
+        elif use_channel:
+            # New cluster-aware channel router (step 6 of the
+            # routespl.c port).  Builds per-node channel boxes
+            # clipped to foreign-cluster boundaries, then routes
+            # a polyline through the boxes with bridge waypoints
+            # around any intervening obstacle clusters.
+            le.points = channel_route_edge(layout, le, tail, head)
         else:
             le.points = layout._route_regular_edge(le, tail, head)
         layout._compute_label_pos(le)
@@ -144,6 +153,9 @@ def phase4_routing(layout):
             le.points = [p1, p2]
         elif layout.splines == "ortho" and tail and head:
             le.points = layout._ortho_route(le, tail, head)
+        elif use_channel and tail and head:
+            # New channel router for multi-rank chain edges too.
+            le.points = channel_route_edge(layout, le, tail, head)
         else:
             key = (le.tail_name, le.head_name)
             chain = layout._vnode_chains.get(key, [])
@@ -1172,6 +1184,48 @@ def route_through_channel_boxes(
             waypoints[-1] = layout._edge_end_point(le, head, tail)
 
     return waypoints
+
+
+def channel_route_edge(layout, le: "LayoutEdge",
+                        tail: "LayoutNode",
+                        head: "LayoutNode") -> list[tuple[float, float]]:
+    """Unified cluster-aware router for regular and chain edges.
+
+    Drop-in replacement for ``route_regular_edge`` (single-rank
+    edges) and ``route_through_chain`` (multi-rank edges split by
+    virtual nodes).  Internally:
+
+    1. :func:`_edge_node_path` builds the ordered node sequence
+       the edge traverses — ``[tail, head]`` for a regular edge,
+       ``[tail, v1, ..., vn, head]`` for a chain edge.
+    2. :func:`build_edge_path` turns that into a list of
+       cluster-aware channel boxes (one per node), using
+       :func:`_channel_bbox_for_node` which clips each box
+       against foreign-cluster boundaries.
+    3. :func:`route_through_channel_boxes` produces polyline
+       waypoints — one per box (clamped to the box's cross-rank
+       range) plus bridge waypoints when adjacent boxes have
+       disjoint cross-rank ranges (an obstacle cluster sits
+       between them).
+
+    The returned polyline is suitable for direct use as
+    ``le.points``; later Bezier smoothing via ``to_bezier``
+    applies unchanged.
+
+    C analogue: ``lib/dotgen/dotsplines.c:make_regular_edge()``
+    for multi-rank edges (with box list + channel routing) and
+    the adjacent-rank path in the same function for single-rank
+    edges.
+    """
+    path_names = _edge_node_path(layout, le)
+    boxes = build_edge_path(layout, le)
+    if not boxes:
+        # Fallback: degenerate edge (no path).  Emit a straight
+        # line from tail boundary to head boundary.
+        p1 = layout._edge_start_point(le, tail, head)
+        p2 = layout._edge_end_point(le, head, tail)
+        return [p1, p2]
+    return route_through_channel_boxes(layout, le, path_names, boxes)
 
 
 def rank_box(layout, r: int) -> tuple[float, float, float, float]:
