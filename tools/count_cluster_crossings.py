@@ -1,0 +1,114 @@
+"""Count edges whose routed polyline crosses a non-member cluster.
+
+Used for the channel routing A/B regression metric.  Run as:
+
+    python tools/count_cluster_crossings.py test_data/aa1332.dot [--channel]
+
+Exit status is always 0; results printed to stdout.
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from gvpy.grammar.gv_reader import read_dot_file
+from gvpy.engines.layout.dot.dot_layout import DotLayout
+
+
+def _sample_bezier(pts, samples_per_seg=12):
+    """Sample a polyline or Bezier control-point list to a dense polyline.
+
+    ``pts`` is either a raw polyline (anchor-only) or the Graphviz Bezier
+    format ``[P0, C1, C2, P1, C3, C4, P2, ...]`` where every group of 4
+    control points after the first anchor defines one cubic segment.  We
+    detect Bezier by checking ``(len - 1) % 3 == 0 and len >= 4``.
+    """
+    n = len(pts)
+    if n < 2:
+        return list(pts)
+    is_bezier = n >= 4 and (n - 1) % 3 == 0
+    if not is_bezier:
+        return list(pts)
+    out = [pts[0]]
+    for base in range(0, n - 1, 3):
+        p0, c1, c2, p3 = pts[base:base + 4]
+        for k in range(1, samples_per_seg + 1):
+            t = k / samples_per_seg
+            s = 1 - t
+            x = (s*s*s*p0[0] + 3*s*s*t*c1[0]
+                 + 3*s*t*t*c2[0] + t*t*t*p3[0])
+            y = (s*s*s*p0[1] + 3*s*s*t*c1[1]
+                 + 3*s*t*t*c2[1] + t*t*t*p3[1])
+            out.append((x, y))
+    return out
+
+
+def _segments_cross_bbox(pts, bb):
+    x1, y1, x2, y2 = bb
+    sampled = _sample_bezier(pts)
+    for (ax, ay), (bx, by) in zip(sampled, sampled[1:]):
+        smin_x, smax_x = min(ax, bx), max(ax, bx)
+        smin_y, smax_y = min(ay, by), max(ay, by)
+        if smax_x < x1 or smin_x > x2 or smax_y < y1 or smin_y > y2:
+            continue
+        return True
+    return False
+
+
+def _cluster_nodes(layout, cl):
+    return set(cl.nodes)
+
+
+def count_crossings(dot_path: str, use_channel: bool):
+    graph = read_dot_file(dot_path)
+    layout = DotLayout(graph)
+    layout._use_channel_routing = use_channel
+    layout.layout()
+
+    cluster_nodes = {cl.name: _cluster_nodes(layout, cl)
+                     for cl in layout._clusters if cl.bb}
+
+    crossings = []  # (edge_repr, list of cluster names crossed)
+    for le in layout.ledges:
+        if le.virtual:
+            continue
+        pts = le.points or []
+        if len(pts) < 2:
+            continue
+        offenders = []
+        for cl in layout._clusters:
+            if not cl.bb:
+                continue
+            cnodes = cluster_nodes[cl.name]
+            # Non-member cluster: neither endpoint belongs to it.
+            # (Single-endpoint membership is also legitimate — the
+            # edge has to exit through that cluster's wall.)
+            if le.tail_name in cnodes or le.head_name in cnodes:
+                continue
+            if _segments_cross_bbox(pts, cl.bb):
+                offenders.append(cl.name)
+        if offenders:
+            crossings.append((f"{le.tail_name}->{le.head_name}", offenders))
+    return crossings
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("dot_path")
+    ap.add_argument("--channel", action="store_true",
+                    help="Enable channel routing flag")
+    args = ap.parse_args()
+
+    crossings = count_crossings(args.dot_path, args.channel)
+    mode = "channel ON" if args.channel else "channel OFF"
+    print(f"[{mode}] {args.dot_path}: "
+          f"{len(crossings)} edges cross non-member clusters")
+    for edge, offs in crossings:
+        print(f"  {edge} -> {', '.join(offs)}")
+
+
+if __name__ == "__main__":
+    main()

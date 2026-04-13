@@ -1053,22 +1053,145 @@ def _find_gap_obstacles(layout, box_i, box_j, tcl, hcl):
     return obstacles
 
 
-def _bridge_points_for_obstacle(layout, waypt_i, waypt_j, obstacle):
+def _find_segment_obstacles(layout, p1, p2, name_i, name_j, tcl, hcl):
+    """Return non-member clusters whose bbox the segment ``p1→p2`` hits.
+
+    Step 6b analogue of :func:`_find_gap_obstacles`.  Instead of looking
+    inside the narrow cross-rank "gap" between two disjoint boxes, we
+    test the actual segment between the two clamped base waypoints
+    against every cluster bbox.  This catches obstacles a straight-line
+    diagonal would cross when the boxes are far apart on the cross-rank
+    axis (e.g. ``c4254→c4258`` on ``aa1332.dot``, where the old gap
+    check saw only the narrow ``[396,428]`` strip and missed a cluster
+    sitting at ``cr≈500-800``).
+
+    Skipped:
+
+    - Clusters with no bb (unpositioned).
+    - Clusters the edge legitimately belongs to: ``tcl`` / ``hcl`` and
+      any of their ancestors (``tcl.nodes ⊆ cl.nodes`` or
+      ``hcl.nodes ⊆ cl.nodes``).
+    - Clusters that contain the segment's own node endpoint (the edge
+      naturally exits that cluster's wall on the way past).
+
+    Returned sorted by decreasing cross-rank extent so the outermost
+    (most constraining) blocker comes first, mirroring
+    :func:`_find_gap_obstacles`.
+    """
+    is_lr = layout.rankdir in ("LR", "RL")
+    tcl_nodes = set(tcl.nodes) if tcl is not None else set()
+    hcl_nodes = set(hcl.nodes) if hcl is not None else set()
+    hits: list = []
+    for cl in layout._clusters:
+        if not cl.bb:
+            continue
+        cl_nodes = set(cl.nodes)
+        if tcl is not None and tcl_nodes <= cl_nodes:
+            continue
+        if hcl is not None and hcl_nodes <= cl_nodes:
+            continue
+        if name_i in cl_nodes or name_j in cl_nodes:
+            continue
+        if _seg_hits_bbox(p1, p2, cl.bb):
+            hits.append(cl)
+    if is_lr:
+        hits.sort(key=lambda c: -(c.bb[3] - c.bb[1]))
+    else:
+        hits.sort(key=lambda c: -(c.bb[2] - c.bb[0]))
+    return hits
+
+
+def _seg_hits_bbox(p1, p2, bb) -> bool:
+    """Liang-Barsky segment-vs-AABB intersection test.
+
+    Returns True if the segment from ``p1`` to ``p2`` enters the
+    rectangle ``bb = (x1, y1, x2, y2)`` (inclusive).  Handles
+    axis-aligned segments via the ``p == 0`` half-plane check.
+    """
+    x1, y1, x2, y2 = bb
+    ax, ay = p1
+    bx, by = p2
+    dx, dy = bx - ax, by - ay
+    t0, t1 = 0.0, 1.0
+    for p, q in ((-dx, ax - x1), (dx, x2 - ax),
+                 (-dy, ay - y1), (dy, y2 - ay)):
+        if p == 0:
+            if q < 0:
+                return False
+            continue
+        t = q / p
+        if p < 0:
+            if t > t1:
+                return False
+            if t > t0:
+                t0 = t
+        else:
+            if t < t0:
+                return False
+            if t < t1:
+                t1 = t
+    return t0 <= t1
+
+
+def _bridge_foreign_hits(layout, waypt_i, waypt_j, bridges,
+                          obstacle, tcl, hcl) -> int:
+    """Count non-member clusters the bridge segments would cross.
+
+    The bridge consists of three segments:
+
+    1. ``waypt_i`` → ``bridges[0]``  (rank-axis lateral leg)
+    2. ``bridges[0]`` → ``bridges[1]`` (cross-rank column at side_r)
+    3. ``bridges[1]`` → ``waypt_j``   (rank-axis lateral leg)
+
+    A cluster counts as a hit when any of the three segments enters
+    its bbox, **excluding** ``obstacle`` itself, ``tcl``/``hcl`` (the
+    edge's own clusters), and any ancestor cluster of ``tcl`` or
+    ``hcl`` (those legitimately contain the edge).
+    """
+    segs = (
+        (waypt_i, bridges[0]),
+        (bridges[0], bridges[1]),
+        (bridges[1], waypt_j),
+    )
+    tcl_nodes = set(tcl.nodes) if tcl is not None else set()
+    hcl_nodes = set(hcl.nodes) if hcl is not None else set()
+    hits = 0
+    for cl in layout._clusters:
+        if cl is obstacle or not cl.bb:
+            continue
+        if cl is tcl or cl is hcl:
+            continue
+        cl_nodes = set(cl.nodes)
+        if tcl is not None and tcl_nodes <= cl_nodes:
+            continue
+        if hcl is not None and hcl_nodes <= cl_nodes:
+            continue
+        for s1, s2 in segs:
+            if _seg_hits_bbox(s1, s2, cl.bb):
+                hits += 1
+                break
+    return hits
+
+
+def _bridge_points_for_obstacle(layout, waypt_i, waypt_j, obstacle,
+                                 tcl=None, hcl=None):
     """Return the two bridge waypoints routing around ``obstacle``.
 
-    Picks the rank-axis side (left or right of the obstacle)
-    closer to the midpoint of ``waypt_i`` and ``waypt_j``, then
-    emits two waypoints at that side:
+    Step 6a — obstacle-aware side selection
+    ---------------------------------------
+    The bridge can go around ``obstacle`` on either of two sides of
+    its rank-axis range (left/right in TB; below/above in LR).  The
+    old step-5b heuristic picked the side closer to the midpoint of
+    ``waypt_i`` and ``waypt_j``, which can land inside *another*
+    cluster that wasn't considered when selecting the side (e.g.
+    ``c0->c5359`` avoids ``cluster_5378`` but lands inside
+    ``cluster_6382``).
 
-    - Bridge 1: carries ``waypt_i``'s cross-rank position
-      laterally past the obstacle's rank-axis edge.
-    - Bridge 2: drops / rises to ``waypt_j``'s cross-rank
-      position at the same rank-axis coordinate, still outside
-      the obstacle.
-
-    The final segment from Bridge 2 back to ``waypt_j`` is then
-    cross-rank-axis-parallel and stays outside the obstacle
-    because ``side_r`` is outside the obstacle's rank range.
+    We now build candidate waypoints for **both** sides, score each
+    candidate by the number of non-member clusters its three bridge
+    segments would cross (via :func:`_bridge_foreign_hits`), and
+    pick the side with fewer hits.  Ties fall back to the midpoint
+    heuristic so behaviour is unchanged when neither side conflicts.
     """
     is_lr = layout.rankdir in ("LR", "RL")
     ox1, oy1, ox2, oy2 = obstacle.bb
@@ -1085,19 +1208,33 @@ def _bridge_points_for_obstacle(layout, waypt_i, waypt_j, obstacle):
         r_i, cr_i = waypt_i[1], waypt_i[0]
         r_j, cr_j = waypt_j[1], waypt_j[0]
 
-    r_mid = (r_i + r_j) / 2.0
     margin = layout.nodesep / 2.0 + 4.0
-    left_dist = r_mid - o_r_min
-    right_dist = o_r_max - r_mid
-    if right_dist <= left_dist:
-        side_r = o_r_max + margin
-    else:
-        side_r = o_r_min - margin
+    left_side_r = o_r_min - margin
+    right_side_r = o_r_max + margin
 
     if is_lr:
-        return [(side_r, cr_i), (side_r, cr_j)]
+        left_pts = [(left_side_r, cr_i), (left_side_r, cr_j)]
+        right_pts = [(right_side_r, cr_i), (right_side_r, cr_j)]
     else:
-        return [(cr_i, side_r), (cr_j, side_r)]
+        left_pts = [(cr_i, left_side_r), (cr_j, left_side_r)]
+        right_pts = [(cr_i, right_side_r), (cr_j, right_side_r)]
+
+    left_hits = _bridge_foreign_hits(
+        layout, waypt_i, waypt_j, left_pts, obstacle, tcl, hcl)
+    right_hits = _bridge_foreign_hits(
+        layout, waypt_i, waypt_j, right_pts, obstacle, tcl, hcl)
+
+    # Midpoint-distance fallback mirrors the original step-5b
+    # heuristic and is only consulted on a tie.
+    r_mid = (r_i + r_j) / 2.0
+    left_closer = (r_mid - o_r_min) <= (o_r_max - r_mid)
+    fallback = left_pts if left_closer else right_pts
+
+    if left_hits < right_hits:
+        return left_pts
+    if right_hits < left_hits:
+        return right_pts
+    return fallback
 
 
 def route_through_channel_boxes(
@@ -1132,6 +1269,14 @@ def route_through_channel_boxes(
     that route laterally around the obstacle's nearest rank-axis
     edge.
 
+    Step 6a — obstacle-aware bridge side selection
+    -----------------------------------------------
+    :func:`_bridge_points_for_obstacle` now scores both candidate
+    sides of the obstacle by how many non-member clusters the
+    resulting bridge segments would cross and picks the lower-hit
+    side.  The old midpoint-distance heuristic is retained only as
+    a tiebreak.  See the function docstring for the rationale.
+
     The first and last waypoints are replaced by proper tail/head
     boundary/port points via ``edge_start_point`` /
     ``edge_end_point`` to match the existing routers' endpoint
@@ -1158,21 +1303,25 @@ def route_through_channel_boxes(
     if len(base) < 2:
         return base
 
-    # Step 5b: walk adjacent box pairs and insert bridge waypoints
-    # where the cross-rank ranges are disjoint.
+    # Step 5b / 6b: walk adjacent pairs and insert bridge waypoints
+    # whenever the segment between two base waypoints actually crosses
+    # a non-member cluster bbox.  Step 5b only triggered on disjoint
+    # cross-rank boxes and used :func:`_find_gap_obstacles` which
+    # searched a narrow gap-range strip.  Step 6b promotes this to a
+    # full segment-vs-cluster test via :func:`_find_segment_obstacles`,
+    # catching obstacles a long diagonal segment would sweep through
+    # even when the formal cross-rank "gap" is narrow or empty.
     tcl, hcl = _edge_clusters_for_le(layout, le)
     waypoints: list[tuple[float, float]] = [base[0]]
     for i in range(len(base) - 1):
-        cr_i_min, _, cr_i_max, _ = boxes[i]
-        cr_j_min, _, cr_j_max, _ = boxes[i + 1]
-        disjoint = (cr_i_max < cr_j_min) or (cr_j_max < cr_i_min)
-        if disjoint:
-            obstacles = _find_gap_obstacles(
-                layout, boxes[i], boxes[i + 1], tcl, hcl)
-            if obstacles:
-                bridges = _bridge_points_for_obstacle(
-                    layout, base[i], base[i + 1], obstacles[0])
-                waypoints.extend(bridges)
+        obstacles = _find_segment_obstacles(
+            layout, base[i], base[i + 1],
+            path_names[i], path_names[i + 1], tcl, hcl)
+        if obstacles:
+            bridges = _bridge_points_for_obstacle(
+                layout, base[i], base[i + 1], obstacles[0],
+                tcl=tcl, hcl=hcl)
+            waypoints.extend(bridges)
         waypoints.append(base[i + 1])
 
     # Replace endpoints with proper boundary/port points.
@@ -1184,6 +1333,85 @@ def route_through_channel_boxes(
             waypoints[-1] = layout._edge_end_point(le, head, tail)
 
     return waypoints
+
+
+def _split_at_sharp_corners(pts, cos_threshold: float = 0.8):
+    """Split a polyline into smooth runs at vertices with sharp turns.
+
+    A sharp turn is a vertex where the cosine of the angle between the
+    incoming and outgoing segment unit vectors is below ``cos_threshold``
+    (default 0.8 ≈ bend greater than 37°).  Returns a list of
+    sub-polylines where each successive run shares its first point with
+    the previous run's last point (so concatenation after bezier fitting
+    drops one duplicate).
+
+    The default is deliberately strict: channel-routed polylines have
+    mostly straight segments with hard 90° bridge corners and a minor
+    angular jog at the edge-boundary snap (≈40° where the boundary
+    exit point meets the first bridge column).  The stricter threshold
+    classifies that jog as a corner too, so the Schneider fit never
+    sees a near-degenerate 3-point run whose tangent extrapolation
+    would swing the curve into a neighbouring cluster.
+
+    Used by :func:`_bezier_split_at_corners` to prevent
+    :func:`to_bezier`'s Schneider fit from smearing hard 90° bridge
+    corners into wildly-extrapolated control points.
+    """
+    import math
+    if len(pts) < 3:
+        return [list(pts)]
+    runs: list[list[tuple[float, float]]] = []
+    current: list[tuple[float, float]] = [pts[0]]
+    for i in range(1, len(pts) - 1):
+        p0 = pts[i - 1]
+        p1 = pts[i]
+        p2 = pts[i + 1]
+        v1x, v1y = p1[0] - p0[0], p1[1] - p0[1]
+        v2x, v2y = p2[0] - p1[0], p2[1] - p1[1]
+        len1 = math.hypot(v1x, v1y)
+        len2 = math.hypot(v2x, v2y)
+        if len1 < 1e-9 or len2 < 1e-9:
+            current.append(p1)
+            continue
+        cos_t = (v1x * v2x + v1y * v2y) / (len1 * len2)
+        current.append(p1)
+        if cos_t < cos_threshold:
+            # Sharp corner — close this run, start a new one from p1.
+            runs.append(current)
+            current = [p1]
+    current.append(pts[-1])
+    runs.append(current)
+    return runs
+
+
+def _bezier_split_at_corners(pts, cos_threshold: float = 0.8):
+    """Bezier-fit a polyline while preserving sharp corners.
+
+    Wraps :func:`to_bezier` with a pre-pass that splits the polyline at
+    sharp turns (cf. :func:`_split_at_sharp_corners`).  Each smooth run
+    is converted independently; the resulting Bezier control lists are
+    concatenated with the usual one-anchor overlap removal.
+
+    Without this, the Schneider least-squares fit in
+    :func:`to_bezier` treats a polyline with a hard 90° bridge corner
+    as a single curve, producing a dominant long chord and wildly
+    extrapolated control points that swing through neighbouring
+    non-member clusters.  Splitting at corners keeps each run's
+    max-alpha guard bounded to its own chord length.
+    """
+    runs = _split_at_sharp_corners(pts, cos_threshold)
+    if len(runs) <= 1:
+        return to_bezier(pts)
+    out: list[tuple[float, float]] = []
+    for run in runs:
+        bez = to_bezier(run)
+        if not out:
+            out.extend(bez)
+        else:
+            # Skip the duplicate joining anchor (first point of the
+            # new run equals the last anchor of the previous run).
+            out.extend(bez[1:])
+    return out
 
 
 def channel_route_edge(layout, le: "LayoutEdge",
@@ -1208,9 +1436,13 @@ def channel_route_edge(layout, le: "LayoutEdge",
        disjoint cross-rank ranges (an obstacle cluster sits
        between them).
 
-    The returned polyline is suitable for direct use as
-    ``le.points``; later Bezier smoothing via ``to_bezier``
-    applies unchanged.
+    Step 6b also pre-applies corner-preserving Bezier smoothing via
+    :func:`_bezier_split_at_corners` when the edge polyline has any
+    sharp turns (typically from bridge waypoints).  This prevents
+    :func:`to_bezier`'s Schneider fit from extrapolating control
+    points through non-member clusters adjacent to the bridge.  The
+    edge's ``spline_type`` is set to ``"bezier"`` so the global
+    bezier pass in :func:`phase4_routing` leaves the curve alone.
 
     C analogue: ``lib/dotgen/dotsplines.c:make_regular_edge()``
     for multi-rank edges (with box list + channel routing) and
@@ -1225,7 +1457,21 @@ def channel_route_edge(layout, le: "LayoutEdge",
         p1 = layout._edge_start_point(le, tail, head)
         p2 = layout._edge_end_point(le, head, tail)
         return [p1, p2]
-    return route_through_channel_boxes(layout, le, path_names, boxes)
+    polyline = route_through_channel_boxes(layout, le, path_names, boxes)
+
+    # Step 6b finishing: pre-apply corner-preserving bezier smoothing
+    # when the splines mode would otherwise do a single-run bezier.
+    # Only act when the polyline actually has a sharp corner — simple
+    # regular edges stay on the global pipeline to keep behaviour
+    # identical for the non-bridged path.
+    bezier_modes = ("", "spline", "curved", "true")
+    if layout.splines in bezier_modes and len(polyline) >= 3:
+        runs = _split_at_sharp_corners(polyline)
+        if len(runs) > 1:
+            le.points = _bezier_split_at_corners(polyline)
+            le.spline_type = "bezier"
+            return le.points
+    return polyline
 
 
 def rank_box(layout, r: int) -> tuple[float, float, float, float]:
