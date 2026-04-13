@@ -598,8 +598,19 @@ class DotGraphInfo(LayoutEngine):
         if explicit_h:
             h = float(explicit_h) * 72.0
 
-        w = max(w, self._MIN_WIDTH)
-        h = max(h, self._MIN_HEIGHT)
+        # Default-size clamp.  In TB-internal coordinates the cross-rank
+        # axis is X (ln.width) and the rank axis is Y (ln.height).  For
+        # LR/RL the role of width vs height swaps in the LR-final frame
+        # — and ``_record_size`` already pre-swaps record dimensions to
+        # TB-internal — so the per-axis MIN constants must also be
+        # swapped here so we don't undo the LR pre-swap by clamping the
+        # cross-rank extent up to the rank-axis default of 54pt.
+        if self.rankdir in ("LR", "RL"):
+            w = max(w, self._MIN_HEIGHT)
+            h = max(h, self._MIN_WIDTH)
+        else:
+            w = max(w, self._MIN_WIDTH)
+            h = max(h, self._MIN_HEIGHT)
         return w, h
 
     def _record_size(self, label: str, fontsize: float, char_w: float) -> tuple[float, float]:
@@ -619,13 +630,27 @@ class DotGraphInfo(LayoutEngine):
         from gvpy.render.svg_renderer import _parse_record_label
         tree = _parse_record_label(label)
         if self.rankdir in ("LR", "RL"):
-            # For LR/RL, measure with horizontal=False so that the
-            # outer {} in labels like {A|B|C} flips to horizontal,
-            # producing content-proportional field widths.  Since
-            # _apply_rankdir will swap w↔h, we return (h, w) here
-            # so the final dimensions are correct.
+            # For LR/RL, measure with horizontal=False so the outer
+            # {} in labels like {A|B|C} flips to horizontal, producing
+            # content-proportional field widths.  The returned (w, h)
+            # is in LR-rendered coordinates (w = LR-final X-extent
+            # along the rank axis, h = LR-final Y-extent across
+            # ranks).  Pre-swap to TB-internal coordinates so the
+            # rest of the layout pipeline (which always works in
+            # TB-internal mode) sees w = cross-rank extent and h =
+            # rank extent — _apply_rankdir will swap them back at
+            # the end of phase 3.
             w, h = self._measure_record_tree(tree, False, fontsize, char_w)
-            w, h = h, w  # pre-swap for _apply_rankdir
+            w, h = h, w  # convert LR-rendered → TB-internal (w=cross-rank, h=rank)
+            # Clamp using the constants that match each axis in
+            # TB-internal coordinates: cross-rank (w) ≥ MIN_HEIGHT
+            # (the LR-final default Y-extent = 36), rank (h) ≥
+            # MIN_WIDTH (the LR-final default X-extent = 54).  These
+            # constants used to be reversed, which made the cross-
+            # rank extent of every record collapse to ≥ 54pt and
+            # caused the NS X solver to see all nodes as identically
+            # sized, producing a degenerate single-column solution.
+            return max(w, self._MIN_HEIGHT), max(h, self._MIN_WIDTH)
         else:
             w, h = self._measure_record_tree(tree, True, fontsize, char_w)
         return max(w, self._MIN_WIDTH), max(h, self._MIN_HEIGHT)
