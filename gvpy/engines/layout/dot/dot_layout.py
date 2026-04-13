@@ -1517,15 +1517,28 @@ class DotGraphInfo(LayoutEngine):
                         entry[attr] = val
             # Pass rankdir so the renderer knows record field orientation
             entry["_rankdir"] = self.rankdir
-            # Include record port positions from Node.record_fields
+            # Include record port positions from Node.record_fields.
+            # Emitted as a linear fraction [0..1] along the node's
+            # cross-rank face — the same convention used by
+            # splines.record_port_point for edge attach points, so
+            # downstream renderers (pictosync) can reproduce the exact
+            # attach coordinates the layout engine used.  We do NOT
+            # emit port_fraction() here because that returns C's
+            # compassPort angle-based order (used internally by
+            # mincross for port ordering), which a downstream renderer
+            # would misinterpret as a linear fraction and collapse
+            # middle ports to the top of the node.
             if ln.node and ln.node.record_fields is not None:
                 rf = ln.node.record_fields
                 ports_dict = {}
-                rd_int = self._rankdir_int()
+                is_lr = self.rankdir in ("LR", "RL")
+                rec_extent = max(rf.height if is_lr else rf.width, 1e-9)
                 def _collect_port_fracs(f):
                     if f.port:
-                        frac = rf.port_fraction(f.port, rankdir=rd_int)
-                        if frac is not None:
+                        pp = rf.port_position(f.port)
+                        if pp is not None:
+                            cr = pp[1] if is_lr else pp[0]
+                            frac = max(0.0, min(1.0, cr / rec_extent))
                             ports_dict[f.port] = frac
                     for c in f.children:
                         _collect_port_fracs(c)
