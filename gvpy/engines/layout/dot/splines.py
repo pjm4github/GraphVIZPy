@@ -974,6 +974,120 @@ def build_edge_path(layout, le: "LayoutEdge") -> list[tuple[float, float, float,
     return boxes
 
 
+def _find_gap_obstacles(layout, box_i, box_j, tcl, hcl):
+    """Return non-member clusters that sit in the gap between two boxes.
+
+    Helper for :func:`route_through_channel_boxes`'s disjoint-box
+    bridging logic.  A cluster counts as an obstacle when:
+
+    - It overlaps the cross-rank gap between ``box_i`` and ``box_j``.
+    - It overlaps the rank-axis range spanning the two boxes.
+    - It is NOT an ancestor of either ``tcl`` or ``hcl`` (those
+      clusters legitimately contain the edge).
+
+    Returned in order of decreasing cross-rank extent — the
+    outermost / most-constraining cluster first.
+    """
+    cr_i_min, _, cr_i_max, _ = box_i
+    cr_j_min, _, cr_j_max, _ = box_j
+    if cr_i_max < cr_j_min:
+        gap_cr = (cr_i_max, cr_j_min)
+    elif cr_j_max < cr_i_min:
+        gap_cr = (cr_j_max, cr_i_min)
+    else:
+        return []  # boxes overlap, no gap
+
+    _, r_i_min, _, r_i_max = box_i
+    _, r_j_min, _, r_j_max = box_j
+    transit_r = (min(r_i_min, r_j_min), max(r_i_max, r_j_max))
+
+    is_lr = layout.rankdir in ("LR", "RL")
+    tcl_nodes = set(tcl.nodes) if tcl else set()
+    hcl_nodes = set(hcl.nodes) if hcl else set()
+
+    obstacles: list = []
+    for cl in layout._clusters:
+        if not cl.bb:
+            continue
+        cx1, cy1, cx2, cy2 = cl.bb
+        if is_lr:
+            cl_cr = (cy1, cy2)  # LR: cross-rank axis = y
+            cl_r = (cx1, cx2)   # LR: rank axis = x
+        else:
+            cl_cr = (cx1, cx2)  # TB: cross-rank axis = x
+            cl_r = (cy1, cy2)   # TB: rank axis = y
+
+        # Skip if cluster doesn't overlap the gap in cross-rank.
+        if max(cl_cr[0], gap_cr[0]) >= min(cl_cr[1], gap_cr[1]):
+            continue
+        # Skip if cluster doesn't overlap the transition rank range.
+        if max(cl_r[0], transit_r[0]) >= min(cl_r[1], transit_r[1]):
+            continue
+        # Skip if cluster is an ancestor of tcl or hcl (edge is
+        # legitimately inside it).
+        cl_nodes = set(cl.nodes)
+        if tcl is not None and tcl_nodes <= cl_nodes:
+            continue
+        if hcl is not None and hcl_nodes <= cl_nodes:
+            continue
+        obstacles.append(cl)
+
+    # Sort by cross-rank extent so the widest (outermost) blocker
+    # comes first.
+    if is_lr:
+        obstacles.sort(key=lambda c: -(c.bb[3] - c.bb[1]))
+    else:
+        obstacles.sort(key=lambda c: -(c.bb[2] - c.bb[0]))
+    return obstacles
+
+
+def _bridge_points_for_obstacle(layout, waypt_i, waypt_j, obstacle):
+    """Return the two bridge waypoints routing around ``obstacle``.
+
+    Picks the rank-axis side (left or right of the obstacle)
+    closer to the midpoint of ``waypt_i`` and ``waypt_j``, then
+    emits two waypoints at that side:
+
+    - Bridge 1: carries ``waypt_i``'s cross-rank position
+      laterally past the obstacle's rank-axis edge.
+    - Bridge 2: drops / rises to ``waypt_j``'s cross-rank
+      position at the same rank-axis coordinate, still outside
+      the obstacle.
+
+    The final segment from Bridge 2 back to ``waypt_j`` is then
+    cross-rank-axis-parallel and stays outside the obstacle
+    because ``side_r`` is outside the obstacle's rank range.
+    """
+    is_lr = layout.rankdir in ("LR", "RL")
+    ox1, oy1, ox2, oy2 = obstacle.bb
+    if is_lr:
+        # LR: rank axis = x, cross-rank axis = y.
+        # waypt tuple is (x, y) i.e. (rank, cross-rank).
+        o_r_min, o_r_max = ox1, ox2
+        r_i, cr_i = waypt_i[0], waypt_i[1]
+        r_j, cr_j = waypt_j[0], waypt_j[1]
+    else:
+        # TB: rank axis = y, cross-rank axis = x.
+        # waypt tuple is (x, y) i.e. (cross-rank, rank).
+        o_r_min, o_r_max = oy1, oy2
+        r_i, cr_i = waypt_i[1], waypt_i[0]
+        r_j, cr_j = waypt_j[1], waypt_j[0]
+
+    r_mid = (r_i + r_j) / 2.0
+    margin = layout.nodesep / 2.0 + 4.0
+    left_dist = r_mid - o_r_min
+    right_dist = o_r_max - r_mid
+    if right_dist <= left_dist:
+        side_r = o_r_max + margin
+    else:
+        side_r = o_r_min - margin
+
+    if is_lr:
+        return [(side_r, cr_i), (side_r, cr_j)]
+    else:
+        return [(cr_i, side_r), (cr_j, side_r)]
+
+
 def route_through_channel_boxes(
     layout,
     le: "LayoutEdge",
@@ -987,57 +1101,70 @@ def route_through_channel_boxes(
     ``completeregularpath`` and ``adjustregularpath`` have walked
     the box list.
 
-    For each node in the edge's path, the waypoint is the node's
-    current ``(x, y)`` with the cross-rank coordinate **clamped to
-    the channel box's cross-rank range**.  This keeps every
-    waypoint inside its box (so it respects the cluster walls
-    computed in :func:`_channel_bbox_for_node`) without moving
-    waypoints further than necessary when the existing virtual
-    position is already legal.
+    Step 5a — box clamping
+    ----------------------
+    For each node in the edge's path, the base waypoint is the
+    node's current ``(x, y)`` with the cross-rank coordinate
+    clamped to the channel box's cross-rank range.  This keeps
+    every waypoint inside its box so it respects the cluster
+    walls computed in :func:`_channel_bbox_for_node`.
+
+    Step 5b — disjoint-box bridging
+    -------------------------------
+    When two consecutive boxes have **disjoint cross-rank ranges**
+    (an obstacle cluster sits between them), a straight segment
+    between the clamped waypoints would still cross the obstacle.
+    We detect the disjoint case, find the outermost obstacle
+    cluster in the gap via :func:`_find_gap_obstacles`, and insert
+    two bridge waypoints via :func:`_bridge_points_for_obstacle`
+    that route laterally around the obstacle's nearest rank-axis
+    edge.
 
     The first and last waypoints are replaced by proper tail/head
     boundary/port points via ``edge_start_point`` /
     ``edge_end_point`` to match the existing routers' endpoint
     handling.
 
-    Limitations of this step-5a implementation
-    ------------------------------------------
-    When two consecutive boxes have **disjoint cross-rank ranges**
-    (an obstacle cluster sits between them), the straight segment
-    between their clamped waypoints still crosses the obstacle —
-    no intermediate waypoints are inserted yet.  Step 5b will
-    add bridge-waypoint logic that detects disjoint transitions
-    and routes around the intervening cluster along its perimeter.
-
-    For well-behaved edges (all boxes share a common cross-rank
-    interval), this function already produces a cluster-safe
-    polyline: every waypoint is inside its box, and consecutive
-    boxes overlap so the segment between waypoints is also inside
-    the box union.
-
-    Not yet wired into ``phase4_routing``.
+    Not yet wired into ``phase4_routing`` — still dead code.
     """
     is_lr = layout.rankdir in ("LR", "RL")
-    waypoints: list[tuple[float, float]] = []
+
+    # Step 5a: base waypoint per node, clamped to its box.
+    base: list[tuple[float, float]] = []
     for name, box in zip(path_names, boxes):
         ln = layout.lnodes.get(name)
         if ln is None:
             continue
-        min_cr, min_r, max_cr, max_r = box
+        min_cr, _, max_cr, _ = box
         if is_lr:
-            # LR: cross-rank is Y, rank is X.
             cr_clamped = max(min_cr, min(max_cr, ln.y))
-            waypoints.append((ln.x, cr_clamped))
+            base.append((ln.x, cr_clamped))
         else:
-            # TB: cross-rank is X, rank is Y.
             cr_clamped = max(min_cr, min(max_cr, ln.x))
-            waypoints.append((cr_clamped, ln.y))
+            base.append((cr_clamped, ln.y))
 
-    # Replace endpoints with proper boundary/port points so the
-    # route starts and ends on the node perimeter rather than the
-    # node center (matches existing ``route_regular_edge`` /
-    # ``route_through_chain`` behaviour).
-    if len(waypoints) >= 2 and path_names:
+    if len(base) < 2:
+        return base
+
+    # Step 5b: walk adjacent box pairs and insert bridge waypoints
+    # where the cross-rank ranges are disjoint.
+    tcl, hcl = _edge_clusters_for_le(layout, le)
+    waypoints: list[tuple[float, float]] = [base[0]]
+    for i in range(len(base) - 1):
+        cr_i_min, _, cr_i_max, _ = boxes[i]
+        cr_j_min, _, cr_j_max, _ = boxes[i + 1]
+        disjoint = (cr_i_max < cr_j_min) or (cr_j_max < cr_i_min)
+        if disjoint:
+            obstacles = _find_gap_obstacles(
+                layout, boxes[i], boxes[i + 1], tcl, hcl)
+            if obstacles:
+                bridges = _bridge_points_for_obstacle(
+                    layout, base[i], base[i + 1], obstacles[0])
+                waypoints.extend(bridges)
+        waypoints.append(base[i + 1])
+
+    # Replace endpoints with proper boundary/port points.
+    if path_names:
         tail = layout.lnodes.get(path_names[0])
         head = layout.lnodes.get(path_names[-1])
         if tail is not None and head is not None:
