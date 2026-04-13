@@ -378,12 +378,12 @@ class DotGraphInfo(LayoutEngine):
         self._cl_rn_x: dict[str, float] = {}
         # Phase 4 feature flag: use the new cluster-aware channel
         # router (splines.channel_route_edge) in place of the old
-        # route_regular_edge / route_through_chain.  Defaults to
-        # False so existing behaviour is unchanged; flip to True
-        # to A/B compare cluster avoidance.  The current session
-        # will switch the default after the integration commit
-        # lands and regression tests pass.
-        self._use_channel_routing: bool = False
+        # route_regular_edge / route_through_chain.  Default flipped
+        # to True after steps 6a/6b brought the channel router ahead
+        # of the old path on the aa1332 regression metric (3 crossings
+        # vs. 8).  Set to False for A/B comparison or to reproduce
+        # pre-step-6 behaviour.
+        self._use_channel_routing: bool = True
 
     # ── Public API ───────────────────────────────
 
