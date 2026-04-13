@@ -380,15 +380,18 @@ class DotGraphInfo(LayoutEngine):
     # ── Public API ───────────────────────────────
 
     def layout(self) -> dict:
-        """Run the full layout pipeline and return a JSON-serializable dict."""
-        self._init_from_graph()
+        """Run the full layout pipeline and return a JSON-serializable dict.
 
-        # Component packing: if graph has disconnected components,
-        # lay out each one separately and pack them side by side.
-        components = self._find_components()
-        if len(components) > 1:
-            print(f"[TRACE rank] component packing: {len(components)} components", file=sys.stderr)
-            return self._pack_components(components)
+        Mirrors C ``lib/dotgen/dotinit.c:dot_layout()``: the entire graph
+        is laid out as a single unit.  Network simplex (Phase 1) handles
+        weakly-disconnected components naturally — they end up on
+        adjacent ranks within the unified rank structure, and Phase 3
+        positions them side by side without any special-case packing.
+        See ``TODO_dot_layout.md`` history for the prior buggy
+        ``_find_components``/``_pack_components`` short-circuit that was
+        removed in favour of this C-aligned flow.
+        """
+        self._init_from_graph()
 
         print(f"[TRACE rank] begin layout: nodes={len(self.lnodes)} edges={len(self.ledges)} clusters={len(self._clusters)}", file=sys.stderr)
         self._phase1_rank()
@@ -419,188 +422,6 @@ class DotGraphInfo(LayoutEngine):
         from gvpy.engines.layout.dot import dotinit
         return dotinit.init_from_graph(self, *args, **kwargs)
 
-
-    def _find_components(self) -> list[set[str]]:
-        """Find connected components using BFS.  Returns list of node-name sets.
-
-        Nodes in the same subgraph are treated as connected (they share
-        a cluster).  If pack=false or there's only one component,
-        returns a single set.
-        """
-        if not self.pack:
-            return [set(self.lnodes.keys())]
-
-        real_nodes = {n for n, ln in self.lnodes.items() if not ln.virtual}
-        if not real_nodes:
-            return [set()]
-
-        # Don't pack if any nodes are pinned (pinned positions are absolute)
-        if any(ln.pinned or ln.fixed_pos for ln in self.lnodes.values()
-               if not ln.virtual):
-            return [real_nodes]
-
-        # Build adjacency from edges
-        adj: dict[str, set[str]] = defaultdict(set)
-        for le in self.ledges:
-            if le.tail_name in real_nodes and le.head_name in real_nodes:
-                adj[le.tail_name].add(le.head_name)
-                adj[le.head_name].add(le.tail_name)
-
-        # Nodes in the same subgraph hierarchy are implicitly connected
-        def _all_nodes_in(g):
-            """Gather all nodes in g and its nested subgraphs."""
-            result = set()
-            for n in g.nodes:
-                if n in real_nodes:
-                    result.add(n)
-            for sub in g.subgraphs.values():
-                result.update(_all_nodes_in(sub))
-            return result
-
-        def _link_subgraph_nodes(g):
-            for sub in g.subgraphs.values():
-                # All nodes in this subgraph tree are connected
-                all_sub = list(_all_nodes_in(sub))
-                for i in range(len(all_sub)):
-                    for j in range(i + 1, len(all_sub)):
-                        adj[all_sub[i]].add(all_sub[j])
-                        adj[all_sub[j]].add(all_sub[i])
-                _link_subgraph_nodes(sub)
-        _link_subgraph_nodes(self.graph)
-
-        visited: set[str] = set()
-        components: list[set[str]] = []
-        for node in real_nodes:
-            if node in visited:
-                continue
-            comp: set[str] = set()
-            queue = deque([node])
-            while queue:
-                n = queue.popleft()
-                if n in visited:
-                    continue
-                visited.add(n)
-                comp.add(n)
-                for nb in adj.get(n, ()):
-                    if nb not in visited:
-                        queue.append(nb)
-            components.append(comp)
-
-        return components
-
-    def _pack_components(self, components: list[set[str]]) -> dict:
-        """Lay out each connected component separately, then pack side by side.
-
-        Port of Graphviz lib/common/pack.c packing algorithm.
-        """
-        all_results: list[dict] = []
-        component_bbs: list[tuple[float, float, float, float]] = []
-
-        for comp_nodes in components:
-            # Create a sub-layout with only this component's nodes/edges
-            sub_graph = Graph(self.graph.name, directed=self.graph.directed,
-                              strict=self.graph.strict)
-            sub_graph.method_init()
-            # Copy graph attributes
-            for k, v in self.graph.attr_dict_g.items():
-                sub_graph.set_graph_attr(k, v)
-            # Copy nodes
-            for name in comp_nodes:
-                node = self.graph.nodes.get(name)
-                if node:
-                    n = sub_graph.add_node(name)
-                    for k, v in node.attributes.items():
-                        n.agset(k, v)
-            # Copy edges within this component
-            for key, edge in self.graph.edges.items():
-                if edge.tail.name in comp_nodes and edge.head.name in comp_nodes:
-                    e = sub_graph.add_edge(edge.tail.name, edge.head.name)
-                    for k, v in edge.attributes.items():
-                        e.agset(k, v)
-
-            # Copy subgraphs that contain nodes in this component
-            def _copy_subgraphs(src, dst, comp):
-                for sub_name, sub in src.subgraphs.items():
-                    sub_node_names = [n for n in sub.nodes if n in comp]
-                    if sub_node_names:
-                        new_sub = dst.create_subgraph(sub_name)
-                        for k, v in sub.attr_record.items():
-                            new_sub.attr_record[k] = v
-                        for n in sub_node_names:
-                            new_sub.add_node(n)
-                        _copy_subgraphs(sub, new_sub, comp)
-            _copy_subgraphs(self.graph, sub_graph, comp_nodes)
-
-            result = DotGraphInfo(sub_graph).layout()
-            all_results.append(result)
-
-            bb = result.get("graph", {}).get("bb", [0, 0, 100, 100])
-            component_bbs.append(tuple(bb))
-
-        # Pack components left-to-right
-        gap = self.pack_sep
-        x_offset = 0.0
-        merged = {
-            "graph": {
-                "name": self.graph.name,
-                "directed": self.graph.directed,
-                "bb": [0, 0, 0, 0],
-            },
-            "nodes": [],
-            "edges": [],
-            "clusters": [],
-        }
-
-        global_min_y = float("inf")
-        global_max_y = float("-inf")
-
-        for result, bb in zip(all_results, component_bbs):
-            comp_w = bb[2] - bb[0]
-            comp_h = bb[3] - bb[1]
-            # Shift this component so its left edge starts at x_offset
-            dx = x_offset - bb[0]
-            dy = -bb[1]  # align tops
-
-            for node in result.get("nodes", []):
-                node["x"] += dx
-                node["y"] += dy
-                merged["nodes"].append(node)
-
-            for edge in result.get("edges", []):
-                edge["points"] = [[p[0] + dx, p[1] + dy] for p in edge.get("points", [])]
-                if "label_pos" in edge:
-                    edge["label_pos"] = [edge["label_pos"][0] + dx,
-                                         edge["label_pos"][1] + dy]
-                merged["edges"].append(edge)
-
-            for cl in result.get("clusters", []):
-                old_bb = cl.get("bb", [0, 0, 0, 0])
-                cl["bb"] = [old_bb[0] + dx, old_bb[1] + dy,
-                            old_bb[2] + dx, old_bb[3] + dy]
-                merged["clusters"].append(cl)
-
-            global_min_y = min(global_min_y, dy)
-            global_max_y = max(global_max_y, dy + comp_h)
-            x_offset += comp_w + gap
-
-        merged["graph"]["bb"] = [
-            0, global_min_y if global_min_y != float("inf") else 0,
-            round(x_offset - gap, 2),
-            round(global_max_y if global_max_y != float("-inf") else 100, 2),
-        ]
-
-        # Pass through graph-level attrs
-        for attr in ("bgcolor", "label", "labelloc", "labeljust",
-                     "fontname", "fontsize", "fontcolor",
-                     "_label_pos_x", "_label_pos_y"):
-            val = self.graph.get_graph_attr(attr)
-            if val:
-                merged["graph"][attr] = val
-
-        if not merged.get("clusters"):
-            del merged["clusters"]
-
-        return merged
 
     def _orient_undirected(self):
         visited = set()
