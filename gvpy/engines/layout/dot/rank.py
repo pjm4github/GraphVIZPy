@@ -533,12 +533,67 @@ def add_virtual_nodes(layout):
     nodes at each intermediate rank and replace the original edge
     with a sequence of rank-adjacent edges.  The chain is recorded
     in ``layout._vnode_chains`` for Phase 4 spline routing.
+
+    Cluster inheritance (C analogue: the ``ND_clust`` propagation in
+    ``mark_clusters``/``class2.c``): when both endpoints of a split
+    edge share a common cluster, the virtual nodes inherit that
+    common cluster's membership so mincross orders them alongside
+    the cluster's real members instead of dumping them at the end
+    of each rank.  Without this, virtual nodes for intra-cluster
+    long edges get ``cluster=None`` and end up at the bottom of
+    their rank's cross-rank ordering, producing the catastrophic
+    "edge detours to the opposite side of the canvas" pattern seen
+    on ``aa1332.dot`` (c4163->c4251, c6428->c6753, etc.).
     """
     # Lazy imports — both classes live in dot_layout.py (circular).
     from gvpy.engines.layout.dot.dot_layout import LayoutNode, LayoutEdge
     layout._vnode_chains = {}
     new_edges = []
     to_remove = []
+
+    # Build a quick lookup of clusters per node so we can find the
+    # deepest common cluster of each split edge in O(clusters).  Only
+    # needed when the graph has clusters.
+    _node_clusters: dict[str, list[str]] = {}
+    _by_name: dict[str, "object"] = {}
+    if layout._clusters:
+        # Map node name -> list of cluster names sorted innermost first
+        # (smallest ``.nodes`` membership first).  ``cl.nodes`` is
+        # transitively populated by :func:`cluster.scan_clusters` so
+        # the smallest cluster containing a node IS the innermost.
+        by_size = sorted(layout._clusters, key=lambda c: len(c.nodes))
+        for cl in by_size:
+            _by_name[cl.name] = cl
+            for n in cl.nodes:
+                _node_clusters.setdefault(n, []).append(cl.name)
+
+    def _lca_ancestor_chain(tail_name: str,
+                             head_name: str) -> list["object"]:
+        """Return [LCA, ..., root_ancestor] clusters containing both nodes.
+
+        The innermost common cluster comes first, followed by its
+        parent clusters (which also contain both endpoints) in
+        increasing size.  A virtual node for an edge between these
+        endpoints must be added to **every** cluster in this chain
+        so that each layer of the cluster-aware mincross
+        (``skeleton_mincross``) sees the virtual inside its
+        ``cl_node_set`` and can assign its ``mval`` properly —
+        adding only to the LCA leaves the outer layers with a
+        broken mval and the virtual still gets dropped at the end
+        of the rank.
+        """
+        tcls = _node_clusters.get(tail_name, [])
+        if not tcls:
+            return []
+        head_cls = set(_node_clusters.get(head_name, ()))
+        result: list[object] = []
+        seen_common = False
+        for cname in tcls:  # innermost first
+            if cname in head_cls:
+                seen_common = True
+            if seen_common:
+                result.append(_by_name[cname])
+        return result
 
     for i, le in enumerate(layout.ledges):
         t_rank = layout.lnodes[le.tail_name].rank
@@ -548,6 +603,11 @@ def add_virtual_nodes(layout):
             continue  # No virtual nodes needed
         if span > 100:
             continue  # Too many virtual nodes, skip
+
+        # Determine the cluster chain the virtual chain should live
+        # in (LCA upward through every ancestor cluster that also
+        # contains both endpoints).
+        cluster_chain = _lca_ancestor_chain(le.tail_name, le.head_name)
 
         # Create chain of virtual nodes
         chain = []
@@ -562,6 +622,15 @@ def add_virtual_nodes(layout):
                 width=2.0, height=2.0,
             )
             chain.append(vname)
+            # Inherit cluster membership from the edge's LCA and
+            # every ancestor.  Mincross needs to see the virtual
+            # inside the cl_node_set at every level of its
+            # skeleton / expand traversal — adding only to the LCA
+            # leaves outer-level mincross passes with mval=-1 for
+            # the virtual, which lets it drift to the end of the
+            # rank instead of aligning with its endpoints.
+            for cl in cluster_chain:
+                cl.nodes.append(vname)
             new_edges.append(LayoutEdge(
                 edge=None, tail_name=prev_name, head_name=vname,
                 minlen=1, weight=le.weight, virtual=True,
