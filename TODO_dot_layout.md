@@ -55,6 +55,65 @@ The rendering pipeline will be handled by the **pictosync** project, not by Grap
 
 ---
 
+## TODO: Layout-side cluster avoidance (deferred)
+
+Two related improvements that fix edge-cluster crossings at the
+**layout** level rather than the routing level.  Deferred because
+they touch mincross / position code which is fragile and has been
+carefully tuned; the channel routing work in ``splines.py`` is
+being done first and should eliminate the user-visible crossings
+by post-processing.
+
+### (c) Layout divergence — same-side placement
+
+For some multi-rank edges, Python places the endpoints on
+**opposite sides** of a cluster while C places them on the **same
+side**, so C's edge naturally avoids the cluster and Python's
+can't.  The clearest example on ``aa1332.dot`` is ``c0 → c5359``:
+
+- C: both c0 and c5359 end up on the same side of cluster_5378 in
+  the cross-rank direction; C's polyline stays on that side and
+  never enters the cluster.
+- Python: c0 is visually *above* cluster_5378 (y=23) and c5359 is
+  visually *below* (y=396); the edge must cross the cluster's
+  cross-rank y range at some point.
+
+Root cause suspected in mincross + phase 3 cross-rank Y assignment.
+Specifically, Python's cross-rank ordering for the rank containing
+c0 places c0 at order 0 (top of rank) while C's places it at the
+bottom of its rank.  Needs investigation into:
+
+1. What median value c0 gets during mincross (what are its
+   neighbors pulling it toward?)
+2. Whether the Y assignment in ``phase3_position``'s NS X solver
+   treats rank 0's first node as "top" or "bottom" consistently
+   with C's convention.
+3. Whether the rank-axis y convention is consistent with apply_rankdir.
+
+Investigation will be a separate dedicated session; probably a
+multi-phase instrumentation workflow per ``CLAUDE.md``.
+
+### (d) Position-time virtual-node y constraints
+
+An intermediate fix that's more forward-compatible with the full
+channel routing: when ``ns_x_position`` computes virtual-node
+cross-rank positions in phase 3, add **hard constraints** that
+each virtual's y must be outside any non-member cluster's bbox at
+its rank.
+
+- Implementation: walk each virtual's rank, compute the "forbidden
+  y intervals" from non-member clusters that intersect the
+  virtual's cluster chain, and add aux_edges that push the virtual
+  out of those intervals.
+- Scope: ~80-120 lines in ``position.py`` (new aux_edge type:
+  "cluster keep-out for virtuals").
+- Forward-compat: ~60% of the code transfers to channel routing
+  work (specifically the "which clusters does this edge's rank
+  pass through" computation).
+
+Deferred until the channel routing in ``splines.py`` is complete
+and we understand what residual layout issues remain.
+
 ## TODO: Font Metrics Refinement
 
 The mincross port.order computation uses Times-Roman AFM character
