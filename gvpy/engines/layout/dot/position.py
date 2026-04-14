@@ -79,6 +79,20 @@ def phase3_position(layout: "DotGraphInfo") -> None:
         if not ns_x_position(layout):
             # Fallback to bottom-up if NS fails
             layout._bottomup_ns_x_position()
+        # Post-NS median improvement: iteratively pull nodes toward
+        # the median cross-rank position of their adjacent-rank
+        # neighbours.  The NS solve places nodes at the minimum
+        # position that satisfies all constraints, but for edges
+        # between nodes in the same wrapping cluster (e.g. c3378 ->
+        # c4045 on aa1332 with three parallel edges) the weight-1
+        # slack-node alignment is easily overridden by per-rank
+        # separation constraints, leaving the connected nodes far
+        # apart in cross-rank even when free space is available on
+        # either side.  The median pass respects the existing
+        # per-rank separation and (implicitly) the cluster-boundary
+        # constraints that NS left in place, so it only shifts
+        # nodes into space their neighbours have already allowed.
+        median_x_with_cluster_clamp(layout)
         layout._compute_cluster_boxes()
     else:
         layout._simple_x_position()
@@ -97,11 +111,24 @@ def phase3_position(layout: "DotGraphInfo") -> None:
 
     layout._apply_rankdir()
 
-    # Post-rankdir: resolve all cluster overlaps and push non-member
-    # nodes out of sibling cluster bboxes.
+    # Post-rankdir: resolve any residual sibling-cluster bbox
+    # overlaps that the global NS couldn't enforce.
+    #
+    # ``post_rankdir_keepout`` is deliberately NOT called here.
+    # It was the safety net that pushed non-member real nodes out
+    # of sibling cluster bboxes, but after the node-aware obstacle
+    # detection and row-detour work (steps 6b/6c/6d) the channel
+    # router handles that cleanly at edge-routing time, and
+    # running the keepout pass *after* the median-improvement
+    # pass actively undoes the median pass's alignment gains.
+    # On aa1332.dot it used to push ``c0`` from its natural
+    # top-of-canvas position (y≈682) all the way to y≈2031 after
+    # the median pass had pulled ``c3378``/``c4045``/``c4046``
+    # into a common row — c0 then looked orphaned at the bottom.
+    # With the keepout disabled c0 stays at y=682 and the chain
+    # alignment is preserved.
     if layout._clusters:
         layout._resolve_cluster_overlaps()
-        layout._post_rankdir_keepout()
 
     # Log post-rankdir positions
     for name in sorted(layout.lnodes.keys()):
@@ -938,6 +965,152 @@ def simple_x_position(layout):
             channel_space = min(ec * 8.0, 80.0)  # up to 80pt extra
             x += ln.width + layout.nodesep + channel_space
             prev_cluster = cur_cluster
+
+
+def median_x_with_cluster_clamp(layout):
+    """Cluster-aware variant of :func:`median_x_improvement`.
+
+    Runs the same "shift each node toward the median cross-rank
+    position of its adjacent-rank neighbours" pass, but additionally
+    clamps every proposed move to the inner extent of every cluster
+    the node belongs to.  A node is never moved outside the
+    cluster's current ``ln`` / ``rn`` aux-edge-bounded band, which
+    preserves the cluster-containment constraints the main NS solve
+    established.
+
+    Why this is needed: for edges whose endpoints live in the same
+    wrapping cluster — especially multi-edges like
+    ``c3378 -> c4045`` (three parallel edges on aa1332.dot) — the
+    NS solve places both endpoints at the minimum-cost position
+    subject to per-rank separation, leaving them 600+ units apart
+    in cross-rank even though the multi-edge weight of 3 should
+    pull them together.  Running the median pass post-NS shifts
+    each of them toward the median of its neighbours, which for
+    this pair means pulling c3378 south and/or c4045 north into
+    visual alignment.
+
+    The clamp range for a node is the intersection of:
+
+    - Per-rank separation: the node can move at most to halfway
+      between its left and right neighbours on the same rank.
+
+    - Cluster bbox: for every cluster the node belongs to, the
+      node's centre (plus half-width) must stay inside the
+      cluster's current inner-extent range computed from its
+      ``ln`` / ``rn`` aux nodes.
+
+    We iterate up to 8 times; each iteration recomputes the
+    medians and per-rank clamps.  The cluster clamps are computed
+    once at the start since cluster bbox extents are rarely
+    tightened by an intra-cluster shift.
+    """
+    # Per-node cluster extent: (min_x, max_x) in the cross-rank
+    # axis (which is ``x`` at this point in the pipeline because
+    # we haven't yet applied rankdir).  A node sits in the
+    # intersection of its containing clusters' extents.
+    #
+    # Crucially we exclude the node itself when computing each
+    # cluster's extent.  Otherwise a single-member wrapper cluster
+    # (very common in the dot sources that wrap every node in its
+    # own ``clusterc<name>`` for colour/border control) pins the
+    # node to its current position: the cluster extent is
+    # ``[node.x - margin, node.x + margin]``, which cancels with
+    # the half-width clamp below to yield an empty range and the
+    # median pass refuses to move the node.  Excluding the node
+    # turns single-member wrappers into no-op constraints, and
+    # multi-member clusters (e.g. a parent cluster that holds
+    # multiple members) clamp based on the *other* members'
+    # positions — which is what we actually want.
+    cluster_range: dict[str, tuple[float, float]] = {}
+    if layout._clusters:
+        node_sets = {cl.name: set(cl.nodes) for cl in layout._clusters}
+        for name, ln in layout.lnodes.items():
+            if ln.virtual:
+                continue
+            lo = -1e9
+            hi = 1e9
+            for cl in layout._clusters:
+                if name not in node_sets[cl.name]:
+                    continue
+                cl_nodes_x = [layout.lnodes[n].x
+                              for n in node_sets[cl.name]
+                              if n != name and n in layout.lnodes]
+                if not cl_nodes_x:
+                    # Single-member wrapper — no sibling anchors,
+                    # no constraint.  The cluster bbox will follow
+                    # the node wherever the median pass moves it.
+                    continue
+                margin = max(float(cl.margin),
+                             float(getattr(layout, "_routing_channel",
+                                           getattr(layout, "_CL_OFFSET",
+                                                   8.0))))
+                cl_lo = min(cl_nodes_x) - margin
+                cl_hi = max(cl_nodes_x) + margin
+                lo = max(lo, cl_lo)
+                hi = min(hi, cl_hi)
+            cluster_range[name] = (lo, hi)
+
+    # Build adjacency on cross-rank axis: for each real node, the
+    # list of cross-rank positions of its connected neighbours in
+    # adjacent ranks.  Virtual nodes are skipped because their
+    # positions follow their chain direction rather than the
+    # "natural" neighbour median.
+    adj: dict[str, list[str]] = {}
+    for le in layout.ledges:
+        if layout.lnodes[le.tail_name].virtual:
+            continue
+        if layout.lnodes[le.head_name].virtual:
+            continue
+        adj.setdefault(le.tail_name, []).append(le.head_name)
+        adj.setdefault(le.head_name, []).append(le.tail_name)
+
+    for _iteration in range(8):
+        moved = False
+        for rank_val in sorted(layout.ranks.keys()):
+            rank_nodes = layout.ranks[rank_val]
+            for idx, name in enumerate(rank_nodes):
+                ln = layout.lnodes[name]
+                if ln.virtual:
+                    continue
+                neighbors = adj.get(name, [])
+                if not neighbors:
+                    continue
+                neighbor_xs = sorted(layout.lnodes[n].x for n in neighbors
+                                     if n in layout.lnodes)
+                if not neighbor_xs:
+                    continue
+                mid = len(neighbor_xs) // 2
+                median_x = neighbor_xs[mid]
+
+                # Per-rank separation clamp.
+                min_x = -1e9
+                max_x = 1e9
+                if idx > 0:
+                    left = layout.lnodes[rank_nodes[idx - 1]]
+                    min_x = (left.x + left.width / 2.0 + layout.nodesep
+                             + ln.width / 2.0)
+                if idx < len(rank_nodes) - 1:
+                    right = layout.lnodes[rank_nodes[idx + 1]]
+                    max_x = (right.x - right.width / 2.0 - layout.nodesep
+                             - ln.width / 2.0)
+
+                # Cluster extent clamp — applied on top of the
+                # per-rank range so a shift never drags a node
+                # outside any of its containing clusters' bands.
+                cr = cluster_range.get(name)
+                if cr is not None:
+                    min_x = max(min_x, cr[0] + ln.width / 2.0)
+                    max_x = min(max_x, cr[1] - ln.width / 2.0)
+
+                if min_x > max_x:
+                    continue  # no free range; leave node alone
+
+                target = max(min_x, min(max_x, median_x))
+                if abs(target - ln.x) > 0.5:
+                    ln.x = target
+                    moved = True
+        if not moved:
+            break
 
 
 def median_x_improvement(layout):
