@@ -116,6 +116,17 @@ def phase3_position(layout: "DotGraphInfo") -> None:
     if layout._clusters:
         layout._resolve_cluster_overlaps()
         layout._post_rankdir_keepout()
+        # ``resolve_cluster_overlaps`` shifts whole clusters in
+        # the cross-rank direction to break sibling overlaps, but
+        # it only moves cluster members.  Nodes that live OUTSIDE
+        # the shifted cluster yet have an edge into it (e.g.
+        # ``c6755`` connected to ``c6753`` where c6753 is in
+        # cluster_6754) get left behind at their old cross-rank
+        # position, producing a 700+pt gap in what should be a
+        # tight one-edge connection.  A post-resolve median fixup
+        # pulls every such "orphan" node back toward its
+        # neighbours' new positions.
+        post_resolve_align(layout)
 
     # Log post-rankdir positions
     for name in sorted(layout.lnodes.keys()):
@@ -1023,6 +1034,123 @@ def simple_x_position(layout):
             channel_space = min(ec * 8.0, 80.0)  # up to 80pt extra
             x += ln.width + layout.nodesep + channel_space
             prev_cluster = cur_cluster
+
+
+def post_resolve_align(layout):
+    """Pull non-cluster nodes back to their neighbours after a
+    ``resolve_cluster_overlaps`` shift.
+
+    ``resolve_cluster_overlaps`` shifts entire clusters in the
+    cross-rank direction to break 2D bbox overlaps, but it only
+    moves the cluster's *members*.  Any node that lives outside
+    the shifted cluster yet has an edge into it ends up
+    disconnected — its connected partner may have jumped 700pt
+    south while the orphan sits where the NS solver originally
+    left it.
+
+    This pass does a small post-rankdir median fixup on the
+    cross-rank axis (which is ``y`` in LR/RL mode, ``x`` in
+    TB/BT mode).  For every real node whose adjacent-rank
+    neighbours have a tightly clustered cross-rank value far
+    from its own, the node is shifted to that median.  Per-rank
+    separation is honoured: the shift is clamped against the
+    node's left / right neighbours on its rank.
+
+    Concrete case on aa1332.dot: ``c6755`` is the only node on
+    rank 26 and connects only to ``c6753``.  The NS solver placed
+    both at cross-rank y≈109.  ``resolve_cluster_overlaps`` then
+    shifted cluster_6754 (containing c6753) south by 702pt to
+    break an overlap, leaving c6755 stranded at y=109 while
+    c6753 sat at y=811.  This pass pulls c6755 to y=811 to
+    restore the connection.
+    """
+    if not layout.lnodes:
+        return
+    is_lr = layout.rankdir in ("LR", "RL")
+
+    # Identify nodes that are *effectively orphan* — their only
+    # cluster memberships are single-member wrapper clusters
+    # (label-less ``clusterc<name>`` style with margin=0).  Nodes
+    # inside real multi-member clusters are already constrained
+    # by their cluster's bbox, and the resolve pass has moved the
+    # whole cluster as a unit; running this fixup on them would
+    # tear them out of their cluster.  Only orphans get pulled.
+    orphans: set[str] = set()
+    for name, ln in layout.lnodes.items():
+        if ln.virtual:
+            continue
+        in_real_cluster = False
+        for cl in layout._clusters:
+            if name in cl.nodes and len(cl.nodes) > 1:
+                in_real_cluster = True
+                break
+        if not in_real_cluster:
+            orphans.add(name)
+    if not orphans:
+        return
+
+    # Build adjacency for orphan nodes only.
+    adj: dict[str, list[str]] = {}
+    for le in list(layout.ledges) + list(layout._chain_edges):
+        if not le or le.tail_name == le.head_name:
+            continue
+        if le.tail_name in orphans:
+            adj.setdefault(le.tail_name, []).append(le.head_name)
+        if le.head_name in orphans:
+            adj.setdefault(le.head_name, []).append(le.tail_name)
+
+    def cr(ln):
+        return ln.y if is_lr else ln.x
+
+    def set_cr(ln, val):
+        if is_lr:
+            ln.y = val
+        else:
+            ln.x = val
+
+    for _iter in range(4):
+        moved = False
+        for name in orphans:
+            ln = layout.lnodes[name]
+            neighbours = adj.get(name, [])
+            if not neighbours:
+                continue
+            crs = sorted(cr(layout.lnodes[n]) for n in neighbours
+                         if n in layout.lnodes)
+            if not crs:
+                continue
+            mid = len(crs) // 2
+            target = crs[mid]
+            # Per-rank clamp on the cross-rank axis using siblings
+            # in the same rank.
+            rank_nodes = layout.ranks.get(ln.rank, [])
+            if not rank_nodes:
+                continue
+            try:
+                idx = rank_nodes.index(name)
+            except ValueError:
+                continue
+            half = (ln.height if is_lr else ln.width) / 2.0
+            min_cr = -1e9
+            max_cr = 1e9
+            sep = float(getattr(layout, "_routing_channel",
+                                getattr(layout, "_CL_OFFSET", 8.0)))
+            if idx > 0:
+                left = layout.lnodes[rank_nodes[idx - 1]]
+                left_half = (left.height if is_lr else left.width) / 2.0
+                min_cr = cr(left) + left_half + sep + half
+            if idx < len(rank_nodes) - 1:
+                right = layout.lnodes[rank_nodes[idx + 1]]
+                right_half = (right.height if is_lr else right.width) / 2.0
+                max_cr = cr(right) - right_half - sep - half
+            if min_cr > max_cr:
+                continue
+            new_cr = max(min_cr, min(max_cr, target))
+            if abs(new_cr - cr(ln)) > 0.5:
+                set_cr(ln, new_cr)
+                moved = True
+        if not moved:
+            break
 
 
 def median_x_with_cluster_clamp(layout):
