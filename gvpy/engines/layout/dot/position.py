@@ -1899,7 +1899,18 @@ def post_rankdir_keepout(layout):
                 # (e.g. c6384 vs cluster_6407 on aa1332) passes
                 # the strict-inequality check and the keepout
                 # never fires.
-                gap = layout.nodesep
+                #
+                # ``gap`` uses ``_CL_OFFSET`` (8pt default) rather
+                # than ``nodesep`` (18pt default) because the
+                # required separation here is the cluster-margin
+                # convention the rest of the layout uses, and
+                # an 18pt demand can exceed the available vertical
+                # space between two adjacent clusters (cf.
+                # ``c4253`` / ``c4254`` sandwiched between
+                # ``cluster_5378`` and ``cluster_4257`` with only
+                # 66pt of free space — the node plus two 18pt
+                # margins needs 83pt).
+                gap = float(getattr(layout, "_CL_OFFSET", 8.0))
                 x_too_close = (ln.x - hw < bx2 + gap) and (ln.x + hw > bx1 - gap)
                 y_too_close = (ln.y - hh < by2 + gap) and (ln.y + hh > by1 - gap)
 
