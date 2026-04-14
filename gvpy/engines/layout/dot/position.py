@@ -111,24 +111,11 @@ def phase3_position(layout: "DotGraphInfo") -> None:
 
     layout._apply_rankdir()
 
-    # Post-rankdir: resolve any residual sibling-cluster bbox
-    # overlaps that the global NS couldn't enforce.
-    #
-    # ``post_rankdir_keepout`` is deliberately NOT called here.
-    # It was the safety net that pushed non-member real nodes out
-    # of sibling cluster bboxes, but after the node-aware obstacle
-    # detection and row-detour work (steps 6b/6c/6d) the channel
-    # router handles that cleanly at edge-routing time, and
-    # running the keepout pass *after* the median-improvement
-    # pass actively undoes the median pass's alignment gains.
-    # On aa1332.dot it used to push ``c0`` from its natural
-    # top-of-canvas position (y≈682) all the way to y≈2031 after
-    # the median pass had pulled ``c3378``/``c4045``/``c4046``
-    # into a common row — c0 then looked orphaned at the bottom.
-    # With the keepout disabled c0 stays at y=682 and the chain
-    # alignment is preserved.
+    # Post-rankdir: resolve any residual cluster-bbox overlaps
+    # and push non-member nodes out of sibling cluster bboxes.
     if layout._clusters:
         layout._resolve_cluster_overlaps()
+        layout._post_rankdir_keepout()
 
     # Log post-rankdir positions
     for name in sorted(layout.lnodes.keys()):
@@ -1634,18 +1621,37 @@ def post_rankdir_keepout(layout):
                 if x_overlap and y_overlap:
                     gap = layout.nodesep
                     if push_y:
-                        # LR/RL: push in Y only
-                        y_pen_top = by2 - (ln.y - hh)
-                        y_pen_bottom = (ln.y + hh) - by1
-                        if y_pen_top < y_pen_bottom:
+                        # LR/RL: push in Y only.  Pick the closer
+                        # exit side: if the node sits closer to the
+                        # cluster's NORTH edge (``by1``) the cheap
+                        # exit is to push it further north past
+                        # ``by1``; otherwise push south past ``by2``.
+                        # Distances:
+                        #   exit_north = (ln.y + hh) - by1   (how
+                        #                far the node has to move
+                        #                up so its bottom is just
+                        #                above the cluster's top)
+                        #   exit_south = by2 - (ln.y - hh)   (how
+                        #                far it must move down so
+                        #                its top is just below the
+                        #                cluster's bottom)
+                        # The original code computed these but then
+                        # picked the *opposite* branch, sending
+                        # nodes the long way out — c0 on aa1332
+                        # used to fly from y=682 to y=2031 even
+                        # though the closer exit was a 138pt push
+                        # north.
+                        exit_north = (ln.y + hh) - by1
+                        exit_south = by2 - (ln.y - hh)
+                        if exit_north <= exit_south:
                             ln.y = by1 - hh - gap
                         else:
                             ln.y = by2 + hh + gap
                     else:
-                        # TB/BT: push in X only
-                        x_pen_left = bx2 - (ln.x - hw)
-                        x_pen_right = (ln.x + hw) - bx1
-                        if x_pen_left < x_pen_right:
+                        # TB/BT: push in X only — symmetric fix.
+                        exit_left = (ln.x + hw) - bx1
+                        exit_right = bx2 - (ln.x - hw)
+                        if exit_left <= exit_right:
                             ln.x = bx1 - hw - gap
                         else:
                             ln.x = bx2 + hw + gap
