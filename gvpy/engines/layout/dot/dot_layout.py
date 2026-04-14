@@ -931,6 +931,16 @@ class DotGraphInfo(LayoutEngine):
     # editing the separate constants the router used to read.
     _routing_channel: float = _CL_OFFSET
 
+    # Arrow-head budget at edge endpoints.  The channel router adds
+    # this to ``_routing_channel`` when picking the stub length at
+    # each endpoint, so the arrow (drawn backwards from the tip
+    # along the final segment) fits in the outer half of the stub
+    # and the inner half is free routing clearance.  Defaults to
+    # the svg_renderer's ``_ARROW_SIZE`` so the standard 8pt arrow
+    # always has room to draw without eating into the routing
+    # corridor.
+    _arrow_len: float = 8.0
+
     def _phase3_position(self):
         """Phase 3 entry point — delegates to position module.
 

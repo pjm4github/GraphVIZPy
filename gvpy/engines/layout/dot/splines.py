@@ -1196,13 +1196,22 @@ def _find_gap_obstacles(layout, box_i, box_j, tcl, hcl):
 
 
 def _row_crossings(layout, p1, p2, skip_names: set[str]) -> list:
-    """Return real nodes whose bbox the segment crosses.
+    """Return real nodes whose bbox the segment *passes through*.
 
-    ``skip_names`` is the set of node names to exclude — typically
-    the edge's specific tail and head nodes plus the virtual-node
-    endpoints of the current segment.  We do NOT exclude *siblings*
-    of the tail/head that happen to share a wrapping cluster, since
-    those sibling nodes are still obstacles the route must avoid.
+    A node counts as a crossing when **both** endpoints of the
+    segment lie strictly outside the node's bbox and the segment
+    still enters the bbox.  If either endpoint is inside the bbox
+    the segment is merely *touching* the node at an attach point
+    (e.g. a stub segment whose near-end sits just past the face)
+    and is not counted — we don't want to route around a node we
+    legitimately connect to.
+
+    ``skip_names`` still applies — e.g. the segment's own virtual-
+    node endpoints are excluded so they can be touched at either
+    end.  But the edge's tail and head are no longer
+    unconditionally skipped: if a bridge leg runs straight through
+    the head's interior to reach a stub on the far side, that's
+    a through-crossing and must be detoured around.
     """
     crossing: list = []
     for node_name, ln in layout.lnodes.items():
@@ -1212,6 +1221,14 @@ def _row_crossings(layout, p1, p2, skip_names: set[str]) -> list:
             continue
         bb = (ln.x - ln.width / 2.0, ln.y - ln.height / 2.0,
               ln.x + ln.width / 2.0, ln.y + ln.height / 2.0)
+        # Skip nodes whose bbox *contains* either endpoint — those
+        # are legitimate attach points, not obstacles.
+        p1_inside = (bb[0] <= p1[0] <= bb[2]
+                     and bb[1] <= p1[1] <= bb[3])
+        p2_inside = (bb[0] <= p2[0] <= bb[2]
+                     and bb[1] <= p2[1] <= bb[3])
+        if p1_inside or p2_inside:
+            continue
         if _seg_hits_bbox(p1, p2, bb):
             crossing.append(ln)
     return crossing
@@ -1993,8 +2010,16 @@ def route_through_channel_boxes(
     if tail is not None and head is not None:
         exit_pt = layout._edge_start_point(le, tail, head)
         entry_pt = layout._edge_end_point(le, head, tail)
-        stub_len = float(getattr(layout, "_routing_channel",
+        # Stub length = routing channel + arrow head length, so the
+        # arrow fits in the outer half of the stub and the inner
+        # half is free routing clearance.  Without the arrow budget
+        # the default 8pt arrow (from svg_renderer._ARROW_SIZE) fills
+        # the entire stub, which leaves no room for the tangent-
+        # pinning segment the bezier fit needs.
+        _rc_len = float(getattr(layout, "_routing_channel",
                                  getattr(layout, "_CL_OFFSET", 8.0)))
+        _arrow_len = float(getattr(layout, "_arrow_len", 8.0))
+        stub_len = _rc_len + _arrow_len
         stub_out = _perp_stub(tail, exit_pt, stub_len)
         stub_in = _perp_stub(head, entry_pt, stub_len)
     else:
@@ -2064,14 +2089,15 @@ def route_through_channel_boxes(
             b_tail_pt = exit_pt if i <= 1 else None
             b_head_ln = head if i >= last - 2 else None
             b_head_pt = entry_pt if i >= last - 2 else None
-            # Detour skip-names: only the edge's specific tail and
-            # head node names, plus the current segment's own node
-            # endpoints (which may be the same, for stub segments,
-            # or virtual nodes in the middle of a chain).  We do
-            # NOT skip nodes that merely share a wrapping cluster
-            # with tail / head — those siblings are still obstacles
-            # the route must detour around.
-            skip = {path_names[0], path_names[-1], ni, nj}
+            # Detour skip-names: intentionally empty.  The new
+            # endpoint-based check in _row_crossings already
+            # excludes nodes whose bbox contains either segment
+            # endpoint (i.e. legitimate attach-point touches), so
+            # we don't need a name-based filter.  Leaving tail and
+            # head in the candidate set is what lets the detour
+            # route *around* them when a bridge leg would
+            # otherwise pass straight through their interior.
+            skip: set[str] = set()
             bridges = _bridge_points_for_obstacle(
                 layout, p_i, p_j, obstacles[0],
                 tcl=tcl, hcl=hcl,
