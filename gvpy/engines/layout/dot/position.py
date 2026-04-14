@@ -1848,24 +1848,39 @@ def post_rankdir_keepout(layout):
                 continue
             hw = ln.width / 2.0
             hh = ln.height / 2.0
-            home = node_home.get(name)
-            home_parent = tree_parent.get(home) if home else None
 
-            for sib_name in tree_children.get(home_parent, []):
-                if sib_name == home:
-                    continue
-                cl = next((c for c in layout._clusters if c.name == sib_name), None)
-                if not cl or not cl.bb:
+            # Walk every cluster — not just siblings of the node's
+            # home cluster.  The earlier sibling-only iteration
+            # missed cases where a node lived in one subtree and
+            # the offending cluster lived in a separate subtree
+            # under the same root (e.g. ``c6384`` in
+            # ``cluster_6409`` ending up 1.8pt above
+            # ``cluster_6407`` — the two clusters share a
+            # grandparent but not a parent, so ``cluster_6407``
+            # never appeared in c6384's home-parent's children
+            # list and the keepout never fired).  Walking all
+            # clusters and skipping membership covers both cases.
+            for cl in layout._clusters:
+                if not cl.bb:
                     continue
                 if name in cl_node_sets[cl.name]:
                     continue
 
                 bx1, by1, bx2, by2 = cl.bb
-                x_overlap = (ln.x - hw < bx2) and (ln.x + hw > bx1)
-                y_overlap = (ln.y - hh < by2) and (ln.y + hh > by1)
+                # Margin-aware overlap test: a non-member node is
+                # considered "too close" if any face of its bbox
+                # comes within ``gap`` of the cluster's bbox, not
+                # just when the bboxes literally overlap.  Without
+                # this margin in the test, a node whose bottom
+                # edge sits 1.8pt above the cluster's top edge
+                # (e.g. c6384 vs cluster_6407 on aa1332) passes
+                # the strict-inequality check and the keepout
+                # never fires.
+                gap = layout.nodesep
+                x_too_close = (ln.x - hw < bx2 + gap) and (ln.x + hw > bx1 - gap)
+                y_too_close = (ln.y - hh < by2 + gap) and (ln.y + hh > by1 - gap)
 
-                if x_overlap and y_overlap:
-                    gap = layout.nodesep
+                if x_too_close and y_too_close:
                     if push_y:
                         # LR/RL: push in Y only.  Pick the closer
                         # exit side: if the node sits closer to the
