@@ -625,105 +625,44 @@ def compute_cluster_boxes(layout):
     """Compute bounding boxes for clusters from positioned nodes.
 
     C analogue: ``lib/dotgen/position.c:dot_compute_bb()`` and
-    ``lib/dotgen/cluster.c`` post-NS bbox finalization.  After the
-    NS X solve has placed nodes and cluster ln/rn boundaries, walk
-    each cluster bottom-up so a parent cluster's bbox can include
-    its child clusters' (already-computed) bboxes plus margin.
-    Without that, a parent that shares a leftmost / bottommost
-    node with its child ends up with the same west/south edge as
-    the child — there's no visible gap between the two cluster
-    borders.
+    ``lib/dotgen/cluster.c`` post-NS bbox finalization.
 
-    For each cluster the bbox spans:
+    The bbox is computed from each cluster's member node
+    positions plus the cluster's ``margin``.  This matches what
+    the NS X solver was asked to produce via the per-rank
+    separation and cluster-containment aux edges — a cluster's
+    members are placed such that ``leftmost.x - margin``
+    coincides with where the NS solver put the cluster's left
+    boundary ``ln``.
 
-    - Every member node's bbox, expanded by ``cl.margin``.
-    - Every directly-contained child cluster's bbox, expanded
-      by ``cl.margin`` on each side.
-    - The cluster's own label, on the configured ``labelloc`` side.
+    KNOWN LIMITATION: nested clusters that share a leftmost or
+    bottommost member node end up with the same west / south
+    edge as their child — there is no *visible* gap between the
+    two cluster borders even though the NS solver's
+    ``contain_subclust`` aux edges assign different
+    ``ln_x`` / ``rn_x`` values to each nesting level.
 
-    When a cluster has a label, the box is further expanded on
-    that side so the label text doesn't overlap internal nodes.
+    A previous attempt to close this gap by recursively
+    inflating the parent bbox to include each child bbox plus
+    ``margin`` introduced cascading post-process artefacts
+    (phantom margin bands containing non-member nodes that then
+    had to be pushed out by ``post_rankdir_keepout``, which in
+    turn undid the median pass's alignment gains, which in turn
+    forced ``post_resolve_align`` to be added).  Reverting here
+    to the simple member-based calculation; the right fix is a
+    larger rethink of how the NS-solver's cluster boundary
+    positions propagate through ``apply_rankdir`` and the
+    subsequent post-passes — filed as follow-up.
     """
-    # Build child-cluster map so we can post-order walk the
-    # cluster tree.  Two clusters are in a parent/child
-    # relationship when one's node set is strictly contained in
-    # the other's.  We only attach each child to its *immediate*
-    # parent (smallest superset) so a deeply nested child doesn't
-    # contribute its bbox to every ancestor twice.
-    cl_by_name = {cl.name: cl for cl in layout._clusters}
-    node_sets = {cl.name: frozenset(cl.nodes) for cl in layout._clusters}
-
-    parent: dict[str, str | None] = {}
     for cl in layout._clusters:
-        my_set = node_sets[cl.name]
-        # Skip degenerate clusters with no members.  An empty set
-        # is a strict subset of every non-empty set, which would
-        # otherwise make the empty cluster a "child" of *every*
-        # other cluster and propagate its zeroed bbox into every
-        # parent's containment loop.
-        if not my_set:
-            parent[cl.name] = None
-            continue
-        best_parent: str | None = None
-        best_size = None
-        for other in layout._clusters:
-            if other.name == cl.name:
-                continue
-            other_set = node_sets[other.name]
-            if not other_set:
-                continue
-            if my_set < other_set:
-                size = len(other_set)
-                if best_size is None or size < best_size:
-                    best_parent = other.name
-                    best_size = size
-        parent[cl.name] = best_parent
-
-    children: dict[str, list[str]] = {}
-    for cn, par in parent.items():
-        children.setdefault(par or "", []).append(cn)
-
-    # Post-order walk: process each cluster only after all its
-    # children have been processed, so the parent can include
-    # the child bboxes in its extent.
-    visited: set[str] = set()
-    order: list[str] = []
-
-    def _walk(cn: str) -> None:
-        if cn in visited:
-            return
-        for ch in children.get(cn, []):
-            _walk(ch)
-        visited.add(cn)
-        order.append(cn)
-
-    for cl in layout._clusters:
-        _walk(cl.name)
-
-    for cn in order:
-        cl = cl_by_name[cn]
         members = [layout.lnodes[n] for n in cl.nodes if n in layout.lnodes]
         if not members:
             continue
 
         min_x = min(ln.x - ln.width / 2 for ln in members) - cl.margin
-        min_y = min(ln.y - ln.height / 2 for ln in members) - cl.margin
         max_x = max(ln.x + ln.width / 2 for ln in members) + cl.margin
+        min_y = min(ln.y - ln.height / 2 for ln in members) - cl.margin
         max_y = max(ln.y + ln.height / 2 for ln in members) + cl.margin
-
-        # Include each immediate child cluster's bbox, padded by
-        # the parent's margin on every side so the parent border
-        # stays clear of the child border by the routing-channel
-        # gap on each face.
-        for ch_name in children.get(cn, []):
-            ch = cl_by_name[ch_name]
-            if not ch.bb:
-                continue
-            cx1, cy1, cx2, cy2 = ch.bb
-            min_x = min(min_x, cx1 - cl.margin)
-            min_y = min(min_y, cy1 - cl.margin)
-            max_x = max(max_x, cx2 + cl.margin)
-            max_y = max(max_y, cy2 + cl.margin)
 
         # Expand for cluster label
         if cl.label:
@@ -1979,4 +1918,5 @@ def apply_rankdir(layout):
             ln.x = max_y - old_y
             ln.y = old_x
             ln.width, ln.height = ln.height, ln.width
+
 
