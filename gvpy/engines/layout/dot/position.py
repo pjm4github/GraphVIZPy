@@ -616,14 +616,71 @@ def compute_cluster_boxes(layout):
     C analogue: ``lib/dotgen/position.c:dot_compute_bb()`` and
     ``lib/dotgen/cluster.c`` post-NS bbox finalization.  After the
     NS X solve has placed nodes and cluster ln/rn boundaries, walk
-    each cluster's members and compute the (LL, UR) box, expanding
-    for cluster labels and margins.
+    each cluster bottom-up so a parent cluster's bbox can include
+    its child clusters' (already-computed) bboxes plus margin.
+    Without that, a parent that shares a leftmost / bottommost
+    node with its child ends up with the same west/south edge as
+    the child — there's no visible gap between the two cluster
+    borders.
 
-    The bbox is always computed from member node positions + margin.
-    When a cluster has a label, the box is expanded so the label
-    text doesn't overlap internal nodes.
+    For each cluster the bbox spans:
+
+    - Every member node's bbox, expanded by ``cl.margin``.
+    - Every directly-contained child cluster's bbox, expanded
+      by ``cl.margin`` on each side.
+    - The cluster's own label, on the configured ``labelloc`` side.
+
+    When a cluster has a label, the box is further expanded on
+    that side so the label text doesn't overlap internal nodes.
     """
+    # Build child-cluster map so we can post-order walk the
+    # cluster tree.  Two clusters are in a parent/child
+    # relationship when one's node set is strictly contained in
+    # the other's.  We only attach each child to its *immediate*
+    # parent (smallest superset) so a deeply nested child doesn't
+    # contribute its bbox to every ancestor twice.
+    cl_by_name = {cl.name: cl for cl in layout._clusters}
+    node_sets = {cl.name: frozenset(cl.nodes) for cl in layout._clusters}
+
+    parent: dict[str, str | None] = {}
     for cl in layout._clusters:
+        my_set = node_sets[cl.name]
+        best_parent: str | None = None
+        best_size = None
+        for other in layout._clusters:
+            if other.name == cl.name:
+                continue
+            other_set = node_sets[other.name]
+            if my_set < other_set:
+                size = len(other_set)
+                if best_size is None or size < best_size:
+                    best_parent = other.name
+                    best_size = size
+        parent[cl.name] = best_parent
+
+    children: dict[str, list[str]] = {}
+    for cn, par in parent.items():
+        children.setdefault(par or "", []).append(cn)
+
+    # Post-order walk: process each cluster only after all its
+    # children have been processed, so the parent can include
+    # the child bboxes in its extent.
+    visited: set[str] = set()
+    order: list[str] = []
+
+    def _walk(cn: str) -> None:
+        if cn in visited:
+            return
+        for ch in children.get(cn, []):
+            _walk(ch)
+        visited.add(cn)
+        order.append(cn)
+
+    for cl in layout._clusters:
+        _walk(cl.name)
+
+    for cn in order:
+        cl = cl_by_name[cn]
         members = [layout.lnodes[n] for n in cl.nodes if n in layout.lnodes]
         if not members:
             continue
@@ -632,6 +689,20 @@ def compute_cluster_boxes(layout):
         min_y = min(ln.y - ln.height / 2 for ln in members) - cl.margin
         max_x = max(ln.x + ln.width / 2 for ln in members) + cl.margin
         max_y = max(ln.y + ln.height / 2 for ln in members) + cl.margin
+
+        # Include each immediate child cluster's bbox, padded by
+        # the parent's margin on every side so the parent border
+        # stays clear of the child border by the routing-channel
+        # gap on each face.
+        for ch_name in children.get(cn, []):
+            ch = cl_by_name[ch_name]
+            if not ch.bb:
+                continue
+            cx1, cy1, cx2, cy2 = ch.bb
+            min_x = min(min_x, cx1 - cl.margin)
+            min_y = min(min_y, cy1 - cl.margin)
+            max_x = max(max_x, cx2 + cl.margin)
+            max_y = max(max_y, cy2 + cl.margin)
 
         # Expand for cluster label
         if cl.label:
