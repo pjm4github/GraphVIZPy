@@ -656,12 +656,22 @@ def compute_cluster_boxes(layout):
     parent: dict[str, str | None] = {}
     for cl in layout._clusters:
         my_set = node_sets[cl.name]
+        # Skip degenerate clusters with no members.  An empty set
+        # is a strict subset of every non-empty set, which would
+        # otherwise make the empty cluster a "child" of *every*
+        # other cluster and propagate its zeroed bbox into every
+        # parent's containment loop.
+        if not my_set:
+            parent[cl.name] = None
+            continue
         best_parent: str | None = None
         best_size = None
         for other in layout._clusters:
             if other.name == cl.name:
                 continue
             other_set = node_sets[other.name]
+            if not other_set:
+                continue
             if my_set < other_set:
                 size = len(other_set)
                 if best_size is None or size < best_size:
@@ -1108,6 +1118,37 @@ def post_resolve_align(layout):
         else:
             ln.x = val
 
+    # Pre-compute the bbox of every cluster the orphan is NOT a
+    # member of, but only those whose rank-axis range overlaps
+    # the node's rank-axis position — clusters that don't extend
+    # across the node's rank column are irrelevant to whether
+    # the cross-rank shift would land inside them.
+    foreign_cluster_ranges: dict[str, list[tuple[float, float]]] = {}
+    for name in orphans:
+        ln = layout.lnodes[name]
+        node_rank_lo = (ln.x - ln.width / 2.0) if is_lr else (ln.y - ln.height / 2.0)
+        node_rank_hi = (ln.x + ln.width / 2.0) if is_lr else (ln.y + ln.height / 2.0)
+        ranges: list[tuple[float, float]] = []
+        for cl in layout._clusters:
+            if name in cl.nodes or not cl.bb:
+                continue
+            x1, y1, x2, y2 = cl.bb
+            cl_rank_lo, cl_rank_hi = (x1, x2) if is_lr else (y1, y2)
+            # Only count this cluster if its rank-axis range
+            # overlaps the node's rank position; otherwise the
+            # node could not possibly be "inside" it regardless
+            # of the cross-rank value.
+            if node_rank_hi < cl_rank_lo or node_rank_lo > cl_rank_hi:
+                continue
+            ranges.append((y1, y2) if is_lr else (x1, x2))
+        foreign_cluster_ranges[name] = ranges
+
+    def _inside_foreign(name: str, val: float, half: float) -> bool:
+        for lo, hi in foreign_cluster_ranges.get(name, []):
+            if val + half > lo and val - half < hi:
+                return True
+        return False
+
     for _iter in range(4):
         moved = False
         for name in orphans:
@@ -1146,6 +1187,11 @@ def post_resolve_align(layout):
             if min_cr > max_cr:
                 continue
             new_cr = max(min_cr, min(max_cr, target))
+            # Reject moves that would land the node inside a non-
+            # member cluster's cross-rank range — that would undo
+            # the post_rankdir_keepout pass's work.
+            if _inside_foreign(name, new_cr, half):
+                continue
             if abs(new_cr - cr(ln)) > 0.5:
                 set_cr(ln, new_cr)
                 moved = True
