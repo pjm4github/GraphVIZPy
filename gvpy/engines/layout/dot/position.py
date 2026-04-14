@@ -1037,17 +1037,16 @@ def median_x_with_cluster_clamp(layout):
                 hi = min(hi, cl_hi)
             cluster_range[name] = (lo, hi)
 
-    # Build adjacency on cross-rank axis: for each real node, the
-    # list of cross-rank positions of its connected neighbours in
-    # adjacent ranks.  Virtual nodes are skipped because their
-    # positions follow their chain direction rather than the
-    # "natural" neighbour median.
+    # Build adjacency on cross-rank axis: every chain link
+    # (including virtual-to-virtual ledges) gets an entry, so chain
+    # virtuals also follow their endpoints when the real-node
+    # placement shifts.  Without this the chain virtuals stay
+    # pinned to their original NS-time positions (typically the
+    # top corridor at y≈30) while the tail node moves elsewhere,
+    # and the eventual edge route walks north up to the stale
+    # virtual then south back to the head — an avoidable U-turn.
     adj: dict[str, list[str]] = {}
     for le in layout.ledges:
-        if layout.lnodes[le.tail_name].virtual:
-            continue
-        if layout.lnodes[le.head_name].virtual:
-            continue
         adj.setdefault(le.tail_name, []).append(le.head_name)
         adj.setdefault(le.head_name, []).append(le.tail_name)
 
@@ -1057,8 +1056,10 @@ def median_x_with_cluster_clamp(layout):
             rank_nodes = layout.ranks[rank_val]
             for idx, name in enumerate(rank_nodes):
                 ln = layout.lnodes[name]
-                if ln.virtual:
-                    continue
+                # Virtual nodes participate in the median pull so
+                # their positions track the real endpoints of the
+                # chain.  They still observe the same per-rank /
+                # cluster clamps as real nodes.
                 neighbors = adj.get(name, [])
                 if not neighbors:
                     continue
