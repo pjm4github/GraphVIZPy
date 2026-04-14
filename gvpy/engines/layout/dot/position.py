@@ -624,47 +624,131 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
 def compute_cluster_boxes(layout):
     """Compute bounding boxes for clusters from positioned nodes.
 
-    C analogue: ``lib/dotgen/position.c:dot_compute_bb()`` and
-    ``lib/dotgen/cluster.c`` post-NS bbox finalization.
+    Direct port of ``lib/dotgen/position.c:dot_compute_bb()`` +
+    ``rec_bb()``.  The C version walks the cluster tree in
+    post-order (children first) and then computes each parent's
+    bbox as ``min(member.lw/rw, child.bb.LL/UR ± CL_OFFSET)`` —
+    i.e., the parent's bbox is the minimum box that contains
+    every member node's bbox *and* every child cluster's bbox
+    expanded by the cluster offset (``CL_OFFSET = 8pt``).  That
+    offset is what produces the visible margin gap between a
+    parent cluster border and its nested children.
 
-    The bbox is computed from each cluster's member node
-    positions plus the cluster's ``margin``.  This matches what
-    the NS X solver was asked to produce via the per-rank
-    separation and cluster-containment aux edges — a cluster's
-    members are placed such that ``leftmost.x - margin``
-    coincides with where the NS solver put the cluster's left
-    boundary ``ln``.
+    C's exact formula for the root graph (position.c:880-916):
 
-    KNOWN LIMITATION: nested clusters that share a leftmost or
-    bottommost member node end up with the same west / south
-    edge as their child — there is no *visible* gap between the
-    two cluster borders even though the NS solver's
-    ``contain_subclust`` aux edges assign different
-    ``ln_x`` / ``rn_x`` values to each nesting level.
+        LL.x = min over ranks of (v.x - ND_lw(v))
+        UR.x = max over ranks of (v.x + ND_rw(v))
+        for each child c of g:
+            LL.x = min(LL.x, bb(c).LL.x - CL_OFFSET)
+            UR.x = max(UR.x, bb(c).UR.x + CL_OFFSET)
+        LL.y = first_rank_y - GD_ht1(g)
+        UR.y = last_rank_y + GD_ht2(g)
 
-    A previous attempt to close this gap by recursively
-    inflating the parent bbox to include each child bbox plus
-    ``margin`` introduced cascading post-process artefacts
-    (phantom margin bands containing non-member nodes that then
-    had to be pushed out by ``post_rankdir_keepout``, which in
-    turn undid the median pass's alignment gains, which in turn
-    forced ``post_resolve_align`` to be added).  Reverting here
-    to the simple member-based calculation; the right fix is a
-    larger rethink of how the NS-solver's cluster boundary
-    positions propagate through ``apply_rankdir`` and the
-    subsequent post-passes — filed as follow-up.
+    For nested clusters C reads from the NS virtual nodes
+    (``ND_rank(GD_ln(g))`` / ``ND_rank(GD_rn(g))``) that the
+    ``contain_subclust`` aux edges already positioned with the
+    correct nested margins.  Python's post-NS pipeline shifts
+    nodes (median pass, resolve, keepout, align), which would
+    stale the stored ``_cl_ln_x`` values, so we use the *root*
+    formula uniformly for every cluster — the recursive
+    expansion by ``CL_OFFSET`` around child bboxes produces the
+    same visible result as C's nested reads.
+
+    The walk is post-order so a parent can read its children's
+    final bboxes; the NS-aware post-process passes
+    (``post_rankdir_keepout``, ``post_resolve_align``, etc.)
+    then handle any non-member node that ends up inside an
+    inflated parent's phantom margin band.
     """
+    cl_by_name = {cl.name: cl for cl in layout._clusters}
+    node_sets = {cl.name: frozenset(cl.nodes) for cl in layout._clusters}
+
+    # Build the immediate-parent relation: cluster A's parent is
+    # the *smallest* other cluster whose node set strictly
+    # contains A's.  Skip empty-set clusters — frozenset() is a
+    # strict subset of every non-empty set, which would otherwise
+    # make them a "child" of every cluster.
+    parent: dict[str, str | None] = {}
     for cl in layout._clusters:
+        my_set = node_sets[cl.name]
+        if not my_set:
+            parent[cl.name] = None
+            continue
+        best_parent: str | None = None
+        best_size: int | None = None
+        for other in layout._clusters:
+            if other.name == cl.name:
+                continue
+            other_set = node_sets[other.name]
+            if not other_set:
+                continue
+            if my_set < other_set:
+                size = len(other_set)
+                if best_size is None or size < best_size:
+                    best_parent = other.name
+                    best_size = size
+        parent[cl.name] = best_parent
+
+    children: dict[str, list[str]] = {}
+    for cn, par in parent.items():
+        children.setdefault(par or "", []).append(cn)
+
+    # Post-order walk of the cluster tree so a parent can read
+    # its children's already-computed bboxes when expanding.
+    visited: set[str] = set()
+    order: list[str] = []
+
+    def _walk(cn: str) -> None:
+        if cn in visited:
+            return
+        for ch in children.get(cn, []):
+            _walk(ch)
+        visited.add(cn)
+        order.append(cn)
+
+    for cl in layout._clusters:
+        _walk(cl.name)
+
+    offset = float(getattr(layout, "_CL_OFFSET", 8.0))
+
+    for cn in order:
+        cl = cl_by_name[cn]
         members = [layout.lnodes[n] for n in cl.nodes if n in layout.lnodes]
         if not members:
             continue
 
+        # Start with the member extent + the cluster's own
+        # margin.  Matches C's rank loop for the root graph
+        # (``LL.x = min(v.x - ND_lw(v))`` etc.) with an explicit
+        # margin added because Python's LayoutNode.width already
+        # excludes the cluster padding.
         min_x = min(ln.x - ln.width / 2 for ln in members) - cl.margin
         max_x = max(ln.x + ln.width / 2 for ln in members) + cl.margin
         min_y = min(ln.y - ln.height / 2 for ln in members) - cl.margin
         max_y = max(ln.y + ln.height / 2 for ln in members) + cl.margin
 
-        # Expand for cluster label
+        # Expand to include every immediate child cluster's
+        # bbox padded by ``CL_OFFSET`` on every side.  This is
+        # C's ``for c in GD_clust(g): LL.x = min(LL.x,
+        # bb(c).LL.x - CL_OFFSET); UR.x = max(UR.x,
+        # bb(c).UR.x + CL_OFFSET)`` loop, extended to the Y
+        # axis as well (C reads Y from the rank-extent ht1/ht2,
+        # Python uses member extents).
+        for ch_name in children.get(cn, []):
+            ch = cl_by_name.get(ch_name)
+            if not ch or not ch.bb:
+                continue
+            cx1, cy1, cx2, cy2 = ch.bb
+            if cx1 - offset < min_x:
+                min_x = cx1 - offset
+            if cy1 - offset < min_y:
+                min_y = cy1 - offset
+            if cx2 + offset > max_x:
+                max_x = cx2 + offset
+            if cy2 + offset > max_y:
+                max_y = cy2 + offset
+
+        # Label expansion (same as before).
         if cl.label:
             try:
                 fontsize = float(cl.attrs.get("fontsize", 14))
