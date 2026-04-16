@@ -34,6 +34,8 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
+from gvpy.engines.layout.dot.trace import trace
+
 if TYPE_CHECKING:
     from gvpy.engines.layout.dot.dot_layout import DotGraphInfo
 
@@ -45,10 +47,10 @@ def phase3_position(layout: "DotGraphInfo") -> None:
     ``set_ycoords()`` then ``set_xcoords()`` then does post-processing
     for cluster-overlap resolution and rankdir flipping.
     """
-    print(
-        f"[TRACE position] phase3 begin: rankdir={layout.rankdir} "
+    trace(
+        "position",
+        f"phase3 begin: rankdir={layout.rankdir} "
         f"ranksep={layout.ranksep} nodesep={layout.nodesep}",
-        file=sys.stderr,
     )
     if not layout.lnodes:
         return
@@ -59,10 +61,7 @@ def phase3_position(layout: "DotGraphInfo") -> None:
     for name in sorted(layout.lnodes.keys()):
         ln = layout.lnodes[name]
         if not ln.virtual:
-            print(
-                f"[TRACE position] set_ycoords: {name} y={ln.y:.1f}",
-                file=sys.stderr,
-            )
+            trace("position", f"set_ycoords: {name} y={ln.y:.1f}")
 
     # Expand leaves: ensure degree-1 nodes have proper spacing
     # (Graphviz position.c expand_leaves).
@@ -103,10 +102,10 @@ def phase3_position(layout: "DotGraphInfo") -> None:
     for name in sorted(layout.lnodes.keys()):
         ln = layout.lnodes[name]
         if not ln.virtual:
-            print(
-                f"[TRACE position] final_pos: {name} x={ln.x:.1f} "
+            trace(
+                "position",
+                f"final_pos: {name} x={ln.x:.1f} "
                 f"y={ln.y:.1f} w={ln.width:.1f} h={ln.height:.1f}",
-                file=sys.stderr,
             )
 
     layout._apply_rankdir()
@@ -132,10 +131,9 @@ def phase3_position(layout: "DotGraphInfo") -> None:
     for name in sorted(layout.lnodes.keys()):
         ln = layout.lnodes[name]
         if not ln.virtual:
-            print(
-                f"[TRACE position] post_rankdir: {name} "
-                f"x={ln.x:.1f} y={ln.y:.1f}",
-                file=sys.stderr,
+            trace(
+                "position",
+                f"post_rankdir: {name} x={ln.x:.1f} y={ln.y:.1f}",
             )
 
 
@@ -555,30 +553,29 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
                     seed[cl_rn[cn]] = max(member_seeds) + m
 
     # ── Solve ─────────────────────────────────────────
-    print(
-        f"[TRACE position] aux_graph: total_aux_edges={len(aux_edges)} "
+    trace(
+        "position",
+        f"aux_graph: total_aux_edges={len(aux_edges)} "
         f"total_aux_nodes={len(aux_nodes)}",
-        file=sys.stderr,
     )
     # Log containment edges
     if layout._clusters:
         for cl in layout._clusters:
             cn = cl.name
             if cn in cl_ln and cn in cl_rn:
-                print(
-                    f"[TRACE position] contain_nodes: {cn} "
-                    f"margin={int(cl.margin)}",
-                    file=sys.stderr,
+                trace(
+                    "position",
+                    f"contain_nodes: {cn} margin={int(cl.margin)}",
                 )
     # Log pre-NS positions for real nodes
     for name in sorted(layout.lnodes.keys()):
         ln = layout.lnodes[name]
         if not ln.virtual:
-            print(
-                f"[TRACE position] pre_ns: {name} "
+            trace(
+                "position",
+                f"pre_ns: {name} "
                 f"rank_val={seed.get(name, 0)} "
                 f"lw={ln.width/2:.1f} rw={ln.width/2:.1f}",
-                file=sys.stderr,
             )
     try:
         ns = _NetworkSimplex(aux_nodes, aux_edges)
@@ -592,10 +589,7 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
         for name in sorted(layout.lnodes.keys()):
             ln = layout.lnodes[name]
             if not ln.virtual:
-                print(
-                    f"[TRACE position] ns_solved: {name} x_pos={int(ln.x)}",
-                    file=sys.stderr,
-                )
+                trace("position", f"ns_solved: {name} x_pos={int(ln.x)}")
 
         # Store ln/rn X positions for cluster bbox computation.
         # The C code uses these directly as cluster X boundaries
@@ -614,10 +608,7 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
 
         return True
     except Exception as e:
-        print(
-            f"[TRACE position] ns_x_position FAILED: {e}",
-            file=sys.stderr,
-        )
+        trace("position", f"ns_x_position FAILED: {e}")
         return False
 
 
@@ -762,7 +753,7 @@ def compute_cluster_boxes(layout):
                 min_y -= label_h
 
         cl.bb = (min_x, min_y, max_x, max_y)
-        print(f"[TRACE label] cluster_bb: {cl.name} bb=({min_x:.1f},{min_y:.1f},{max_x:.1f},{max_y:.1f})", file=sys.stderr)
+        trace("label", f"cluster_bb: {cl.name} bb=({min_x:.1f},{min_y:.1f},{max_x:.1f},{max_y:.1f})")
 
 
 def expand_leaves(layout):

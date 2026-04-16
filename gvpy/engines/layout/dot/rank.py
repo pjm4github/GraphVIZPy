@@ -67,15 +67,17 @@ import sys
 from collections import defaultdict, deque
 from typing import TYPE_CHECKING
 
+from gvpy.engines.layout.dot.trace import trace
+
 if TYPE_CHECKING:
     from gvpy.engines.layout.dot.dot_layout import DotGraphInfo
 
 
 def phase1_rank(layout):
-    print(f"[TRACE rank] phase1 begin: newrank={layout.newrank} clusterrank={layout.clusterrank}", file=sys.stderr)
+    trace("rank", f"phase1 begin: newrank={layout.newrank} clusterrank={layout.clusterrank}")
     layout._break_cycles()
     reversed_count = sum(1 for le in layout.ledges if le.reversed)
-    print(f"[TRACE rank] break_cycles: reversed={reversed_count}", file=sys.stderr)
+    trace("rank", f"break_cycles: reversed={reversed_count}")
     layout._classify_edges()
     # Inject rank=same constraints as zero-length high-weight edges
     # BEFORE running NS so the solver respects them natively
@@ -89,17 +91,17 @@ def phase1_rank(layout):
     for name in sorted(layout.lnodes.keys()):
         ln = layout.lnodes[name]
         if not ln.virtual:
-            print(f"[TRACE rank] node_rank: {name} rank={ln.rank}", file=sys.stderr)
+            trace("rank", f"node_rank: {name} rank={ln.rank}")
     layout._apply_rank_constraints()
     layout._compact_ranks()
     max_rank = max((ln.rank for ln in layout.lnodes.values()), default=0)
-    print(f"[TRACE rank] after compact: max_rank={max_rank}", file=sys.stderr)
+    trace("rank", f"after compact: max_rank={max_rank}")
     layout._add_virtual_nodes()
     vcount = sum(1 for ln in layout.lnodes.values() if ln.virtual)
-    print(f"[TRACE rank] virtual_nodes: {vcount}", file=sys.stderr)
+    trace("rank", f"virtual_nodes: {vcount}")
     layout._build_ranks()
     layout._classify_flat_edges()
-    print(f"[TRACE rank] phase1 done: ranks={sorted(layout.ranks.keys())} nodes_per_rank={[(r, len(layout.ranks[r])) for r in sorted(layout.ranks.keys())]}", file=sys.stderr)
+    trace("rank", f"phase1 done: ranks={sorted(layout.ranks.keys())} nodes_per_rank={[(r, len(layout.ranks[r])) for r in sorted(layout.ranks.keys())]}")
 
 
 def break_cycles(layout):
@@ -618,7 +620,7 @@ def add_virtual_nodes(layout):
             while vname in layout.lnodes:
                 vname += "_"
             layout.lnodes[vname] = LayoutNode(
-                node=None, rank=t_rank + j, virtual=True,
+                name=vname, node=None, rank=t_rank + j, virtual=True,
                 width=2.0, height=2.0,
             )
             chain.append(vname)

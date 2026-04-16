@@ -28,6 +28,7 @@ This project is an adjacent module planned to merge with:
 These files track outstanding work — always check them before starting a new task:
 
 - **`TODO_dot_layout.md`** — outstanding work on `gvpy/engines/dot/dot_layout.py`
+- **`TODO_dot_splines_port.md`** — function-by-function alignment of `splines.py` with `lib/dotgen/dotsplines.c` + `lib/common/splines.c` + `lib/common/routespl.c` + `lib/pathplan/*`
 - **`TODO_layout_engines.md`** — outstanding work on other layout engines
 - **`TODO_main_gui.md`** — outstanding work on `MainGraphvisPy.py`
 - **`TODO_pictosync_merge.md`** — outstanding work on the Pictosync merge boundary

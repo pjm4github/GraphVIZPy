@@ -217,13 +217,16 @@ from gvpy.core.graph import Graph
 from gvpy.core.node import Node
 from gvpy.core.edge import Edge
 from gvpy.engines.layout.base import LayoutEngine
+from gvpy.engines.layout.dot.edge_route import EdgeRoute
+from gvpy.engines.layout.dot.trace import trace
 
 
 # ── Internal data structures ─────────────────────
 
 @dataclass
 class LayoutNode:
-    node: Optional[Node]
+    node: Optional[Node] = None
+    name: str = ""
     rank: int = 0
     order: int = 0
     x: float = 0.0
@@ -233,6 +236,14 @@ class LayoutNode:
     virtual: bool = False
     pinned: bool = False
     fixed_pos: tuple | None = None  # (x, y) from pos attribute
+    mval: float = 0.0
+    """Median value — mirrors C ``ND_mval(n)`` in ``dot.h``.  Used by
+    ``resetRW`` in phase 4 to restore a node's pre-inflation right
+    half-width: when a node carries self-loops, the position phase
+    inflates ``ND_rw`` and stashes the original value in ``mval`` so
+    the splines phase can swap them back via :func:`splines.resetRW`.
+    Default ``0.0`` means uninflated (current Python behaviour — real
+    self-loop inflation lands in Phase F)."""
 
 
 @dataclass
@@ -246,20 +257,49 @@ class LayoutEdge:
     virtual: bool = False
     orig_tail: str = ""
     orig_head: str = ""
-    points: list = field(default_factory=list)
     constraint: bool = True
     label: str = ""
-    label_pos: tuple = ()
     tailport: str = ""
     headport: str = ""
     lhead: str = ""
     ltail: str = ""
-    spline_type: str = "polyline"  # "polyline" or "bezier"
     headclip: bool = True
     tailclip: bool = True
     samehead: str = ""
     sametail: str = ""
     edge_type: str = "normal"  # normal, flat, reversed, self, virtual
+    tree_index: int = 0
+    """Equivalence-class and direction flags, bitwise OR of the constants
+    in :mod:`gvpy.engines.layout.dot.path` — one edge-type bit
+    (``REGULAREDGE`` / ``FLATEDGE`` / ``SELFWPEDGE`` / ``SELFNPEDGE``),
+    one direction bit (``FWDEDGE`` / ``BWDEDGE``), and one graph-type
+    bit (``MAINGRAPH`` / ``AUXGRAPH``).  C analogue: ``ED_tree_index(e)``
+    via the ``setflags`` helper in ``dotsplines.c``."""
+    route: EdgeRoute = field(default_factory=EdgeRoute)
+
+    @property
+    def points(self) -> list:
+        return self.route.points
+
+    @points.setter
+    def points(self, value: list) -> None:
+        self.route.points = value
+
+    @property
+    def spline_type(self) -> str:
+        return self.route.spline_type
+
+    @spline_type.setter
+    def spline_type(self, value: str) -> None:
+        self.route.spline_type = value
+
+    @property
+    def label_pos(self) -> tuple:
+        return self.route.label_pos
+
+    @label_pos.setter
+    def label_pos(self, value: tuple) -> None:
+        self.route.label_pos = value
 
 
 @dataclass
@@ -367,6 +407,12 @@ class DotGraphInfo(LayoutEngine):
         self._rank_ht2: dict[int, float] = {}  # top half-height per rank
         self._left_bound: float = 0.0
         self._right_bound: float = 0.0
+        # Phase-4 routing context.  C analogue: the ``sd`` local in
+        # ``dot_splines_`` (``lib/dotgen/dotsplines.c``).  Allocated
+        # by ``phase4_routing`` at the top of the pass and reused by
+        # every spline router helper.  None outside that pass.
+        from gvpy.engines.layout.dot.path import SplineInfo
+        self._spline_info: "SplineInfo | None" = None
         # Mincross caches — populated lazily by mincross.cluster_medians
         # and mincross.mark_low_clusters.  Pre-declared so PyCharm /
         # mypy see them as proper instance attributes.
@@ -401,7 +447,7 @@ class DotGraphInfo(LayoutEngine):
         """
         self._init_from_graph()
 
-        print(f"[TRACE rank] begin layout: nodes={len(self.lnodes)} edges={len(self.ledges)} clusters={len(self._clusters)}", file=sys.stderr)
+        trace("rank", f"begin layout: nodes={len(self.lnodes)} edges={len(self.ledges)} clusters={len(self._clusters)}")
         self._phase1_rank()
         self._phase2_ordering()
         self._phase3_position()
@@ -1376,16 +1422,24 @@ class DotGraphInfo(LayoutEngine):
         return splines.self_loop_points(self, *args, **kwargs)
 
 
-    def _maximal_bbox(self, *args, **kwargs) -> tuple[float, float, float, float]:
-        """Delegates to gvpy.engines.layout.dot.splines.maximal_bbox."""
+    def _maximal_bbox(self, vn_ln, ie=None, oe=None):
+        """Delegates to gvpy.engines.layout.dot.splines.maximal_bbox.
+
+        Requires ``self._spline_info`` to be populated (phase-4 only).
+        Returns a :class:`Box`.
+        """
         from gvpy.engines.layout.dot import splines
-        return splines.maximal_bbox(self, *args, **kwargs)
+        return splines.maximal_bbox(self, self._spline_info, vn_ln, ie, oe)
 
 
-    def _rank_box(self, *args, **kwargs) -> tuple[float, float, float, float]:
-        """Delegates to gvpy.engines.layout.dot.splines.rank_box."""
+    def _rank_box(self, r: int):
+        """Delegates to gvpy.engines.layout.dot.splines.rank_box.
+
+        Requires ``self._spline_info`` to be populated (only true during
+        a phase-4 routing pass).  Returns a :class:`Box`.
+        """
         from gvpy.engines.layout.dot import splines
-        return splines.rank_box(self, *args, **kwargs)
+        return splines.rank_box(self, self._spline_info, r)
 
 
     def _route_regular_edge(self, *args, **kwargs) -> list[tuple[float, float]]:

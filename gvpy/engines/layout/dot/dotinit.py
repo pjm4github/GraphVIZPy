@@ -142,7 +142,7 @@ def init_from_graph(layout):
 
     for name, node in layout.graph.nodes.items():
         w, h = layout._compute_node_size(name, node)
-        ln = LayoutNode(node=node, width=w, height=h)
+        ln = LayoutNode(name=name, node=node, width=w, height=h)
 
         # Size record fields and store geometry on Node
         # (C shapes.c:3687-3731 record_init)

@@ -1,0 +1,293 @@
+"""Transient routing workspace for phase-4 spline routing.
+
+C analogues in ``lib/common/types.h`` and ``lib/dotgen/dotsplines.c``.
+These classes mirror the C structs that :mod:`splines` will need for a
+literal port of ``dot_splines_`` and its helpers.  They are strictly
+compute-time workspace — a single :class:`Path` and :class:`SplineInfo`
+are allocated once per ``phase4_routing`` call and reused across every
+edge routed in the pass.  The *result* of routing lives on
+:class:`~gvpy.engines.layout.dot.edge_route.EdgeRoute`, not here.
+
+Mapping to C
+------------
+
+=====================  ================================================
+Python                 C analogue
+=====================  ================================================
+:class:`Box`           ``boxf`` in ``lib/common/geom.h``
+:class:`PathEnd`       ``pathend_t`` in ``lib/common/types.h``
+:class:`Path`          ``path`` in ``lib/common/types.h``
+:class:`SplineInfo`    ``spline_info_t`` in ``lib/dotgen/dotsplines.c``
+=====================  ================================================
+
+The flag-bit constants (``REGULAREDGE`` … ``AUXGRAPH``) mirror the
+``#define``\\ s in ``lib/common/const.h`` lines 149–155 and
+``lib/dotgen/dotsplines.c`` lines 41–47.  Together they compose the
+``tree_index`` field on ``LayoutEdge``, which C stores via
+``ED_tree_index(e)``.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+
+# ── Sidemask bits ───────────────────────────────────────────────────────
+# C analogue: lib/common/const.h:111-120.  Used by pathend_t.sidemask
+# and the edge-side return value of shape functions.
+
+BOTTOM_IX = 0
+RIGHT_IX = 1
+TOP_IX = 2
+LEFT_IX = 3
+
+BOTTOM = 1 << BOTTOM_IX
+RIGHT = 1 << RIGHT_IX
+TOP = 1 << TOP_IX
+LEFT = 1 << LEFT_IX
+
+
+# ── Spline router tunables ───────────────────────────────────────────────
+# C analogue: lib/dotgen/dotsplines.c:36-40.
+
+NSUB = 9
+"""Number of subdivisions when re-aiming splines.  C: ``NSUB``."""
+
+MINW = 16
+"""Minimum width of a box in the edge path.  C: ``MINW``."""
+
+HALFMINW = 8
+"""``MINW / 2``.  C: ``HALFMINW``."""
+
+FUDGE = 4
+"""Horizontal padding added by :func:`maximal_bbox` around each node
+when computing the maximum bbox it can claim for routing.  C:
+``dotsplines.c:2171`` — *"The extra space provided by FUDGE allows
+begin/endpath to create a box FUDGE-2 away from the node, so the
+routing can avoid the node and the box is at least 2 wide."*"""
+
+
+# ── Edge type enum (lib/common/const.h:234-240) ─────────────────────────
+# Selects the routing algorithm used by ``dot_splines_``.  Values
+# are pre-shifted by 1 (C uses ``(n << 1)`` so bit 0 is available as
+# a flag in some callers).
+
+EDGETYPE_NONE = 0 << 1
+EDGETYPE_LINE = 1 << 1
+EDGETYPE_CURVED = 2 << 1
+EDGETYPE_PLINE = 3 << 1
+EDGETYPE_ORTHO = 4 << 1
+EDGETYPE_SPLINE = 5 << 1
+EDGETYPE_COMPOUND = 6 << 1
+
+
+def edge_type_from_splines(splines: str) -> int:
+    """Map the Python ``splines`` attribute string to a C ``EDGETYPE_*``.
+
+    Used by the phase 4 driver for trace emissions that mirror C's
+    ``phase4 begin: et=<int>`` format.  Default (empty, ``"true"``,
+    ``"spline"``) is :data:`EDGETYPE_SPLINE` — same as C's
+    ``EDGE_TYPE(g)`` for graphs without an explicit splines attribute.
+    """
+    s = (splines or "").strip().lower()
+    if s in ("", "true", "spline"):
+        return EDGETYPE_SPLINE
+    if s == "line" or s == "false":
+        return EDGETYPE_LINE if s == "line" else EDGETYPE_NONE
+    if s == "curved":
+        return EDGETYPE_CURVED
+    if s == "polyline":
+        return EDGETYPE_PLINE
+    if s == "ortho":
+        return EDGETYPE_ORTHO
+    if s == "compound":
+        return EDGETYPE_COMPOUND
+    if s == "none":
+        return EDGETYPE_NONE
+    return EDGETYPE_SPLINE  # default fallback
+
+
+# ── Tree-index flag bits ────────────────────────────────────────────────
+# C analogue: lib/common/const.h:149-155 (edge type bits) +
+# lib/dotgen/dotsplines.c:41-47 (direction + graph type bits).
+#
+# ``LayoutEdge.tree_index`` is the bitwise OR of one value from each of
+# the three groups: one edge-type flag, one direction flag, and one
+# graph-type flag.  ``setflags`` assigns it during the top-level driver
+# pass, ``edgecmp`` reads it for equivalence-class grouping, and the
+# per-edge routers branch on it.
+
+# Edge type (bits 0-3, masked by EDGETYPEMASK):
+REGULAREDGE = 1
+FLATEDGE = 2
+SELFWPEDGE = 4   # self-edge with at least one port defined
+SELFNPEDGE = 8   # self-edge with no ports defined
+EDGETYPEMASK = 15
+
+# Direction (bits 4-5):
+FWDEDGE = 16
+BWDEDGE = 32
+
+# Graph type (bits 6-7, masked by GRAPHTYPEMASK):
+MAINGRAPH = 64
+AUXGRAPH = 128
+GRAPHTYPEMASK = 192
+
+
+# ── Box ──────────────────────────────────────────────────────────────────
+# C analogue: ``typedef struct { pointf LL, UR; } boxf;`` in
+# lib/common/geom.h:41.
+
+@dataclass
+class Box:
+    """Axis-aligned 2D bounding box.
+
+    Mutable so router box-path construction can widen a box in place
+    (see ``adjustregularpath`` in ``dotsplines.c``, which stretches box
+    edges to meet ``MINW``).
+    """
+
+    ll_x: float = 0.0
+    ll_y: float = 0.0
+    ur_x: float = 0.0
+    ur_y: float = 0.0
+
+    @property
+    def width(self) -> float:
+        return self.ur_x - self.ll_x
+
+    @property
+    def height(self) -> float:
+        return self.ur_y - self.ll_y
+
+    def is_valid(self) -> bool:
+        """True iff ``ll`` is strictly below-and-left of ``ur``.
+
+        C analogue: the common ``b.LL.x < b.UR.x && b.LL.y < b.UR.y``
+        guard used by ``maximal_bbox``, ``make_regular_edge``, etc.
+        before inserting a box into the end-box chain.
+        """
+        return self.ll_x < self.ur_x and self.ll_y < self.ur_y
+
+
+# ── Port ─────────────────────────────────────────────────────────────────
+# C analogue: ``typedef struct port { ... } port;`` in
+# lib/common/types.h:48-64.
+
+@dataclass
+class Port:
+    """Internal edge endpoint specification.
+
+    C analogue: ``port`` in ``lib/common/types.h:48-64``.  The C struct
+    has many fields (``p``, ``theta``, ``bp``, ``defined``,
+    ``constrained``, ``clip``, ``dyna``, ``order``, ``side``, ``name``).
+
+    For the Phase A step 4 driver port only ``defined`` and ``p`` are
+    consulted (by :func:`splines.portcmp`) so this class starts with
+    those two fields.  Additional fields will land as the ports that
+    need them are ported — ``side``/``order`` for ``setflags`` record
+    ports, ``theta``/``constrained`` for the path endpoint setup in
+    ``beginpath``/``endpath``.
+
+    Default is an **undefined** port at the origin, matching C's
+    zero-initialised ``port`` struct.
+    """
+
+    defined: bool = False
+    p: tuple[float, float] = (0.0, 0.0)
+
+
+# ── PathEnd ──────────────────────────────────────────────────────────────
+# C analogue: ``typedef struct pathend_t { ... } pathend_t;`` in
+# lib/common/types.h:73-79.
+
+PATH_END_BOX_MAX = 20
+"""Maximum number of end boxes, matching C ``pathend_t.boxes[20]``."""
+
+
+@dataclass
+class PathEnd:
+    """Per-end routing state for one side of an edge.
+
+    Fields mirror C ``pathend_t`` one-for-one:
+
+    - ``nb``        — the node box (C ``boxf nb``)
+    - ``np``        — node port anchor point (C ``pointf np``)
+    - ``sidemask``  — bitwise OR of ``TOP`` / ``BOTTOM`` / ``LEFT`` /
+      ``RIGHT`` (C ``int sidemask``)
+    - ``boxn``      — count of valid entries in ``boxes``
+      (C ``int boxn``)
+    - ``boxes``     — end-side region boxes, up to :data:`PATH_END_BOX_MAX`
+      (C ``boxf boxes[20]``)
+
+    ``theta`` and ``constrained`` are not in C ``pathend_t`` — C stores
+    them on the parent ``path``'s ``port start`` / ``port end`` fields.
+    We hoist them up here so they travel together with the end-box
+    chain, which is how every caller uses them anyway.
+    """
+
+    nb: Box = field(default_factory=Box)
+    np: tuple[float, float] = (0.0, 0.0)
+    sidemask: int = 0
+    boxn: int = 0
+    boxes: list = field(default_factory=list)
+    theta: float = 0.0
+    constrained: bool = False
+
+
+# ── Path ─────────────────────────────────────────────────────────────────
+# C analogue: ``typedef struct path { ... } path;`` in
+# lib/common/types.h:81-87.
+
+@dataclass
+class Path:
+    """Transient routing workspace for one edge.
+
+    A single :class:`Path` is allocated once by ``phase4_routing`` and
+    reused across every edge routed in the pass.  Before routing each
+    edge the driver resets ``nbox`` to 0 (C: ``P->nbox = 0``) and
+    re-populates ``boxes``.  ``start`` and ``end`` are refilled by
+    ``beginpath`` / ``endpath`` from the node + port + sidemask.
+
+    C ``port start`` / ``port end`` carry extra fields (defined, clip,
+    dyna, order, side, name) that live on :class:`LayoutEdge` or are
+    recomputed on demand.  This struct only holds what the router
+    mutates mid-route.
+
+    C ``void *data`` is omitted — it is only used by the neato engine.
+    """
+
+    boxes: list = field(default_factory=list)
+    nbox: int = 0
+    start: PathEnd = field(default_factory=PathEnd)
+    end: PathEnd = field(default_factory=PathEnd)
+
+
+# ── SplineInfo ───────────────────────────────────────────────────────────
+# C analogue: ``typedef struct { ... } spline_info_t;`` in
+# lib/dotgen/dotsplines.c:64-70.
+
+@dataclass
+class SplineInfo:
+    """Per-phase routing context.
+
+    Allocated once by ``dot_splines_`` and passed by value (in C) or
+    by reference (here) to every router helper.
+
+    - ``left_bound`` / ``right_bound`` — graph-wide x bounds with
+      ``MINW`` padding, used to clamp end boxes (C ``LeftBound`` /
+      ``RightBound``).
+    - ``splinesep`` — spline-to-cluster separation, ``GD_nodesep(g)/4``
+      (C ``Splinesep``).
+    - ``multisep`` — separation between parallel edges in a group,
+      ``GD_nodesep(g)`` (C ``Multisep``).
+    - ``rank_box`` — sparse cache of inter-rank corridor boxes,
+      mapping rank index → :class:`Box`.  Mirrors the C
+      ``boxf *Rank_box`` array which is lazily filled by the
+      ``rank_box`` helper.
+    """
+
+    left_bound: float = 0.0
+    right_bound: float = 0.0
+    splinesep: float = 0.0
+    multisep: float = 0.0
+    rank_box: dict = field(default_factory=dict)

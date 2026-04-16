@@ -89,12 +89,14 @@ import sys
 from collections import defaultdict, deque
 from typing import TYPE_CHECKING
 
+from gvpy.engines.layout.dot.trace import trace
+
 if TYPE_CHECKING:
     from gvpy.engines.layout.dot.dot_layout import DotGraphInfo
 
 
 def phase2_ordering(layout):
-    print(f"[TRACE order] phase2 begin: ordering={layout.ordering}", file=sys.stderr)
+    trace("order", f"phase2 begin: ordering={layout.ordering}")
     if not layout.ranks:
         return
 
@@ -107,7 +109,7 @@ def phase2_ordering(layout):
 
     # ordering=out preserves input order — skip crossing minimization
     if layout.ordering in ("out", "in"):
-        print(f"[TRACE order] skip mincross: ordering={layout.ordering}", file=sys.stderr)
+        trace("order", f"skip mincross: ordering={layout.ordering}")
         return
 
     # ── Skeleton-based cluster ordering ──────────────
@@ -126,7 +128,7 @@ def phase2_ordering(layout):
         layout._run_mincross()
 
     crossings = layout._count_all_crossings()
-    print(f"[TRACE order] after mincross: crossings={crossings}", file=sys.stderr)
+    trace("order", f"after mincross: crossings={crossings}")
 
     # Enforce flat-edge ordering: tails left of heads
     layout._flat_reorder()
@@ -139,7 +141,7 @@ def phase2_ordering(layout):
             if not layout.lnodes[n].virtual:
                 parts.append(f"{n}({layout.lnodes[n].order})")
         if parts:
-            print(f"[TRACE order] rank {r}: {' '.join(parts)}", file=sys.stderr)
+            trace("order", f"rank {r}: {' '.join(parts)}")
 
 
 def run_mincross(layout):
@@ -336,7 +338,7 @@ def skeleton_mincross(layout):
         prev_leader = None
         for r in cl_ranks:
             vn_name = f"_skel_{cl_name}_{r}"
-            vn = LayoutNode(node=None, rank=r, virtual=True,
+            vn = LayoutNode(name=vn_name, node=None, rank=r, virtual=True,
                             width=4.0, height=4.0)
             layout.lnodes[vn_name] = vn
             rank_leaders[r] = vn_name
@@ -428,7 +430,7 @@ def skeleton_mincross(layout):
                                 # (C class2.c:87 plain_vnode)
                                 cvn = f"_icv_{t_skel}_{h_skel}_{cr}"
                                 layout.lnodes[cvn] = LayoutNode(
-                                    node=None, rank=cr, virtual=True,
+                                    name=cvn, node=None, rank=cr, virtual=True,
                                     width=2.0, height=2.0)
                                 next_name = cvn
                             else:
@@ -513,7 +515,7 @@ def skeleton_mincross(layout):
             if n.startswith("_skel_"):
                 skel_parts.append(n)
         if skel_parts:
-            print(f"[TRACE order] skeleton rank {r}: {skel_parts}", file=sys.stderr)
+            trace("order", f"skeleton rank {r}: {skel_parts}")
 
     # ── Expand: DFS through cluster tree ──
     # C mincross.c:574-598 mincross_clust recurses depth-first
@@ -627,7 +629,7 @@ def skeleton_mincross(layout):
                     del hidden_by[n]
 
             # Trace expand ordering (matching C format)
-            print(f"[TRACE order] expand_cluster {cl_name}: after build_ranks", file=sys.stderr)
+            trace("order", f"expand_cluster {cl_name}: after build_ranks")
             for r2 in sorted(rank_leaders.keys()):
                 parts = []
                 for n in layout.ranks.get(r2, []):
@@ -641,7 +643,7 @@ def skeleton_mincross(layout):
                         if n in node_sets.get(cl_name, set()):
                             parts.append(n)
                 if parts:
-                    print(f"[TRACE order]   rank {r2}: {' '.join(parts)}", file=sys.stderr)
+                    trace("order", f"  rank {r2}: {' '.join(parts)}")
 
             # Local mincross within this cluster.
             # Include child skeleton nodes that haven't been expanded
@@ -943,7 +945,7 @@ def cluster_medians(layout, rank: int, adj_rank: int,
             if name in cl_nodes:
                 v = "v" if (name in layout.lnodes and layout.lnodes[name].virtual) else ""
                 parts.append(f"{name}{v}={layout._node_mval.get(name, -9):.1f}")
-        print(f"[TRACE median] rank {rank} (adj {adj_rank}): {' '.join(parts)}", file=sys.stderr)
+        trace("median", f"rank {rank} (adj {adj_rank}): {' '.join(parts)}")
         # Trace per-node neighbor VAL details
         adj_s = set(layout.ranks.get(adj_rank, []))
         for name in layout.ranks.get(rank, []):
@@ -979,7 +981,7 @@ def cluster_medians(layout, rank: int, adj_rank: int,
                     if nbr:
                         nbr_parts.append(f"{nbr}(ord={layout.lnodes[nbr].order},port={po},val={val})")
             if nbr_parts:
-                print(f"[TRACE median]   {name} adj_nbrs: {' '.join(nbr_parts)}", file=sys.stderr)
+                trace("median", f"  {name} adj_nbrs: {' '.join(nbr_parts)}")
 
 
 def cluster_reorder(layout, rank: int, cl_nodes: set[str],
@@ -1325,11 +1327,11 @@ def cluster_build_ranks(
 
     if _bfs_trace:
         skel_nlist = [n for n in fg_nlist if n.startswith("_skel_")]
-        print(f"[TRACE bfs] fg_nlist (skeletons): {skel_nlist}", file=sys.stderr)
+        trace("bfs", f"fg_nlist (skeletons): {skel_nlist}")
     _bfs_trace = len(bfs_nodes) > 20
 
     if _bfs_trace:
-        print(f"[TRACE bfs] sources: {sources}", file=sys.stderr)
+        trace("bfs", f"sources: {sources}")
 
     queue: deque[str] = deque()
     for s in sources:
@@ -1345,7 +1347,7 @@ def cluster_build_ranks(
                 if child_name and child_name not in installed_children:
                     installed_children.add(child_name)
                     if _bfs_trace:
-                        print(f"[TRACE bfs] install_cluster {child_name}", file=sys.stderr)
+                        trace("bfs", f"install_cluster {child_name}")
                     rleaders = child_skel_ranks[child_name]
                     # install all rank leaders (cluster.c:399-404)
                     for r in sorted(rleaders.keys()):
@@ -1358,12 +1360,12 @@ def cluster_build_ranks(
                                 queue.append(nbr)
                                 if _bfs_trace:
                                     nbr_cl = skel_to_child.get(nbr, "")
-                                    print(f"[TRACE bfs]   enqueue {nbr} (cl={nbr_cl}) from {sn} of {child_name}", file=sys.stderr)
+                                    trace("bfs", f"  enqueue {nbr} (cl={nbr_cl}) from {sn} of {child_name}")
             else:
                 # Regular node → install_in_rank (mincross.c:1308)
                 result[layout.lnodes[n0].rank].append(n0)
                 if _bfs_trace:
-                    print(f"[TRACE bfs] install {n0} rank={layout.lnodes[n0].rank}", file=sys.stderr)
+                    trace("bfs", f"install {n0} rank={layout.lnodes[n0].rank}")
                 # enqueue_neighbors (mincross.c:1341-1351)
                 for nbr in fg_out.get(n0, []):
                     if nbr not in visited:
