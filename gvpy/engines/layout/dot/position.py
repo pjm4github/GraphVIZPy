@@ -846,14 +846,15 @@ def insert_flat_label_nodes(layout) -> bool:
         mid_order = (t.order + h.order) // 2
         rank_nodes = layout.ranks[target_rank]
         insert_pos = min(mid_order, len(rank_nodes))
+
+        # Register in lnodes BEFORE inserting into rank list, so the
+        # order-reassignment loop below can find it.
+        layout.lnodes[vn_name] = vn
         rank_nodes.insert(insert_pos, vn_name)
 
         # Reassign orders
         for i, name in enumerate(rank_nodes):
             layout.lnodes[name].order = i
-
-        layout.lnodes[vn_name] = vn
-        vn.order = insert_pos
 
         # Store reference: edge → label node for NS constraints
         le._flat_label_vnode = vn_name

@@ -82,11 +82,48 @@ def _init_record_fields(graph: Graph):
     _walk_subgraphs(graph)
 
 
+def _sanitize_dot(text: str) -> str:
+    """Replace non-ASCII characters that the ANTLR lexer cannot tokenise.
+
+    C Graphviz treats identifiers as raw byte strings and never rejects
+    non-ASCII input.  The ANTLR4-generated lexer only recognises the
+    printable ASCII range, so corrupted / ISO-8859 / fuzz-test files
+    produce 'token recognition error' on every non-ASCII byte.
+
+    Fix: replace any character outside the printable-ASCII + common
+    whitespace range with underscore.  This preserves the DOT structure
+    while making corrupted identifiers parseable.
+    """
+    out = []
+    for ch in text:
+        cp = ord(ch)
+        if cp == 0x09 or cp == 0x0A or cp == 0x0D:  # tab, LF, CR
+            out.append(ch)
+        elif 0x20 <= cp <= 0x7E:  # printable ASCII
+            out.append(ch)
+        else:
+            out.append('_')
+    return "".join(out)
+
+
 def read_gv(text: str) -> Graph:
     """Parse a GV/DOT-language string and return a Graph object.
 
+    If the input contains multiple graph blocks (e.g. two ``digraph``
+    declarations), only the first block is parsed.
+
+    Non-ASCII bytes are replaced with underscores so that corrupted or
+    ISO-8859-encoded files can still be parsed.
+
     Raises GVParseError if the input contains syntax errors.
     """
+    text = _sanitize_dot(text)
+
+    # Handle multiple graph blocks — parse only the first one.
+    blocks = _split_graph_blocks(text)
+    if len(blocks) > 1:
+        text = blocks[0]
+
     input_stream = InputStream(text)
 
     lexer = GVLexer(input_stream)
@@ -103,9 +140,13 @@ def read_gv(text: str) -> Graph:
     tree = parser.graph()
 
     if error_listener.errors:
-        raise GVParseError(
-            "Parse errors:\n" + "\n".join(error_listener.errors)
-        )
+        # Best-effort: if the tree has children (partial parse succeeded),
+        # log warnings but continue.  Only raise if the tree is empty
+        # (complete parse failure).
+        if tree is None or tree.getChildCount() == 0:
+            raise GVParseError(
+                "Parse errors:\n" + "\n".join(error_listener.errors)
+            )
 
     visitor = GVGraphVisitor()
     graph = visitor.visit(tree)

@@ -1064,7 +1064,16 @@ GraphvizPy/
 │   │   │   │   ├── rank.py          #     Phase 1 — rank assignment
 │   │   │   │   ├── mincross.py      #     Phase 2 — crossing minimization
 │   │   │   │   ├── position.py      #     Phase 3 — coordinate assignment
-│   │   │   │   ├── splines.py       #     Phase 4 — edge routing
+│   │   │   │   ├── splines.py       #     Phase 4 driver + dispatch
+│   │   │   │   ├── path.py          #     Path/PathEnd/Box data, beginpath/endpath
+│   │   │   │   ├── routespl.py      #     Box-corridor router (checkpath, routesplines)
+│   │   │   │   ├── clip.py          #     Bezier clip-to-node-boundary
+│   │   │   │   ├── regular_edge.py  #     Regular-edge routing (virtual chain walk)
+│   │   │   │   ├── flat_edge.py     #     Flat (same-rank) edge routing
+│   │   │   │   ├── self_edge.py     #     Self-loop routing (4 compass variants)
+│   │   │   │   ├── straight_edge.py #     splines=line / splines=curved routing
+│   │   │   │   ├── pathplan/        #     Pathplan library port (route, visibility,
+│   │   │   │   │                    #     shortestpath, triangulation, solvers)
 │   │   │   │   ├── cluster.py       #     Cluster discovery + post-pos cleanup
 │   │   │   │   └── ns_solver.py     #     Network simplex solver
 │   │   │   ├── neato/            #   Spring-model (stress majorization / KK / SGD)
@@ -1105,28 +1114,34 @@ GraphvizPy/
 │
 ├── test_data/                    # Test files (.gv, .dot, .json, .gxl)
 │
-├── tests/                        # pytest test suite (724 tests)
-│   ├── test_cgraph_api.py        #   Core API (76 tests)
-│   ├── test_node_operations.py   #   Node CRUD (31 tests)
-│   ├── test_edge_operations.py   #   Edge CRUD (14 tests)
-│   ├── test_subgraph_operations.py #  Subgraph CRUD (12 tests)
-│   ├── test_callbacks.py         #   Callback system (20 tests)
-│   ├── test_graph_core.py        #   Graph init, attrs, algorithms (35 tests)
-│   ├── test_compound_nodes.py    #   Compound nodes (8 tests)
-│   ├── test_dot_parser.py        #   DOT parser (44 tests)
-│   ├── test_dot_layout.py        #   Dot layout + attributes (165+ tests)
-│   ├── test_svg_renderer.py      #   SVG rendering (18 tests)
-│   ├── test_formats.py           #   Format roundtrip (71 tests)
-│   ├── test_circo_layout.py      #   Circo layout (25 tests)
-│   ├── test_neato_layout.py      #   Neato layout (27 tests)
-│   ├── test_fdp_layout.py        #   Fdp layout (16 tests)
-│   ├── test_sfdp_layout.py       #   Sfdp layout (16 tests)
-│   ├── test_twopi_layout.py      #   Twopi layout (17 tests)
-│   ├── test_osage_layout.py      #   Osage layout (16 tests)
-│   ├── test_patchwork_layout.py  #   Patchwork layout (17 tests)
-│   ├── test_mingle.py            #   Mingle bundling (18 tests)
-│   ├── test_sim_skeleton.py      #   Sim engines smoke tests (9 tests)
-│   └── test_all_files.py         #   Bulk file validation (187 files)
+├── tests/                        # pytest test suite
+│   ├── test_cgraph_api.py        #   Core API
+│   ├── test_node_operations.py   #   Node CRUD
+│   ├── test_edge_operations.py   #   Edge CRUD
+│   ├── test_subgraph_operations.py #  Subgraph CRUD
+│   ├── test_callbacks.py         #   Callback system
+│   ├── test_graph_core.py        #   Graph init, attrs, algorithms
+│   ├── test_compound_nodes.py    #   Compound nodes
+│   ├── test_dot_parser.py        #   DOT parser
+│   ├── test_dot_layout.py        #   Dot layout + attributes (238 tests)
+│   ├── test_phase4_coverage.py   #   Phase 4 spline module coverage (47 tests)
+│   ├── test_svg_renderer.py      #   SVG rendering
+│   ├── test_formats.py           #   Format roundtrip
+│   ├── test_circo_layout.py      #   Circo layout
+│   ├── test_neato_layout.py      #   Neato layout
+│   ├── test_fdp_layout.py        #   Fdp layout
+│   ├── test_sfdp_layout.py       #   Sfdp layout
+│   ├── test_twopi_layout.py      #   Twopi layout
+│   ├── test_osage_layout.py      #   Osage layout
+│   ├── test_patchwork_layout.py  #   Patchwork layout
+│   ├── test_mingle.py            #   Mingle bundling
+│   ├── test_sim_skeleton.py      #   Sim engines smoke tests
+│   └── test_all_files.py         #   Bulk file validation
+│
+├── tools/
+│   └── run_all_dots.py           # Bulk-test all test_data/*.dot files
+│                                 # through Python + C dot.exe, writes
+│                                 # side-by-side results to test_run.md
 ```
 
 ## Interactive Wizard
@@ -1180,11 +1195,37 @@ the full timeline):
   namespace is free for simulation engines.
 - ✅ **Dot engine extracted into per-phase modules** —
   `gvpy/engines/layout/dot/dot_layout.py` was 6739 lines; it is now
-  1777 lines after extracting Phase 1 (`rank.py`), Phase 2
+  ~2000 lines after extracting Phase 1 (`rank.py`), Phase 2
   (`mincross.py`), Phase 3 (`position.py`), Phase 4 (`splines.py`),
   the network simplex solver (`ns_solver.py`), cluster geometry
   (`cluster.py`), and init helpers (`dotinit.py`).  Each phase
-  has full C-source traceability.
+  has full C-source traceability (file + line number per function).
+- ✅ **Dot splines port (Phases A–G complete)** — The entire
+  spline-routing pipeline has been ported function-by-function from
+  Graphviz `lib/dotgen/dotsplines.c` + `lib/common/splines.c` +
+  `lib/common/routespl.c` + `lib/pathplan/*`:
+  - **Phase A** (`splines.py`) — driver shell, edge classification, bbox family
+  - **Phase B** (`pathplan/*.py`, `routespl.py`, `path.py`) — pathplan
+    library + box-corridor router + `beginpath`/`endpath`
+  - **Phase C** (`clip.py`) — bezier clip, shape clip, `clip_and_install`
+  - **Phase D** (`regular_edge.py`) — regular-edge routing through
+    virtual node chains
+  - **Phase E** (`flat_edge.py`) — flat (same-rank) edge arc corridors
+  - **Phase F** (`self_edge.py`) — self-loop routing (4 compass variants)
+  - **Phase G** (`straight_edge.py`) — straight/curved edges with
+    cycle-centroid bending for `splines=line` / `splines=curved`
+
+  ~100 C functions ported across 7 new modules.  On the 199-file
+  test_data corpus: Python 175 OK, C dot.exe 159 OK
+  (both with same 4-column result format: `N nodes, E edges, R routed`).
+- ✅ **Parser robustness** — `read_dot` now sanitizes non-ASCII bytes
+  and handles multi-graph files, so corrupted / ISO-8859-encoded /
+  fuzz-test DOT files no longer fail to parse.
+- ✅ **DotGraphInfo refactor** — Removed 77 function-local imports
+  by hoisting satellite-module imports to top of `dot_layout.py`;
+  renamed misleading `self` parameter on 6 staticmethod module
+  aliases to reflect the actual argument type (`ln`, `le`, `pts`,
+  `inside`).
 - ✅ **`SimulationView` skeleton** — `gvpy/engines/sim/` provides
   the abstract `SimulationView` base, SimPy-style event-driven
   primitives (`Environment`, `Event`, `Timeout`, `Process`,
@@ -1200,7 +1241,8 @@ the full timeline):
 | Component | Tests | Status |
 |---|---|---|
 | DOT parser | 44 | All pass |
-| Dot layout + labels | 165+ | All pass |
+| Dot layout + labels | 238 | All pass |
+| Phase 4 spline coverage tests | 47 | All pass |
 | Neato layout | 27 | All pass |
 | Fdp layout | 16 | All pass |
 | Sfdp layout | 16 | All pass |
@@ -1213,8 +1255,14 @@ the full timeline):
 | Core API | 100+ | All pass |
 | Format I/O (DOT/JSON/GXL) | 71 | All pass |
 | Sim engines (event + CBD smoke tests) | 9 | All pass |
-| Bulk file validation | 187 files | 155 pass, 32 skip |
-| **Total** | **724** | **All pass** |
+| Bulk DOT file run (`tools/run_all_dots.py`) | 199 files | 175 OK, 4 FAIL, 16 TIMEOUT, 4 SLOW |
+| **Total (unit tests)** | **285** | **All pass** |
+
+**Phase 4 module coverage** (after `tools/run_all_dots.py` + targeted
+unit tests): `pathplan/route.py` 94%, `pathplan/shortest.py` 96%,
+`pathplan/solvers.py` 97%, `clip.py` 95%, `routespl.py` 90%,
+`regular_edge.py` 82%, `self_edge.py` 98%, `straight_edge.py` 84%,
+`flat_edge.py` 61%, `path.py` 76%.  Overall new-code coverage: 76%.
 
 ## Hierarchical Layout Algorithm (dot engine)
 

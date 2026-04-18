@@ -277,59 +277,52 @@ def phase4_routing(layout):
                   f"ll=({box.ll_x:.1f},{box.ll_y:.1f}) "
                   f"ur=({box.ur_x:.1f},{box.ur_y:.1f})")
 
-    use_channel = getattr(layout, "_use_channel_routing", False)
-
     # Route real edges in edgecmp-sorted order (Phase A step 6).
     # C analogue: the main routing loop at dotsplines.c:344-421 that
     # walks ``edges`` in sorted order and dispatches to
     # make_regular_edge / make_flat_edge / makeSelfEdge based on
-    # tail/head rank + port status.  Python still dispatches per-edge
-    # to the existing heuristic routers — equivalence-class batching
-    # is on the Phase D agenda.
+    # tail/head rank + port status.
+    from gvpy.engines.layout.dot.regular_edge import make_regular_edge
+    from gvpy.engines.layout.dot.flat_edge import make_flat_edge
+    from gvpy.engines.layout.dot.self_edge import make_self_edge
+    from gvpy.engines.layout.dot.straight_edge import make_straight_edges
+    from gvpy.engines.layout.dot.path import Path, EDGETYPE_SPLINE, EDGETYPE_LINE, EDGETYPE_CURVED
+
+    et = edge_type_from_splines(layout.splines)
+    P = Path()
+
     for le in sorted_real_edges:
         tail = layout.lnodes.get(le.tail_name)
         head = layout.lnodes.get(le.head_name)
         if tail is None or head is None:
             continue
         if le.tail_name == le.head_name:
-            le.points = layout._self_loop_points(tail)
+            make_self_edge(layout, le, tail)
         elif tail.rank == head.rank and not le.virtual:
-            le.points = layout._flat_edge_route(le, tail, head)
+            make_flat_edge(layout, layout._spline_info, P, [le], et)
         elif layout.splines == "ortho":
             le.points = layout._ortho_route(le, tail, head)
-        elif layout.splines == "line":
-            p1 = layout._edge_start_point(le, tail, head)
-            p2 = layout._edge_end_point(le, head, tail)
-            le.points = [p1, p2]
-        elif use_channel:
-            # New cluster-aware channel router (step 6 of the
-            # routespl.c port).  Builds per-node channel boxes
-            # clipped to foreign-cluster boundaries, then routes
-            # a polyline through the boxes with bridge waypoints
-            # around any intervening obstacle clusters.
-            le.points = channel_route_edge(layout, le, tail, head)
+        elif et in (EDGETYPE_LINE, EDGETYPE_CURVED):
+            make_straight_edges(layout, [le], et)
         else:
-            le.points = layout._route_regular_edge(le, tail, head)
+            make_regular_edge(layout, layout._spline_info, P, [le], et)
         layout._compute_label_pos(le)
 
-    # Route chain edges through virtual nodes
+    # Route chain edges through virtual nodes.
+    # C analogue: multi-rank edges are dispatched via make_regular_edge
+    # with the original edge; the function walks the virtual chain
+    # internally.
     for le in layout._chain_edges:
         tail = layout.lnodes.get(le.tail_name)
         head = layout.lnodes.get(le.head_name)
-        if layout.splines == "line" and tail and head:
-            # Line mode: direct start-to-end, ignore virtual nodes
-            p1 = layout._edge_start_point(le, tail, head)
-            p2 = layout._edge_end_point(le, head, tail)
-            le.points = [p1, p2]
-        elif layout.splines == "ortho" and tail and head:
+        if tail is None or head is None:
+            continue
+        if et in (EDGETYPE_LINE, EDGETYPE_CURVED):
+            make_straight_edges(layout, [le], et)
+        elif layout.splines == "ortho":
             le.points = layout._ortho_route(le, tail, head)
-        elif use_channel and tail and head:
-            # New channel router for multi-rank chain edges too.
-            le.points = channel_route_edge(layout, le, tail, head)
         else:
-            key = (le.tail_name, le.head_name)
-            chain = layout._vnode_chains.get(key, [])
-            le.points = layout._route_through_chain(le.tail_name, chain, le.head_name)
+            make_regular_edge(layout, layout._spline_info, P, [le], et)
         layout._compute_label_pos(le)
 
     # Apply samehead/sametail: merge endpoints for grouped edges

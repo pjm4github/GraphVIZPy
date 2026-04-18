@@ -220,6 +220,16 @@ from gvpy.engines.layout.base import LayoutEngine
 from gvpy.engines.layout.dot.edge_route import EdgeRoute
 from gvpy.engines.layout.dot.trace import trace
 
+# Module-level imports for satellite phase modules.  These modules use
+# TYPE_CHECKING guards on their DotGraphInfo references to avoid
+# circular-import failures at load time.
+from gvpy.engines.layout.dot import cluster  # noqa: E402
+from gvpy.engines.layout.dot import dotinit  # noqa: E402
+from gvpy.engines.layout.dot import mincross  # noqa: E402
+from gvpy.engines.layout.dot import position  # noqa: E402
+from gvpy.engines.layout.dot import rank  # noqa: E402
+from gvpy.engines.layout.dot import splines  # noqa: E402
+
 
 # ── Internal data structures ─────────────────────
 
@@ -273,7 +283,7 @@ class LayoutEdge:
     in :mod:`gvpy.engines.layout.dot.path` — one edge-type bit
     (``REGULAREDGE`` / ``FLATEDGE`` / ``SELFWPEDGE`` / ``SELFNPEDGE``),
     one direction bit (``FWDEDGE`` / ``BWDEDGE``), and one graph-type
-    bit (``MAINGRAPH`` / ``AUXGRAPH``).  C analogue: ``ED_tree_index(e)``
+    bit (``MAINGRAPH`` / ``AUXGRAPH``).  See: ``ED_tree_index(e)``
     via the ``setflags`` helper in ``dotsplines.c``."""
     route: EdgeRoute = field(default_factory=EdgeRoute)
 
@@ -304,6 +314,13 @@ class LayoutEdge:
 
 @dataclass
 class LayoutCluster:
+    """Per-cluster layout state.
+
+    See: ``graph_t`` with ``GD_cluster_data`` in ``lib/dotgen/dot.h``
+    for cluster subgraphs.  C accesses cluster fields via ``GD_label``,
+    ``GD_bb``, ``GD_border`` macros on the cluster's ``graph_t``; Python
+    hoists these into a dedicated dataclass.
+    """
     name: str
     label: str = ""
     nodes: list = field(default_factory=list)       # recursive (all descendants)
@@ -345,7 +362,7 @@ from gvpy.engines.layout.dot.ns_solver import _NetworkSimplex  # noqa: E402
 class DotGraphInfo(LayoutEngine):
     """Hierarchical (dot) layout state container.
 
-    C analogue: ``Agraphinfo_t`` in ``lib/dotgen/dot.h``.  Holds all
+    See: ``Agraphinfo_t`` in ``lib/dotgen/dot.h``.  Holds all
     per-layout state for a dot layout (rank arrays, cluster skeletons,
     coordinate assignments, etc.) and drives the four-phase pipeline
     (rank → mincross → position → splines).
@@ -407,7 +424,7 @@ class DotGraphInfo(LayoutEngine):
         self._rank_ht2: dict[int, float] = {}  # top half-height per rank
         self._left_bound: float = 0.0
         self._right_bound: float = 0.0
-        # Phase-4 routing context.  C analogue: the ``sd`` local in
+        # Phase-4 routing context.  See: the ``sd`` local in
         # ``dot_splines_`` (``lib/dotgen/dotsplines.c``).  Allocated
         # by ``phase4_routing`` at the top of the pass and reused by
         # every spline router helper.  None outside that pass.
@@ -436,7 +453,7 @@ class DotGraphInfo(LayoutEngine):
     def layout(self) -> dict:
         """Run the full layout pipeline and return a JSON-serializable dict.
 
-        Mirrors C ``lib/dotgen/dotinit.c:dot_layout()``: the entire graph
+        Mirrors C ``lib/dotgen/dotinit.c: dot_layout() @ 510``: the entire graph
         is laid out as a single unit.  Network simplex (Phase 1) handles
         weakly-disconnected components naturally — they end up on
         adjacent ranks within the unified rank structure, and Phase 3
@@ -472,12 +489,27 @@ class DotGraphInfo(LayoutEngine):
     # ── Initialization ───────────────────────────
 
     def _init_from_graph(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.dotinit.init_from_graph."""
-        from gvpy.engines.layout.dot import dotinit
+        """Build LayoutNode/LayoutEdge maps from the graph.
+
+        See: ``lib/dotgen/dotinit.c: dot_init_node_edge() @ 89`` combined
+        with the graph-walk portion of ``dot_layout()``.  C populates
+        ``ND_*`` and ``ED_*`` fields directly on the cgraph objects;
+        Python builds parallel ``lnodes`` / ``ledges`` dataclasses.
+
+        Delegates to :func:`dotinit.init_from_graph`.
+        """
         return dotinit.init_from_graph(self, *args, **kwargs)
 
 
     def _orient_undirected(self):
+        """Orient undirected-graph edges so each has a consistent tail→head.
+
+        See: ``lib/common/emit.c: undirectedDfs()`` / the undirected-graph
+        handling in ``lib/dotgen/dotinit.c: dot_init_node_edge() @ 89``.  C walks the
+        graph and assigns a direction to each edge based on DFS order; the
+        Python implementation is a straight DFS that picks the first visit
+        as the tail.
+        """
         visited = set()
         adj: dict[str, list[int]] = defaultdict(list)
         for i, le in enumerate(self.ledges):
@@ -503,79 +535,142 @@ class DotGraphInfo(LayoutEngine):
                 dfs(name)
 
     def _collect_rank_constraints(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.dotinit.collect_rank_constraints."""
-        from gvpy.engines.layout.dot import dotinit
+        """Parse ``rank=same/min/max/source/sink`` constraints from subgraphs.
+
+        See: ``lib/dotgen/rank.c: rank1() @ 449`` + ``collapse_sets() @ 349``.
+
+        Delegates to :func:`dotinit.collect_rank_constraints`.
+        """
         return dotinit.collect_rank_constraints(self, *args, **kwargs)
 
 
     def _scan_subgraphs(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.dotinit.scan_subgraphs."""
-        from gvpy.engines.layout.dot import dotinit
+        """Walk subgraph tree, collecting cluster membership and attributes.
+
+        See: ``lib/dotgen/dotinit.c`` subgraph iteration via
+        ``agfstsubg()`` / ``agnxtsubg()``.
+
+        Delegates to :func:`dotinit.scan_subgraphs`.
+        """
         return dotinit.scan_subgraphs(self, *args, **kwargs)
 
 
     def _collect_edges(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.dotinit.collect_edges."""
-        from gvpy.engines.layout.dot import dotinit
+        """Gather all edges into ``layout.ledges``.
+
+        See: edge iteration in ``lib/dotgen/dotinit.c`` via
+        ``agfstout()`` / ``agnxtout()`` over every node.
+
+        Delegates to :func:`dotinit.collect_edges`.
+        """
         return dotinit.collect_edges(self, *args, **kwargs)
 
 
     def _collect_edges_recursive(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.dotinit.collect_edges_recursive."""
-        from gvpy.engines.layout.dot import dotinit
+        """Recursively collect edges from subgraphs.
+
+        See: subgraph-scoped edge walks in ``lib/cgraph`` +
+        ``lib/dotgen/dotinit.c``.
+
+        Delegates to :func:`dotinit.collect_edges_recursive`.
+        """
         return dotinit.collect_edges_recursive(self, *args, **kwargs)
 
 
     def _collect_clusters(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.cluster.collect_clusters."""
-        from gvpy.engines.layout.dot import cluster
+        """Build the LayoutCluster list from subgraphs whose name starts with ``cluster``.
+
+        See: ``lib/dotgen/dotinit.c`` cluster detection logic that
+        walks subgraphs and populates ``GD_clust`` arrays on the parent
+        graph.
+
+        Delegates to :func:`cluster.collect_clusters`.
+        """
         return cluster.collect_clusters(self, *args, **kwargs)
 
 
     def _all_nodes_recursive(self, sub) -> list[str]:
-        """Collect all unique node names from a subgraph and its descendants."""
+        """Collect all unique node names from a subgraph and its descendants.
+
+        See: ``lib/cgraph/subg.c: agnodes()`` combined with recursive
+        descent via ``agfstsubg()`` — C does this inline wherever needed.
+        """
         seen: set[str] = set()
         self._collect_nodes_into(sub, seen)
         return sorted(seen)
 
     def _collect_nodes_into(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.cluster.collect_nodes_into."""
-        from gvpy.engines.layout.dot import cluster
+        """Recursive helper for :meth:`_all_nodes_recursive`.
+
+        See: inline recursion in C; no single named C function.
+
+        Delegates to :func:`cluster.collect_nodes_into`.
+        """
         return cluster.collect_nodes_into(self, *args, **kwargs)
 
 
     def _scan_clusters(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.cluster.scan_clusters."""
-        from gvpy.engines.layout.dot import cluster
+        """Walk clusters to initialize per-cluster state.
+
+        See: cluster initialization in ``lib/dotgen/dotinit.c``
+        and ``lib/dotgen/cluster.c``.
+
+        Delegates to :func:`cluster.scan_clusters`.
+        """
         return cluster.scan_clusters(self, *args, **kwargs)
 
 
     def _dedup_cluster_nodes(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.cluster.dedup_cluster_nodes."""
-        from gvpy.engines.layout.dot import cluster
+        """Remove duplicate node entries from cluster membership lists.
+
+        See: none direct — C's ``GD_clust`` arrays are
+        populated without duplicates by construction.  This is a
+        Python-side cleanup pass.
+
+        Delegates to :func:`cluster.dedup_cluster_nodes`.
+        """
         return cluster.dedup_cluster_nodes(self, *args, **kwargs)
 
 
     def _compute_cluster_boxes(self):
-        """Delegates to gvpy.engines.layout.dot.position.compute_cluster_boxes."""
-        from gvpy.engines.layout.dot import position
+        """Compute cluster bounding boxes from member-node positions.
+
+        See: ``lib/dotgen/position.c: dot_compute_bb() @ 882``.
+
+        Delegates to :func:`position.compute_cluster_boxes`.
+        """
         return position.compute_cluster_boxes(self)
 
     def _separate_sibling_clusters(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.cluster.separate_sibling_clusters."""
-        from gvpy.engines.layout.dot import cluster
+        """Nudge sibling clusters apart to avoid overlap.
+
+        See: cluster-separation logic inside ``lib/dotgen/position.c``
+        after the ``ns_x_position`` phase.
+
+        Delegates to :func:`cluster.separate_sibling_clusters`.
+        """
         return cluster.separate_sibling_clusters(self, *args, **kwargs)
 
 
     def _shift_cluster_nodes_y(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.cluster.shift_cluster_nodes_y."""
-        from gvpy.engines.layout.dot import cluster
+        """Shift all nodes in a cluster by a dy offset.
+
+        See: ``lib/dotgen/position.c`` cluster-positioning pass;
+        no standalone C function — inlined at cluster-adjust sites.
+
+        Delegates to :func:`cluster.shift_cluster_nodes_y`.
+        """
         return cluster.shift_cluster_nodes_y(self, *args, **kwargs)
 
 
     def _shift_cluster_nodes_x(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.cluster.shift_cluster_nodes_x."""
-        from gvpy.engines.layout.dot import cluster
+        """Shift all nodes in a cluster by a dx offset.
+
+        See: same as :meth:`_shift_cluster_nodes_y` — cluster
+        adjustment in ``lib/dotgen/position.c``, x-axis variant.
+
+        Delegates to :func:`cluster.shift_cluster_nodes_x`.
+        """
         return cluster.shift_cluster_nodes_x(self, *args, **kwargs)
 
 
@@ -604,7 +699,15 @@ class DotGraphInfo(LayoutEngine):
         return {"TB": 0, "LR": 1, "BT": 2, "RL": 3}.get(self.rankdir, 0)
 
     def _compute_node_size(self, name: str, node) -> tuple[float, float]:
-        """Compute node dimensions from label text, shape, and explicit width/height."""
+        """Compute node dimensions from label text, shape, and explicit width/height.
+
+        See: ``lib/common/shapes.c: poly_init() @ 1934`` +
+        ``shapes.c:record_init()`` — C dispatches through shape-specific
+        ``init_fn`` callbacks that size the node based on its label and
+        shape.  Python consolidates the common cases (ellipse, box,
+        record) here; shape-specific callbacks live in
+        :mod:`gvpy.render.svg_renderer`.
+        """
         attrs = node.attributes if node else {}
 
         fixedsize = attrs.get("fixedsize", "false").lower() in ("true", "1", "yes", "shape")
@@ -711,7 +814,12 @@ class DotGraphInfo(LayoutEngine):
 
     def _measure_record_tree(self, node: dict, horizontal: bool,
                              fontsize: float, char_w: float) -> tuple[float, float]:
-        """Recursively measure a record tree node, returning (width, height)."""
+        """Recursively measure a record tree node, returning (width, height).
+
+        See: ``lib/common/shapes.c: size_reclbl() @ 3539`` / ``place_rec()``
+        — C recursively walks the field tree computing widths and heights,
+        flipping orientation at each ``{`` / ``}`` boundary.
+        """
         cell_h = fontsize * 1.4 + 4.0  # height of a single text cell
         min_cell_w = 20.0
 
@@ -743,68 +851,128 @@ class DotGraphInfo(LayoutEngine):
     # ── Phase 1: Rank assignment ─────────────────
 
     def _phase1_rank(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.rank.phase1_rank."""
-        from gvpy.engines.layout.dot import rank
+        """Phase 1 driver: rank assignment via network simplex.
+
+        See: ``lib/dotgen/rank.c: dot_rank() @ 545`` — the top-level rank
+        assignment pass that calls ``rank1() @ 449`` then ``collapse_sets() @ 349``
+        and finally ``rank3()`` to produce a feasible tree.
+
+        Delegates to :func:`rank.phase1_rank`.
+        """
         return rank.phase1_rank(self, *args, **kwargs)
 
 
     def _inject_same_rank_edges(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.rank.inject_same_rank_edges."""
-        from gvpy.engines.layout.dot import rank
+        """Add zero-minlen constraint edges between ``rank=same`` nodes.
+
+        See: ``lib/dotgen/rank.c: collapse_sets() @ 349`` which unions
+        same-rank constraint sets and adds constraint edges before the
+        network simplex solve.
+
+        Delegates to :func:`rank.inject_same_rank_edges`.
+        """
         return rank.inject_same_rank_edges(self, *args, **kwargs)
 
 
     def _classify_flat_edges(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.rank.classify_flat_edges."""
-        from gvpy.engines.layout.dot import rank
+        """Tag edges between same-rank nodes as flat.
+
+        See: ``lib/dotgen/flat.c: flat_edges() @ 259`` — classifies edges
+        whose endpoints end up on the same rank after network simplex.
+
+        Delegates to :func:`rank.classify_flat_edges`.
+        """
         return rank.classify_flat_edges(self, *args, **kwargs)
 
 
     def _classify_edges(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.rank.classify_edges."""
-        from gvpy.engines.layout.dot import rank
+        """Set edge-type tags (normal / flat / self / virtual).
+
+        See: edge-type classification in ``lib/dotgen/rank.c`` and
+        ``lib/dotgen/dotinit.c`` — C sets ``ED_edge_type`` based on rank
+        relationships.
+
+        Delegates to :func:`rank.classify_edges`.
+        """
         return rank.classify_edges(self, *args, **kwargs)
 
 
     def _cluster_aware_rank(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.rank.cluster_aware_rank."""
-        from gvpy.engines.layout.dot import rank
+        """Run network simplex with cluster boundary constraints.
+
+        See: ``lib/dotgen/cluster.c`` + ``lib/dotgen/rank.c`` —
+        cluster skeleton construction followed by per-cluster and
+        outer-graph rank solves.
+
+        Delegates to :func:`rank.cluster_aware_rank`.
+        """
         return rank.cluster_aware_rank(self, *args, **kwargs)
 
 
     def _break_cycles(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.rank.break_cycles."""
-        from gvpy.engines.layout.dot import rank
+        """Reverse back-edges so the graph is acyclic.
+
+        See: ``lib/dotgen/acyclic.c: acyclic() @ 58`` — DFS-based
+        back-edge reversal.
+
+        Delegates to :func:`rank.break_cycles`.
+        """
         return rank.break_cycles(self, *args, **kwargs)
 
 
     def _network_simplex_rank(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.rank.network_simplex_rank."""
-        from gvpy.engines.layout.dot import rank
+        """Solve the integer rank assignment via network simplex.
+
+        See: ``lib/common/ns.c: rank() @ 1029`` — the generic network
+        simplex solver (also used by the X-coordinate phase).  Called
+        from ``lib/dotgen/rank.c: dot_rank() @ 545``.
+
+        Delegates to :func:`rank.network_simplex_rank`.
+        """
         return rank.network_simplex_rank(self, *args, **kwargs)
 
 
     def _apply_rank_constraints(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.rank.apply_rank_constraints."""
-        from gvpy.engines.layout.dot import rank
+        """Enforce ``rank=min/max/source/sink`` constraints post-NS.
+
+        See: ``lib/dotgen/rank.c: rank1() @ 449`` + scan passes in
+        ``acyclic.c`` that clamp constrained nodes to the top/bottom rank.
+
+        Delegates to :func:`rank.apply_rank_constraints`.
+        """
         return rank.apply_rank_constraints(self, *args, **kwargs)
 
 
     def _compact_ranks(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.rank.compact_ranks."""
-        from gvpy.engines.layout.dot import rank
+        """Remove gaps in rank numbering (renumber 0..N-1).
+
+        See: implicit in ``lib/dotgen/rank.c`` — C tracks
+        ``GD_minrank`` / ``GD_maxrank`` and iterates the actual range.
+
+        Delegates to :func:`rank.compact_ranks`.
+        """
         return rank.compact_ranks(self, *args, **kwargs)
 
 
     def _add_virtual_nodes(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.rank.add_virtual_nodes."""
-        from gvpy.engines.layout.dot import rank
+        """Insert virtual nodes on long edges to make them unit-length.
+
+        See: ``lib/dotgen/class2.c: make_chain() @ 70`` — replaces a
+        multi-rank edge with a chain of virtual nodes and single-rank edges.
+
+        Delegates to :func:`rank.add_virtual_nodes`.
+        """
         return rank.add_virtual_nodes(self, *args, **kwargs)
 
 
     def _build_ranks(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.rank.build_ranks."""
-        from gvpy.engines.layout.dot import rank
+        """Populate ``layout.ranks`` dict from node rank assignments.
+
+        See: ``lib/dotgen/mincross.c: build_ranks() @ 1277`` — groups nodes by
+        rank into ``GD_rank(g)[r].v[i]`` arrays.
+
+        Delegates to :func:`rank.build_ranks`.
+        """
         return rank.build_ranks(self, *args, **kwargs)
 
 
@@ -814,7 +982,6 @@ class DotGraphInfo(LayoutEngine):
 
     def _mark_low_clusters(self, *args, **kwargs):
         """Delegates to gvpy.engines.layout.dot.mincross.mark_low_clusters."""
-        from gvpy.engines.layout.dot import mincross
         return mincross.mark_low_clusters(self, *args, **kwargs)
 
 
@@ -840,32 +1007,59 @@ class DotGraphInfo(LayoutEngine):
         return True
 
     def _phase2_ordering(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.mincross.phase2_ordering."""
-        from gvpy.engines.layout.dot import mincross
+        """Phase 2 driver: crossing minimization.
+
+        See: ``lib/dotgen/mincross.c: dot_mincross() @ 332`` — top-level
+        crossing-minimization pass that runs ``mincross_step() @ 1540`` iterations
+        with ``mincross_order`` and ``mincross_transpose`` sweeps.
+
+        Delegates to :func:`mincross.phase2_ordering`.
+        """
         return mincross.phase2_ordering(self, *args, **kwargs)
 
 
     def _run_mincross(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.mincross.run_mincross."""
-        from gvpy.engines.layout.dot import mincross
+        """Inner loop of ordering + transpose sweeps.
+
+        See: ``lib/dotgen/mincross.c: mincross_step() @ 1540`` /
+        ``mincross_core()`` — one pass of the median-based reordering
+        followed by adjacent-swap transpose.
+
+        Delegates to :func:`mincross.run_mincross`.
+        """
         return mincross.run_mincross(self, *args, **kwargs)
 
 
     def _remincross_full(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.mincross.remincross_full."""
-        from gvpy.engines.layout.dot import mincross
+        """Re-run mincross after inserting flat-label virtual nodes.
+
+        See: second ``dot_mincross()`` call after flat-label node
+        insertion in ``lib/dotgen/dotinit.c``.
+
+        Delegates to :func:`mincross.remincross_full`.
+        """
         return mincross.remincross_full(self, *args, **kwargs)
 
 
     def _skeleton_mincross(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.mincross.skeleton_mincross."""
-        from gvpy.engines.layout.dot import mincross
+        """Cluster-skeleton mincross (outer graph with clusters as units).
+
+        See: ``lib/dotgen/mincross.c: mincross_clust() @ 584`` /
+        the skeleton pass in ``dot_mincross()``.
+
+        Delegates to :func:`mincross.skeleton_mincross`.
+        """
         return mincross.skeleton_mincross(self, *args, **kwargs)
 
 
     def _flat_reorder(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.mincross.flat_reorder."""
-        from gvpy.engines.layout.dot import mincross
+        """Reorder same-rank nodes via flat-edge constraints.
+
+        See: ``lib/dotgen/flat.c: flat_edges() @ 259`` post-processing
+        that reorders nodes based on flat-edge adjacency.
+
+        Delegates to :func:`mincross.flat_reorder`.
+        """
         return mincross.flat_reorder(self, *args, **kwargs)
 
 
@@ -885,8 +1079,14 @@ class DotGraphInfo(LayoutEngine):
     _port_order_cache: dict[tuple[str, str], int] = {}
 
     def _mval_edge(self, *args, **kwargs) -> int:
-        """Delegates to gvpy.engines.layout.dot.mincross.mval_edge."""
-        from gvpy.engines.layout.dot import mincross
+        """Scaled median-value computation for an edge's endpoint.
+
+        See: ``lib/dotgen/mincross.c: mval()`` / the ``VAL`` macro
+        in ``const.h:99`` — multiplies by MC_SCALE (256) for integer
+        median arithmetic.
+
+        Delegates to :func:`mincross.mval_edge`.
+        """
         return mincross.mval_edge(self, *args, **kwargs)
 
 
@@ -896,68 +1096,120 @@ class DotGraphInfo(LayoutEngine):
 
 
     def _cluster_medians(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.mincross.cluster_medians."""
-        from gvpy.engines.layout.dot import mincross
+        """Compute per-cluster median ordering for skeleton mincross.
+
+        See: ``lib/dotgen/mincross.c: medians() @ 1699`` (line 1687).
+
+        Delegates to :func:`mincross.cluster_medians`.
+        """
         return mincross.cluster_medians(self, *args, **kwargs)
 
 
     def _cluster_reorder(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.mincross.cluster_reorder."""
-        from gvpy.engines.layout.dot import mincross
+        """Reorder cluster nodes by median values.
+
+        See: ``lib/dotgen/mincross.c: reorder() @ 1488`` (line 1476).
+
+        Delegates to :func:`mincross.cluster_reorder`.
+        """
         return mincross.cluster_reorder(self, *args, **kwargs)
 
 
     def _cluster_build_ranks(self, *args, **kwargs) -> dict[int, list[str]]:
-        """Delegates to gvpy.engines.layout.dot.mincross.cluster_build_ranks."""
-        from gvpy.engines.layout.dot import mincross
+        """Build cluster-scoped rank arrays for skeleton mincross.
+
+        See: ``lib/dotgen/mincross.c`` cluster skeleton rank
+        construction (around ``mincross_clust``).
+
+        Delegates to :func:`mincross.cluster_build_ranks`.
+        """
         return mincross.cluster_build_ranks(self, *args, **kwargs)
 
 
     def _cluster_transpose(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.mincross.cluster_transpose."""
-        from gvpy.engines.layout.dot import mincross
+        """Transpose sweep within a cluster.
+
+        See: ``lib/dotgen/mincross.c: transpose() @ 726`` called on
+        cluster skeleton.
+
+        Delegates to :func:`mincross.cluster_transpose`.
+        """
         return mincross.cluster_transpose(self, *args, **kwargs)
 
 
     def _order_by_weighted_median(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.mincross.order_by_weighted_median."""
-        from gvpy.engines.layout.dot import mincross
+        """Reorder a rank by weighted-median of neighbor positions.
+
+        See: ``lib/dotgen/mincross.c: reorder() @ 1488`` using ``mval`` /
+        ``median()`` — one half of the barycentric crossing-min heuristic.
+
+        Delegates to :func:`mincross.order_by_weighted_median`.
+        """
         return mincross.order_by_weighted_median(self, *args, **kwargs)
 
 
     def _transpose_rank(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.mincross.transpose_rank."""
-        from gvpy.engines.layout.dot import mincross
+        """Adjacent-swap transpose sweep on a single rank.
+
+        See: ``lib/dotgen/mincross.c: transpose_step() @ 685`` —
+        the inner swap loop of ``transpose() @ 726``.
+
+        Delegates to :func:`mincross.transpose_rank`.
+        """
         return mincross.transpose_rank(self, *args, **kwargs)
 
 
     def _count_crossings_for_pair(self, *args, **kwargs) -> int:
-        """Delegates to gvpy.engines.layout.dot.mincross.count_crossings_for_pair."""
-        from gvpy.engines.layout.dot import mincross
+        """Count crossings between two adjacent ranks.
+
+        See: ``lib/dotgen/mincross.c: in_cross() @ 634`` /
+        ``out_cross() @ 653`` — counts inversions between adjacent rank pairs.
+
+        Delegates to :func:`mincross.count_crossings_for_pair`.
+        """
         return mincross.count_crossings_for_pair(self, *args, **kwargs)
 
 
     def _count_all_crossings(self, *args, **kwargs) -> int:
-        """Delegates to gvpy.engines.layout.dot.mincross.count_all_crossings."""
-        from gvpy.engines.layout.dot import mincross
+        """Sum edge crossings across all rank pairs.
+
+        See: ``lib/dotgen/mincross.c: ncross() @ 1629`` — total graph
+        crossing count used as the mincross objective.
+
+        Delegates to :func:`mincross.count_all_crossings`.
+        """
         return mincross.count_all_crossings(self, *args, **kwargs)
 
 
     def _count_scoped_crossings(self, *args, **kwargs) -> int:
-        """Delegates to gvpy.engines.layout.dot.mincross.count_scoped_crossings."""
-        from gvpy.engines.layout.dot import mincross
+        """Count crossings within a rank-range scope (for cluster mincross).
+
+        See: scoped variant of ``ncross() @ 1629`` used by cluster-level
+        mincross in ``lib/dotgen/mincross.c``.
+
+        Delegates to :func:`mincross.count_scoped_crossings`.
+        """
         return mincross.count_scoped_crossings(self, *args, **kwargs)
 
 
     def _save_ordering(self, *args, **kwargs) -> dict[str, int]:
-        """Delegates to gvpy.engines.layout.dot.mincross.save_ordering."""
-        from gvpy.engines.layout.dot import mincross
+        """Snapshot the current node-order array.
+
+        See: ``lib/dotgen/mincross.c: save_best() @ 836`` — saves the
+        best ordering seen so far during mincross iterations.
+
+        Delegates to :func:`mincross.save_ordering`.
+        """
         return mincross.save_ordering(self, *args, **kwargs)
 
 
     def _restore_ordering(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.mincross.restore_ordering."""
-        from gvpy.engines.layout.dot import mincross
+        """Restore a previously-saved ordering snapshot.
+
+        See: ``lib/dotgen/mincross.c: restore_best() @ 818``.
+
+        Delegates to :func:`mincross.restore_ordering`.
+        """
         return mincross.restore_ordering(self, *args, **kwargs)
 
 
@@ -991,71 +1243,131 @@ class DotGraphInfo(LayoutEngine):
         """Phase 3 entry point — delegates to position module.
 
         The implementation lives in ``gvpy/engines/dot/position.py``
-        (C analogue: ``lib/dotgen/position.c``).  Other Phase 3 helpers
+        (See: ``lib/dotgen/position.c``).  Other Phase 3 helpers
         (``_set_ycoords``, ``_expand_leaves``, etc.) still live on this
         class and are called by the module via ``layout._xxx()``.  See
         ``TODO_core_refactor.md`` step 4 for the full extraction plan.
         """
-        from gvpy.engines.layout.dot import position
         position.phase3_position(self)
 
     def _expand_leaves(self):
-        """Delegates to gvpy.engines.layout.dot.position.expand_leaves."""
-        from gvpy.engines.layout.dot import position
+        """Expand leaf subgraphs (single-node clusters) into full clusters.
+
+        See: ``lib/dotgen/position.c: expand_leaves() @ 1066``.
+
+        Delegates to :func:`position.expand_leaves`.
+        """
         return position.expand_leaves(self)
 
     def _insert_flat_label_nodes(self) -> bool:
-        """Delegates to gvpy.engines.layout.dot.position.insert_flat_label_nodes."""
-        from gvpy.engines.layout.dot import position
+        """Insert virtual label nodes for labeled flat edges.
+
+        See: ``lib/dotgen/flat.c: flat_edges() @ 259`` +
+        ``flat_node()`` — adds virtual label nodes to the rank above
+        for labeled non-adjacent flat edges.
+
+        Delegates to :func:`position.insert_flat_label_nodes`.
+        """
         return position.insert_flat_label_nodes(self)
 
     def _set_ycoords(self):
-        """Delegates to gvpy.engines.layout.dot.position.set_ycoords."""
-        from gvpy.engines.layout.dot import position
+        """Assign Y coordinates to each rank.
+
+        See: ``lib/dotgen/position.c: set_ycoords() @ 781`` —
+        sets ``ND_coord.y`` based on ranksep and per-rank heights.
+
+        Delegates to :func:`position.set_ycoords`.
+        """
         return position.set_ycoords(self)
 
     def _simple_x_position(self):
-        """Delegates to gvpy.engines.layout.dot.position.simple_x_position."""
-        from gvpy.engines.layout.dot import position
+        """Quick X positioning: place nodes at their mincross order index.
+
+        See: ``lib/dotgen/position.c`` simple fallback used before
+        the network simplex X solve.
+
+        Delegates to :func:`position.simple_x_position`.
+        """
         return position.simple_x_position(self)
 
     def _median_x_improvement(self):
-        """Delegates to gvpy.engines.layout.dot.position.median_x_improvement."""
-        from gvpy.engines.layout.dot import position
+        """Refine X coordinates by moving nodes toward the median of neighbors.
+
+        See: ``lib/dotgen/position.c`` median-improvement pass
+        (``dot_position`` iterative refinement).
+
+        Delegates to :func:`position.median_x_improvement`.
+        """
         return position.median_x_improvement(self)
 
     def _bottomup_ns_x_position(self):
-        """Delegates to gvpy.engines.layout.dot.position.bottomup_ns_x_position."""
-        from gvpy.engines.layout.dot import position
+        """Cluster-inside-out network simplex X solve.
+
+        See: ``lib/dotgen/position.c: dot_position() @ 128`` cluster-by-
+        cluster NS-X solve that starts with innermost clusters.
+
+        Delegates to :func:`position.bottomup_ns_x_position`.
+        """
         return position.bottomup_ns_x_position(self)
 
     def _ns_x_position(self) -> bool:
-        """Delegate to position.ns_x_position — see that module."""
-        from gvpy.engines.layout.dot import position
+        """Run the network simplex X-coordinate solver.
+
+        See: ``lib/dotgen/position.c: dot_position() @ 128`` — runs
+        network simplex (``lib/common/ns.c: rank() @ 1029``) on the auxiliary
+        graph whose edges encode nodesep and edge-length constraints.
+
+        Delegates to :func:`position.ns_x_position`.
+        """
         return position.ns_x_position(self)
 
     def _resolve_cluster_overlaps(self):
-        """Delegates to gvpy.engines.layout.dot.position.resolve_cluster_overlaps."""
-        from gvpy.engines.layout.dot import position
+        """Nudge overlapping clusters apart after the X solve.
+
+        See: cluster-overlap cleanup in ``lib/dotgen/position.c``
+        post-NS-X phase.
+
+        Delegates to :func:`position.resolve_cluster_overlaps`.
+        """
         return position.resolve_cluster_overlaps(self)
 
     def _post_rankdir_keepout(self):
-        """Delegates to gvpy.engines.layout.dot.position.post_rankdir_keepout."""
-        from gvpy.engines.layout.dot import position
+        """Enforce minimum separation after rankdir rotation.
+
+        See: post-rotation sanity pass in ``lib/dotgen/position.c``.
+
+        Delegates to :func:`position.post_rankdir_keepout`.
+        """
         return position.post_rankdir_keepout(self)
 
     def _center_ranks(self):
-        """Delegates to gvpy.engines.layout.dot.position.center_ranks."""
-        from gvpy.engines.layout.dot import position
+        """Center each rank horizontally within the graph bounding box.
+
+        See: rank-centering logic inside ``dot_position`` when
+        the NS-X solve under-constrains a rank's position.
+
+        Delegates to :func:`position.center_ranks`.
+        """
         return position.center_ranks(self)
 
     def _apply_rankdir(self):
-        """Delegates to gvpy.engines.layout.dot.position.apply_rankdir."""
-        from gvpy.engines.layout.dot import position
+        """Rotate coordinates based on rankdir (TB/LR/BT/RL).
+
+        See: ``lib/dotgen/postproc.c: dot_sameports()`` +
+        coord-rotation pass that applies ``GD_rankdir`` to the computed
+        y-down TB-internal coordinates.
+
+        Delegates to :func:`position.apply_rankdir`.
+        """
         return position.apply_rankdir(self)
 
     def _apply_size(self):
-        """Scale layout to fit within graph size attribute if set."""
+        """Scale layout to fit within graph size attribute if set.
+
+        See: ``lib/common/input.c: graph_init() @ 599`` +
+        ``lib/common/emit.c: resize()`` — implements the ``size="W,H"``
+        attribute including the ``!`` suffix for forcing upscale.
+        """
         if not self.graph_size or not self.lnodes:
             return
         target_w, target_h = self.graph_size
@@ -1090,7 +1402,13 @@ class DotGraphInfo(LayoutEngine):
             ln.y = cy + (ln.y - cy) * sy
 
     def _concentrate_edges(self):
-        """Merge parallel edges that share the same tail and head."""
+        """Merge parallel edges that share the same tail and head.
+
+        See: ``lib/dotgen/class1.c:class1()`` +
+        ``lib/dotgen/class2.c:class2()`` — C's edge-concentration pass
+        detects duplicate edges during ranking and uses a single spline
+        for the group (``GD_concentrate``).
+        """
         all_edges = [le for le in self.ledges if not le.virtual] + self._chain_edges
         seen: dict[tuple[str, str], list[float]] = {}
         for le in all_edges:
@@ -1104,7 +1422,11 @@ class DotGraphInfo(LayoutEngine):
                 seen[key] = le.points
 
     def _apply_quantum(self):
-        """Snap all node coordinates to a grid with spacing = quantum."""
+        """Snap all node coordinates to a grid with spacing = quantum.
+
+        See: ``lib/common/postproc.c: dotneato_postprocess() @ 691`` uses
+        ``GD_drawing(g)->quantum`` to round positions — same algorithm.
+        """
         q = self.quantum
         if q <= 0:
             return
@@ -1113,7 +1435,11 @@ class DotGraphInfo(LayoutEngine):
             ln.y = round(ln.y / q) * q
 
     def _apply_normalize(self):
-        """Shift all coordinates so the minimum is at the origin."""
+        """Shift all coordinates so the minimum is at the origin.
+
+        See: ``lib/common/postproc.c: translate_bb() @ 127`` — translates
+        the graph bounding box so ``(LL.x, LL.y) == (0, 0)``.
+        """
         if not self.lnodes:
             return
         real = [ln for ln in self.lnodes.values() if not ln.virtual]
@@ -1128,7 +1454,12 @@ class DotGraphInfo(LayoutEngine):
             ln.y -= min_y
 
     def _apply_fixed_positions(self):
-        """Apply pos= fixed positions, overriding computed coordinates."""
+        """Apply pos= fixed positions, overriding computed coordinates.
+
+        See: ``lib/common/input.c`` parses the ``pos`` attribute
+        into ``ND_coord``; the layout engines honor the flag via
+        ``ND_pinned`` during ranking/positioning.
+        """
         for name, ln in self.lnodes.items():
             if ln.fixed_pos is not None:
                 ln.x, ln.y = ln.fixed_pos
@@ -1136,7 +1467,11 @@ class DotGraphInfo(LayoutEngine):
     # _apply_rotation inherited from LayoutEngine
 
     def _apply_center(self):
-        """Shift layout so the center of the bounding box is at the origin."""
+        """Shift layout so the center of the bounding box is at the origin.
+
+        See: ``lib/common/postproc.c`` center-on-page logic
+        honoring the ``center=true`` graph attribute.
+        """
         real = [ln for ln in self.lnodes.values() if not ln.virtual]
         if not real:
             return
@@ -1333,154 +1668,285 @@ class DotGraphInfo(LayoutEngine):
     # ── Phase 4: Edge routing ────────────────────
 
     def _phase4_routing(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.splines.phase4_routing."""
-        from gvpy.engines.layout.dot import splines
+        """Phase 4 driver: edge routing.
+
+        See: ``lib/dotgen/dotsplines.c: dot_splines() @ 503`` +
+        ``dot_splines_() @ 229`` — the top-level spline routing entry point
+        that dispatches each edge to ``make_regular_edge`` /
+        ``make_flat_edge`` / ``makeSelfEdge`` based on edge type.
+
+        Delegates to :func:`splines.phase4_routing`.
+        """
         return splines.phase4_routing(self, *args, **kwargs)
 
 
     def _clip_compound_edges(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.splines.clip_compound_edges."""
-        from gvpy.engines.layout.dot import splines
+        """Clip compound (cluster-to-cluster) edges to cluster boundaries.
+
+        See: ``lib/common/splines.c`` compound-edge clipping logic
+        triggered by ``lhead`` / ``ltail`` attributes.
+
+        Delegates to :func:`splines.clip_compound_edges`.
+        """
         return splines.clip_compound_edges(self, *args, **kwargs)
 
 
     @staticmethod
-    def _clip_to_bb(self, *args, **kwargs) -> tuple | None:
-        """Delegates to gvpy.engines.layout.dot.splines.clip_to_bb."""
-        from gvpy.engines.layout.dot import splines
-        return splines.clip_to_bb(self, *args, **kwargs)
+    def _clip_to_bb(inside, *args, **kwargs) -> tuple | None:
+        """Clip a point/line to a bounding box.
+
+        Class-callable alias to module function ``splines.clip_to_bb``.
+        Staticmethod (not instance method) — the first arg is the
+        ``inside`` point, not ``self``.
+
+        See: geometry helpers in ``lib/common/geomprocs.c`` —
+        ``lineToBox`` / equivalent.
+        """
+        return splines.clip_to_bb(inside, *args, **kwargs)
 
 
     @staticmethod
-    def _to_bezier(self, *args, **kwargs) -> list[tuple]:
-        """Delegates to gvpy.engines.layout.dot.splines.to_bezier."""
-        from gvpy.engines.layout.dot import splines
-        return splines.to_bezier(self, *args, **kwargs)
+    def _to_bezier(pts, *args, **kwargs) -> list[tuple]:
+        """Convert a polyline to a smooth cubic Bezier control sequence.
+
+        Class-callable alias to module function ``splines.to_bezier``.
+        Staticmethod — the first arg is the point list, not ``self``.
+
+        See: ``lib/pathplan/util.c: make_polyline() @ 44`` +
+        B-spline fitting in ``lib/dotgen/dotsplines.c``.
+        """
+        return splines.to_bezier(pts, *args, **kwargs)
 
 
     def _edge_start_point(self, *args, **kwargs) -> tuple[float, float]:
-        """Delegates to gvpy.engines.layout.dot.splines.edge_start_point."""
-        from gvpy.engines.layout.dot import splines
+        """Compute the starting point on the tail node's boundary.
+
+        See: port-resolution logic in ``lib/common/splines.c``
+        that combines ``ND_coord`` + ``ED_tail_port.p`` into the
+        edge's anchor point.
+
+        Delegates to :func:`splines.edge_start_point`.
+        """
         return splines.edge_start_point(self, *args, **kwargs)
 
 
     def _edge_end_point(self, *args, **kwargs) -> tuple[float, float]:
-        """Delegates to gvpy.engines.layout.dot.splines.edge_end_point."""
-        from gvpy.engines.layout.dot import splines
+        """Compute the ending point on the head node's boundary.
+
+        See: mirror of :meth:`_edge_start_point` using
+        ``ED_head_port``.
+
+        Delegates to :func:`splines.edge_end_point`.
+        """
         return splines.edge_end_point(self, *args, **kwargs)
 
 
     def _record_port_point(self, *args, **kwargs) -> tuple[float, float] | None:
-        """Delegates to gvpy.engines.layout.dot.splines.record_port_point."""
-        from gvpy.engines.layout.dot import splines
+        """Look up a record-shape port's anchor point by name.
+
+        See: ``lib/common/shapes.c: record_port() @ 3810`` — walks the
+        record field tree to find a named port's bounding box center.
+
+        Delegates to :func:`splines.record_port_point`.
+        """
         return splines.record_port_point(self, *args, **kwargs)
 
 
     @staticmethod
-    def _port_point(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.splines.port_point."""
-        from gvpy.engines.layout.dot import splines
-        return splines.port_point(self, *args, **kwargs)
+    def _port_point(ln, *args, **kwargs):
+        """Resolve a compass port string to an offset on the node boundary.
+
+        Class-callable alias to module function ``splines.port_point``.
+        Staticmethod — the first arg is a ``LayoutNode``, not ``self``.
+
+        See: ``lib/common/shapes.c: compassPort() @ 2699`` +
+        ``lib/common/shapes.c: poly_port() @ 2893``.
+        """
+        return splines.port_point(ln, *args, **kwargs)
 
 
     @staticmethod
-    def _compute_label_pos(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.splines.compute_label_pos."""
-        from gvpy.engines.layout.dot import splines
-        return splines.compute_label_pos(self, *args, **kwargs)
+    def _compute_label_pos(le, *args, **kwargs):
+        """Position an edge label at the midpoint of its spline.
+
+        Class-callable alias to module function ``splines.compute_label_pos``.
+        Staticmethod — the first arg is a ``LayoutEdge``, not ``self``.
+
+        See: ``lib/common/splines.c: edgeMidpoint() @ 1283`` /
+        ``addEdgeLabels() @ 1307``.
+        """
+        return splines.compute_label_pos(le, *args, **kwargs)
 
 
     def _apply_sameport(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.splines.apply_sameport."""
-        from gvpy.engines.layout.dot import splines
+        """Merge edge endpoints sharing ``samehead`` / ``sametail``.
+
+        See: ``lib/dotgen/sameport.c: dot_sameports() @ 41`` —
+        coalesces multiple edges meeting at the same port so they
+        share a common anchor point.
+
+        Delegates to :func:`splines.apply_sameport`.
+        """
         return splines.apply_sameport(self, *args, **kwargs)
 
 
     def _ortho_route(self, *args, **kwargs) -> list[tuple[float, float]]:
-        """Delegates to gvpy.engines.layout.dot.splines.ortho_route."""
-        from gvpy.engines.layout.dot import splines
+        """Route an edge as a rectilinear polyline for ``splines=ortho``.
+
+        See: ``lib/ortho/ortho.c: orthoEdges() @ 1162`` — orthogonal edge
+        router based on the Sander / Eades algorithm.
+
+        Delegates to :func:`splines.ortho_route`.
+        """
         return splines.ortho_route(self, *args, **kwargs)
 
 
     def _route_through_chain(self, *args, **kwargs) -> list[tuple[float, float]]:
-        """Delegates to gvpy.engines.layout.dot.splines.route_through_chain."""
-        from gvpy.engines.layout.dot import splines
+        """Route an edge through its virtual-node chain.
+
+        See: the virtual-node walk inside
+        ``lib/dotgen/dotsplines.c: make_regular_edge() @ 1736`` —
+        traverses ``ND_out(vn).list[0]`` from tail to head.
+
+        Delegates to :func:`splines.route_through_chain`.
+        """
         return splines.route_through_chain(self, *args, **kwargs)
 
 
     @staticmethod
-    def _boundary_point(self, *args, **kwargs) -> tuple[float, float]:
-        """Delegates to gvpy.engines.layout.dot.splines.boundary_point."""
-        from gvpy.engines.layout.dot import splines
-        return splines.boundary_point(self, *args, **kwargs)
+    def _boundary_point(ln, *args, **kwargs) -> tuple[float, float]:
+        """Intersect a line from node center outward with the node boundary.
+
+        Class-callable alias to module function ``splines.boundary_point``.
+        Staticmethod — the first arg is a ``LayoutNode``, not ``self``.
+
+        See: ``lib/common/shapes.c`` shape-specific boundary
+        intersection (``poly_path`` / ``ellipse_path``).
+        """
+        return splines.boundary_point(ln, *args, **kwargs)
 
 
     @staticmethod
-    def _self_loop_points(self, *args, **kwargs) -> list[tuple[float, float]]:
-        """Delegates to gvpy.engines.layout.dot.splines.self_loop_points."""
-        from gvpy.engines.layout.dot import splines
-        return splines.self_loop_points(self, *args, **kwargs)
+    def _self_loop_points(ln, *args, **kwargs) -> list[tuple[float, float]]:
+        """Route a self-loop edge (simple heuristic fallback).
+
+        Class-callable alias to module function ``splines.self_loop_points``.
+        Staticmethod — the first arg is a ``LayoutNode``, not ``self``.
+
+        See: ``lib/common/splines.c: makeSelfEdge() @ 1164`` +
+        ``selfRight`` / ``selfLeft`` / ``selfTop`` / ``selfBottom``.
+        The C-matching port lives in :mod:`self_edge`.
+        """
+        return splines.self_loop_points(ln, *args, **kwargs)
 
 
     def _maximal_bbox(self, vn_ln, ie=None, oe=None):
-        """Delegates to gvpy.engines.layout.dot.splines.maximal_bbox.
+        """Compute maximum bbox a virtual node can claim on its rank.
+
+        See: ``lib/dotgen/dotsplines.c: maximal_bbox() @ 2204``
+        (lines 2170-2226) — computes the cross-rank extent a virtual
+        node can occupy without hitting same-rank neighbours or
+        non-member clusters.
 
         Requires ``self._spline_info`` to be populated (phase-4 only).
         Returns a :class:`Box`.
+
+        Delegates to :func:`splines.maximal_bbox`.
         """
-        from gvpy.engines.layout.dot import splines
         return splines.maximal_bbox(self, self._spline_info, vn_ln, ie, oe)
 
 
     def _rank_box(self, r: int):
-        """Delegates to gvpy.engines.layout.dot.splines.rank_box.
+        """Return the inter-rank corridor box between ranks r and r+1.
+
+        See: ``lib/dotgen/dotsplines.c: rank_box() @ 2045`` (lines 2011-2024)
+        — full-graph-width box from the bottom of rank r to the top of
+        rank r+1, cached in ``sp.Rank_box[r]``.
 
         Requires ``self._spline_info`` to be populated (only true during
         a phase-4 routing pass).  Returns a :class:`Box`.
+
+        Delegates to :func:`splines.rank_box`.
         """
-        from gvpy.engines.layout.dot import splines
         return splines.rank_box(self, self._spline_info, r)
 
 
     def _route_regular_edge(self, *args, **kwargs) -> list[tuple[float, float]]:
-        """Delegates to gvpy.engines.layout.dot.splines.route_regular_edge."""
-        from gvpy.engines.layout.dot import splines
+        """Legacy heuristic regular-edge router (replaced in Phase D).
+
+        See: ``lib/dotgen/dotsplines.c: make_regular_edge() @ 1736``.
+        The C-matching port lives in :mod:`regular_edge`.
+
+        Delegates to :func:`splines.route_regular_edge` (legacy fallback).
+        """
         return splines.route_regular_edge(self, *args, **kwargs)
 
 
     def _classify_flat_edge(self, *args, **kwargs) -> str:
-        """Delegates to gvpy.engines.layout.dot.splines.classify_flat_edge."""
-        from gvpy.engines.layout.dot import splines
+        """Classify a flat edge as adjacent / labeled / bottom / top.
+
+        See: dispatch logic inside
+        ``lib/dotgen/dotsplines.c: make_flat_edge() @ 1538``.
+
+        Delegates to :func:`splines.classify_flat_edge`.
+        """
         return splines.classify_flat_edge(self, *args, **kwargs)
 
 
     def _count_flat_edge_index(self, *args, **kwargs) -> int:
-        """Delegates to gvpy.engines.layout.dot.splines.count_flat_edge_index."""
-        from gvpy.engines.layout.dot import splines
+        """Return the multi-edge index among parallel flat edges.
+
+        See: the ``cnt`` counter in
+        ``lib/dotgen/dotsplines.c: make_flat_edge() @ 1538`` loop that offsets
+        parallel flat edges.
+
+        Delegates to :func:`splines.count_flat_edge_index`.
+        """
         return splines.count_flat_edge_index(self, *args, **kwargs)
 
 
     def _flat_edge_route(self, *args, **kwargs) -> list[tuple[float, float]]:
-        """Delegates to gvpy.engines.layout.dot.splines.flat_edge_route."""
-        from gvpy.engines.layout.dot import splines
+        """Legacy heuristic flat-edge dispatcher (replaced in Phase E).
+
+        See: ``lib/dotgen/dotsplines.c: make_flat_edge() @ 1538``.
+        The C-matching port lives in :mod:`flat_edge`.
+
+        Delegates to :func:`splines.flat_edge_route` (legacy fallback).
+        """
         return splines.flat_edge_route(self, *args, **kwargs)
 
 
     def _flat_adjacent(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.splines.flat_adjacent."""
-        from gvpy.engines.layout.dot import splines
+        """Legacy heuristic for adjacent flat edges.
+
+        See: ``lib/dotgen/dotsplines.c: makeSimpleFlat() @ 1111``.
+        The C-matching port lives in :mod:`flat_edge`.
+
+        Delegates to :func:`splines.flat_adjacent` (legacy fallback).
+        """
         return splines.flat_adjacent(self, *args, **kwargs)
 
 
     def _flat_labeled(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.splines.flat_labeled."""
-        from gvpy.engines.layout.dot import splines
+        """Legacy heuristic for labeled flat edges.
+
+        See: ``lib/dotgen/dotsplines.c: make_flat_labeled_edge() @ 1350``.
+        The C-matching port lives in :mod:`flat_edge`.
+
+        Delegates to :func:`splines.flat_labeled` (legacy fallback).
+        """
         return splines.flat_labeled(self, *args, **kwargs)
 
 
     def _flat_arc(self, *args, **kwargs):
-        """Delegates to gvpy.engines.layout.dot.splines.flat_arc."""
-        from gvpy.engines.layout.dot import splines
+        """Legacy heuristic for arc-routed flat edges.
+
+        See: ``lib/dotgen/dotsplines.c: make_flat_bottom_edges() @ 1454``
+        and the top-arc corridor in ``make_flat_edge()``.  The C-matching
+        port lives in :mod:`flat_edge`.
+
+        Delegates to :func:`splines.flat_arc` (legacy fallback).
+        """
         return splines.flat_arc(self, *args, **kwargs)
 
 
@@ -1490,8 +1956,11 @@ class DotGraphInfo(LayoutEngine):
         """Write layout results back to graph object attributes.
 
         Sets ``pos``, ``width``, ``height`` on each node so that the
-        graph can be serialized with embedded layout coordinates
-        (matching Graphviz ``attach_attrs()`` behavior).
+        graph can be serialized with embedded layout coordinates.
+
+        See: ``lib/common/output.c: attach_attrs_and_arrows() @ 254``
+        which writes ``pos``/``width``/``height``/``bb``/etc. attributes
+        back onto the ``cgraph`` objects for emission.
         """
         for name, ln in self.lnodes.items():
             if ln.virtual:
@@ -1530,6 +1999,12 @@ class DotGraphInfo(LayoutEngine):
             self.graph.set_graph_attr("bb", f"{bb[0]},{bb[1]},{bb[2]},{bb[3]}")
 
     def _to_json(self) -> dict:
+        """Serialize the computed layout to a JSON-friendly dict.
+
+        See: ``lib/common/output.c: write_json()`` +
+        ``-Tjson`` output format — produces a dict with
+        ``name`` / ``bb`` / ``nodes`` / ``edges`` / ``clusters`` keys.
+        """
         real_nodes = {n: ln for n, ln in self.lnodes.items() if not ln.virtual}
         if real_nodes:
             min_x = min(ln.x - ln.width / 2 for ln in real_nodes.values())

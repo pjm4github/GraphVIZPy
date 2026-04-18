@@ -218,17 +218,17 @@ class TestCoordinates:
 
 class TestEdgeRouting:
 
-    def test_two_node_edge_has_two_points(self):
-        """A simple edge with splines=line produces exactly 2 points."""
+    def test_two_node_edge_has_four_points(self):
+        """A simple edge with splines=line produces 4 points (degenerate cubic)."""
         r = layout_dot("digraph G { splines=line; a -> b; }")
         edge = r["edges"][0]
-        assert len(edge["points"]) == 2
+        assert len(edge["points"]) == 4
 
     def test_self_loop_has_loop_points(self):
-        """A self-loop with splines=line produces 4 control points."""
+        """A self-loop produces 7 control points (two cubic segments)."""
         r = layout_dot("digraph G { splines=line; a -> a; }")
         edge = r["edges"][0]
-        assert len(edge["points"]) == 4
+        assert len(edge["points"]) == 7
 
     def test_edge_points_near_nodes(self):
         """Edge endpoints are near the node boundaries, not at centers."""
@@ -236,7 +236,7 @@ class TestEdgeRouting:
         na = node_by_name(r, "a")
         nb = node_by_name(r, "b")
         edge = r["edges"][0]
-        p1, p2 = edge["points"]
+        p1, p2 = edge["points"][0], edge["points"][-1]
         assert abs(p1[1] - na["y"]) <= na["height"] / 2.0 + 0.1
         assert abs(p2[1] - nb["y"]) <= nb["height"] / 2.0 + 0.1
 
@@ -490,17 +490,17 @@ class TestXPositioning:
 
 class TestPolylineRouting:
 
-    def test_short_edge_has_two_points(self):
-        """A single-rank-span edge with splines=line has exactly 2 points."""
+    def test_short_edge_has_four_points(self):
+        """A single-rank-span edge with splines=line has 4 points (degenerate cubic)."""
         r = layout_dot("digraph G { splines=line; a -> b; }")
         edge = r["edges"][0]
-        assert len(edge["points"]) == 2
+        assert len(edge["points"]) == 4
 
     def test_self_loop_unchanged(self):
-        """Self-loops with splines=line produce 4 control points."""
+        """Self-loops produce 7 control points (two cubic segments)."""
         r = layout_dot("digraph G { splines=line; a -> a; }")
         edge = r["edges"][0]
-        assert len(edge["points"]) == 4
+        assert len(edge["points"]) == 7
 
 
 # ── Clusters ─────────────────────────────────────
@@ -583,16 +583,17 @@ class TestPorts:
         edge = r["edges"][0]
         na = node_by_name(r, "a")
         nb = node_by_name(r, "b")
-        # First point at south of a (bottom y)
-        assert edge["points"][0][1] == pytest.approx(na["y"] + na["height"] / 2, abs=0.1)
+        # First point at south of a (bottom y).  Tolerance 1.0 accounts
+        # for bezier_clip binary-search convergence (~0.5pt).
+        assert edge["points"][0][1] == pytest.approx(na["y"] + na["height"] / 2, abs=1.0)
         # Last point at north of b (top y)
-        assert edge["points"][-1][1] == pytest.approx(nb["y"] - nb["height"] / 2, abs=0.1)
+        assert edge["points"][-1][1] == pytest.approx(nb["y"] - nb["height"] / 2, abs=1.0)
 
     def test_compass_e_w(self):
         """East/west ports attach at left/right of node."""
         r = layout_dot('digraph G { splines=line; rankdir=LR; a -> b [tailport=e, headport=w]; }')
         edge = r["edges"][0]
-        assert len(edge["points"]) == 2
+        assert len(edge["points"]) == 4
 
     def test_port_syntax_on_node_id(self):
         """Port specified in node ID syntax (a:s -> b:n) is stored on edge."""
@@ -600,8 +601,9 @@ class TestPorts:
         edge = r["edges"][0]
         na = node_by_name(r, "a")
         nb = node_by_name(r, "b")
-        assert edge["points"][0][1] == pytest.approx(na["y"] + na["height"] / 2, abs=0.1)
-        assert edge["points"][-1][1] == pytest.approx(nb["y"] - nb["height"] / 2, abs=0.1)
+        # Tolerance 1.0: bezier_clip binary-search convergence.
+        assert edge["points"][0][1] == pytest.approx(na["y"] + na["height"] / 2, abs=1.0)
+        assert edge["points"][-1][1] == pytest.approx(nb["y"] - nb["height"] / 2, abs=1.0)
 
 
 # ── Edge Labels ──────────────────────────────────
@@ -906,12 +908,12 @@ class TestBezierRouting:
         assert len(edge["points"]) == 4
         assert edge.get("spline_type") == "bezier"
 
-    def test_splines_line_uses_polyline(self):
-        """splines=line keeps straight-line polyline."""
+    def test_splines_line_uses_bezier(self):
+        """splines=line produces a degenerate cubic (4-point bezier)."""
         r = layout_dot('digraph G { splines=line; a -> b; }')
         edge = r["edges"][0]
-        assert len(edge["points"]) == 2
-        assert "spline_type" not in edge  # polyline is default, not emitted
+        assert len(edge["points"]) == 4
+        assert edge.get("spline_type") == "bezier"
 
     def test_bezier_chain_has_smooth_points(self):
         """A multi-rank edge with Bezier has grouped control points."""

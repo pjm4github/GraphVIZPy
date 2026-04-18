@@ -27,12 +27,16 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoint, Pvector
+from gvpy.engines.layout.dot.pathplan.pathgeom import Pedge, Ppoint, Ppolyline, Pvector
 from gvpy.engines.layout.dot.pathplan.solvers import solve3
 
 
 # ── Constants ──────────────────────────────────────────────────────
-# C analogue: ``route.c:22``.
+# C analogue: ``route.c:21-22``::
+#
+#     #define EPSILON1 1E-3
+#     #define EPSILON2 1E-6
+EPSILON1 = 1e-3
 EPSILON2 = 1e-6
 
 
@@ -497,3 +501,279 @@ def splineintersectsline(sps: list, lps: list) -> tuple[int, list]:
                 if 0 <= sv <= 1:
                     addroot(tv, roots)
         return (len(roots), roots)
+
+
+# ── Module-level output buffer (B5d) ───────────────────────────────
+# C analogue: ``route.c:35-36``::
+#
+#     static Ppoint_t *ops;
+#     static size_t opn, opl;
+#
+# C uses a growable array accessed via ``growops``.  Python uses a
+# module-level list that :func:`Proutespline` resets before each
+# top-level call and :func:`splinefits` appends to on a successful
+# fit.  Recursive calls from :func:`reallyroutespline` inherit the
+# buffer implicitly (exactly as they do in C via the file-scope
+# pointer).  The buffer stores the flattened cubic Bezier control
+# sequence: start anchor followed by triples of ``(cp1, cp2, p2)``
+# for each accepted segment.
+
+_ops: list[Ppoint] = []
+
+
+# ── splineisinside (B5d) ───────────────────────────────────────────
+
+def splineisinside(edges: list[Pedge], sps: list[Ppoint]) -> bool:
+    """Return ``True`` if the cubic ``sps`` avoids every barrier segment.
+
+    C analogue: ``route.c:splineisinside`` lines 283-312::
+
+        static int splineisinside(Pedge_t *edges, size_t edgen,
+                                  Ppoint_t *sps) { ... }
+
+    Python deviation: returns ``bool`` instead of ``int`` (0 / 1).
+
+    For each barrier ``edges[ei]`` we solve for the curve-parameter
+    values ``t`` at which the cubic crosses the extended line, using
+    :func:`splineintersectsline`.  A crossing counts as an intrusion
+    only when:
+
+    * ``t`` is strictly interior to ``(EPSILON2, 1 - EPSILON2)`` —
+      endpoint contacts (where control points touch barriers by
+      construction) are ignored;
+    * the intersection point is not within ``sqrt(EPSILON1)`` of
+      either barrier endpoint (endpoint contacts are again ignored).
+
+    The ``splineintersectsline`` sentinel ``rootn == 4`` (the cubic
+    lies exactly on the barrier line) is skipped — C does
+    ``continue`` on it, treating a fully-degenerate case as "no
+    crossing to worry about".
+    """
+    for edge in edges:
+        lps = [edge.a, edge.b]
+        rootn, roots = splineintersectsline(sps, lps)
+        if rootn == 4:
+            continue
+        for t in roots:
+            if t < EPSILON2 or t > 1 - EPSILON2:
+                continue
+            td = t * t * t
+            tc = 3 * t * t * (1 - t)
+            tb = 3 * t * (1 - t) * (1 - t)
+            ta = (1 - t) * (1 - t) * (1 - t)
+            ipx = (ta * sps[0].x + tb * sps[1].x
+                   + tc * sps[2].x + td * sps[3].x)
+            ipy = (ta * sps[0].y + tb * sps[1].y
+                   + tc * sps[2].y + td * sps[3].y)
+            dx0 = ipx - lps[0].x
+            dy0 = ipy - lps[0].y
+            if dx0 * dx0 + dy0 * dy0 < EPSILON1:
+                continue
+            dx1 = ipx - lps[1].x
+            dy1 = ipy - lps[1].y
+            if dx1 * dx1 + dy1 * dy1 < EPSILON1:
+                continue
+            return False
+    return True
+
+
+# ── splinefits (B5d) ───────────────────────────────────────────────
+
+def splinefits(edges: list[Pedge], pa: Ppoint, va: Pvector,
+               pb: Ppoint, vb: Pvector, inps: list[Ppoint], inpn: int) -> int:
+    """Try cubic fits at decreasing tangent scale; append on success.
+
+    C analogue: ``route.c:splinefits`` lines 212-281.  C signature::
+
+        static int splinefits(Pedge_t *edges, size_t edgen,
+                              Ppoint_t pa, Pvector_t va,
+                              Ppoint_t pb, Pvector_t vb,
+                              Ppoint_t *inps, int inpn);
+
+    Return values (match C):
+
+    * ``1``  — accepted; three new control points ``(cp1, cp2, p2)``
+      appended to :data:`_ops`.
+    * ``0``  — rejected at every scale.  Caller (:func:`reallyroutespline`)
+      subdivides.
+    * ``-1`` — allocation failure.  Python cannot fail :func:`list.append`,
+      so this path is unreachable but preserved for parity.
+
+    The loop sweeps the tangent magnitude ``a`` from ``4`` down to
+    ``0`` along a geometric schedule: ``a /= 2`` while ``a > 0.01``,
+    then ``a = 0`` on the last step.  At each step we build a trial
+    cubic with interior control points ``pa + a*va/3`` and
+    ``pb - a*vb/3`` and check it against every barrier via
+    :func:`splineisinside`.
+
+    Two side cases from C are preserved:
+
+    * **Shortcut rejection on the first iteration** — if the trial
+      cubic's polyline length is shorter than the input polyline
+      (minus ``EPSILON1``), the fit is a shortcut through a barrier
+      and we reject immediately.  Only the first iteration checks
+      this: once we shrink ``a``, the fit is expected to tighten
+      toward the polyline so the shortcut check is no longer
+      meaningful.
+    * **Forced straight line** — if ``inpn == 2`` (the input polyline
+      is itself a single segment), there is nothing to subdivide, so
+      the final fit at ``a < 0.005`` is accepted unconditionally
+      (``forceflag``).  A straight-line segment is returned even if
+      it clips a barrier — the caller relied on the shortest-path
+      computation to produce a feasible polyline, so the straight
+      line is by construction at least as good.
+    """
+    forceflag = 1 if inpn == 2 else 0
+    first = True
+    a = 4.0
+    while True:
+        sps = [
+            Ppoint(pa.x, pa.y),
+            Ppoint(pa.x + a * va.x / 3.0, pa.y + a * va.y / 3.0),
+            Ppoint(pb.x - a * vb.x / 3.0, pb.y - a * vb.y / 3.0),
+            Ppoint(pb.x, pb.y),
+        ]
+        if first and dist_n(sps, 4) < dist_n(inps, inpn) - EPSILON1:
+            return 0
+        first = False
+
+        if splineisinside(edges, sps):
+            for pi in range(1, 4):
+                _ops.append(Ppoint(sps[pi].x, sps[pi].y))
+            return 1
+
+        # C comment: "is `a` 0, accounting for the precision with which
+        # it was computed (on the last loop iteration) below?"
+        if a < 0.005:
+            if forceflag:
+                for pi in range(1, 4):
+                    _ops.append(Ppoint(sps[pi].x, sps[pi].y))
+                return 1
+            break
+        if a > 0.01:
+            a /= 2.0
+        else:
+            a = 0.0
+    return 0
+
+
+# ── reallyroutespline (B5d) ────────────────────────────────────────
+
+def reallyroutespline(edges: list[Pedge], inps: list[Ppoint], inpn: int,
+                      ev0: Pvector, ev1: Pvector) -> int:
+    """Recursive cubic-Bezier fit kernel.
+
+    C analogue: ``route.c:reallyroutespline`` lines 97-157.
+
+    Algorithm:
+
+    1. Build the ``tna_t`` array — a per-sample parameter ``t``
+       spaced by cumulative chord length along the polyline, plus
+       the two endpoint-tangent basis vectors
+       ``a[0] = ev0 * B1(t)`` and ``a[1] = ev1 * B2(t)``.
+    2. Call :func:`mkspline` to solve the least-squares fit for the
+       tangent magnitudes.
+    3. Call :func:`splinefits`.  On success (``fit > 0``), return 0;
+       the cubic has been pushed to :data:`_ops`.  On error
+       (``fit < 0``), propagate ``-1``.
+    4. Otherwise (``fit == 0``), find the polyline sample that
+       diverges most from the fitted cubic (by Euclidean distance
+       to the curve evaluated at the sample's ``t``).  Split the
+       polyline at that sample and recurse on the two halves, using
+       the local tangent at the split as the shared endpoint
+       tangent for both halves.
+    """
+    assert inpn > 0
+    tnas: list[Tna] = [Tna() for _ in range(inpn)]
+    tnas[0].t = 0.0
+    for i in range(1, inpn):
+        tnas[i].t = tnas[i - 1].t + dist(inps[i], inps[i - 1])
+    for i in range(1, inpn):
+        tnas[i].t /= tnas[inpn - 1].t
+    for i in range(inpn):
+        tnas[i].a[0] = scale(ev0, B1(tnas[i].t))
+        tnas[i].a[1] = scale(ev1, B2(tnas[i].t))
+
+    p1, v1, p2, v2 = mkspline(inps, inpn, tnas, ev0, ev1)
+
+    fit = splinefits(edges, p1, v1, p2, v2, inps, inpn)
+    if fit > 0:
+        return 0
+    if fit < 0:
+        return -1
+
+    # Convert (point, tangent) form back to cubic control points for
+    # the divergence measurement — ``cp1 = p1 + v1/3`` and
+    # ``cp2 = p2 - v2/3`` matches the ``a == 1`` case of the
+    # splinefits loop.
+    cp1 = add(p1, scale(v1, 1.0 / 3.0))
+    cp2 = sub(p2, scale(v2, 1.0 / 3.0))
+    maxi = -1
+    maxd = -1.0
+    for i in range(1, inpn - 1):
+        t = tnas[i].t
+        px = (B0(t) * p1.x + B1(t) * cp1.x
+              + B2(t) * cp2.x + B3(t) * p2.x)
+        py = (B0(t) * p1.y + B1(t) * cp1.y
+              + B2(t) * cp2.y + B3(t) * p2.y)
+        d = dist(Ppoint(px, py), inps[i])
+        if d > maxd:
+            maxd = d
+            maxi = i
+
+    spliti = maxi
+    splitv1 = normv(sub(inps[spliti], inps[spliti - 1]))
+    splitv2 = normv(sub(inps[spliti + 1], inps[spliti]))
+    splitv = normv(add(splitv1, splitv2))
+
+    if reallyroutespline(edges, inps, spliti + 1, ev0, splitv) < 0:
+        return -1
+    # C uses ``&inps[spliti]`` (pointer into the same array); Python
+    # slices into a fresh list.  ``reallyroutespline`` only reads
+    # from ``inps``, so the slice is equivalent.
+    if reallyroutespline(edges, inps[spliti:], inpn - spliti, splitv, ev1) < 0:
+        return -1
+    return 0
+
+
+# ── Proutespline (B5d) ─────────────────────────────────────────────
+
+def Proutespline(barriers: list[Pedge], input_route: Ppolyline,
+                 endpoint_slopes: list[Pvector]) -> Ppolyline | None:
+    """Public entry point: fit a cubic Bezier through a polyline avoiding barriers.
+
+    C analogue: ``route.c:Proutespline`` lines 65-95::
+
+        int Proutespline(Pedge_t *barriers, size_t n_barriers,
+                         Ppolyline_t input_route,
+                         Ppoint_t endpoint_slopes[2],
+                         Ppolyline_t *output_route);
+
+    Python deviation: C returns 0/-1 and fills an out-parameter
+    ``output_route``; Python returns the :class:`Ppolyline` on
+    success or ``None`` on failure.
+
+    **Mutates** ``endpoint_slopes`` in place to their normalised
+    unit vectors — matches C, which overwrites the caller's array
+    entries (``endpoint_slopes[0] = normv(endpoint_slopes[0])``).
+    Callers that need to preserve the original slopes must copy
+    them before calling.
+
+    The returned polyline is a flattened sequence of cubic Bezier
+    control points: ``[p0, cp1_a, cp2_a, p1, cp1_b, cp2_b, p2, ...]``
+    where each group of three points after the first anchor defines
+    one cubic segment ``(cp1, cp2, end)``.  A single cubic segment
+    yields four points, ``1 + 3 * n`` for ``n`` segments.
+    """
+    inps = input_route.ps
+    inpn = input_route.pn
+
+    endpoint_slopes[0] = normv(endpoint_slopes[0])
+    endpoint_slopes[1] = normv(endpoint_slopes[1])
+
+    _ops.clear()
+    _ops.append(Ppoint(inps[0].x, inps[0].y))
+    if reallyroutespline(barriers, inps, inpn,
+                         endpoint_slopes[0], endpoint_slopes[1]) == -1:
+        return None
+    return Ppolyline(ps=list(_ops))

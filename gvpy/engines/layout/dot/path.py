@@ -177,16 +177,7 @@ class Box:
 class Port:
     """Internal edge endpoint specification.
 
-    C analogue: ``port`` in ``lib/common/types.h:48-64``.  The C struct
-    has many fields (``p``, ``theta``, ``bp``, ``defined``,
-    ``constrained``, ``clip``, ``dyna``, ``order``, ``side``, ``name``).
-
-    For the Phase A step 4 driver port only ``defined`` and ``p`` are
-    consulted (by :func:`splines.portcmp`) so this class starts with
-    those two fields.  Additional fields will land as the ports that
-    need them are ported — ``side``/``order`` for ``setflags`` record
-    ports, ``theta``/``constrained`` for the path endpoint setup in
-    ``beginpath``/``endpath``.
+    C analogue: ``port`` in ``lib/common/types.h:48-64``.
 
     Default is an **undefined** port at the origin, matching C's
     zero-initialised ``port`` struct.
@@ -194,6 +185,13 @@ class Port:
 
     defined: bool = False
     p: tuple[float, float] = (0.0, 0.0)
+    side: int = 0
+    theta: float = 0.0
+    constrained: bool = False
+    dyna: bool = False
+    clip: bool = True
+    order: int = 0
+    name: str = ""
 
 
 # ── PathEnd ──────────────────────────────────────────────────────────────
@@ -291,3 +289,399 @@ class SplineInfo:
     splinesep: float = 0.0
     multisep: float = 0.0
     rank_box: dict = field(default_factory=dict)
+
+
+# ── Path construction helpers (B7) ──────────────────────────────────
+# C analogue: ``lib/common/splines.c`` — ``add_box``, ``beginpath``,
+# ``endpath``.  These build the end-box chain that
+# :func:`routespl.routesplines` traverses.
+#
+# C accesses node/edge fields via macros (``ND_coord``, ``ED_tail_port``
+# etc.).  Python passes the needed values explicitly to avoid circular
+# imports between this module and ``dot_layout.py``.
+
+_FUDGE_BEGINEND = 2
+"""C ``#define FUDGE 2`` in ``splines.c:374``.  Distinct from
+``FUDGE = 4`` in path.py line 61 (used by ``maximal_bbox``)."""
+
+
+def add_box(P: Path, b: Box) -> None:
+    """Append *b* to the path's box chain if it is valid.
+
+    C analogue: ``splines.c:add_box`` lines 338-342::
+
+        void add_box(path *P, boxf b) {
+            if (b.LL.x < b.UR.x && b.LL.y < b.UR.y)
+                P->boxes[P->nbox++] = b;
+        }
+    """
+    if b.ll_x < b.ur_x and b.ll_y < b.ur_y:
+        P.boxes.append(b)
+        P.nbox += 1
+
+
+def beginpath(P: Path, et: int, endp: PathEnd, merge: bool, *,
+              node_x: float, node_y: float,
+              node_lw: float, node_rw: float, node_ht2: float,
+              port_p: tuple[float, float] = (0.0, 0.0),
+              port_side: int = 0,
+              port_theta: float = 0.0,
+              port_constrained: bool = False,
+              is_normal: bool = True,
+              ranksep: float = 0.0) -> bool:
+    """Set up boxes near the **tail** node for spline routing.
+
+    C analogue: ``splines.c:beginpath`` lines 378-573.
+
+    Sets ``P.start`` (point + theta/constrained) and fills
+    ``endp.boxes`` / ``endp.boxn`` / ``endp.sidemask`` with 1-2
+    boxes that anchor the spline to the tail node.
+
+    Returns ``True`` if the caller should set ``clip = False`` on
+    the original edge's tail port (C handles this internally via
+    the ``ED_to_orig`` chain; Python lets the caller decide).
+
+    Node geometry is passed explicitly:
+
+    - *node_x*, *node_y* — ``ND_coord(n)``
+    - *node_lw*, *node_rw* — ``ND_lw(n)``, ``ND_rw(n)``
+    - *node_ht2* — ``ND_ht(n) / 2``
+    - *port_p* — ``ED_tail_port(e).p`` (offset from node center)
+    - *port_side* — ``ED_tail_port(e).side`` bitmask
+    - *port_theta* — ``ED_tail_port(e).theta``
+    - *port_constrained* — ``ED_tail_port(e).constrained``
+    - *is_normal* — ``ND_node_type(n) == NORMAL``
+    - *ranksep* — ``GD_ranksep(agraphof(n))``
+    """
+    import math
+
+    start_x = node_x + port_p[0]
+    start_y = node_y + port_p[1]
+
+    if merge:
+        P.start.theta = -math.pi / 2
+        P.start.constrained = True
+    else:
+        if port_constrained:
+            P.start.theta = port_theta
+            P.start.constrained = True
+        else:
+            P.start.constrained = False
+
+    P.nbox = 0
+    P.boxes.clear()
+    endp.np = (start_x, start_y)
+    P.start.np = (start_x, start_y)
+
+    # ── REGULAREDGE with a compass-port side ────────────────────
+    if et == REGULAREDGE and is_normal and port_side:
+        side = port_side
+        b = Box(endp.nb.ll_x, endp.nb.ll_y, endp.nb.ur_x, endp.nb.ur_y)
+        if side & TOP:
+            endp.sidemask = TOP
+            if start_x < node_x:
+                b0 = Box(
+                    ll_x=b.ll_x - 1,
+                    ll_y=start_y,
+                    ur_x=b.ur_x,
+                    ur_y=node_y + node_ht2 + ranksep / 2,
+                )
+                b.ur_x = node_x - node_lw - (_FUDGE_BEGINEND - 2)
+                b.ur_y = b0.ll_y
+                b.ll_y = node_y - node_ht2
+                b.ll_x -= 1
+                endp.boxes = [b0, b]
+            else:
+                b0 = Box(
+                    ll_x=b.ll_x,
+                    ll_y=start_y,
+                    ur_x=b.ur_x + 1,
+                    ur_y=node_y + node_ht2 + ranksep / 2,
+                )
+                b.ll_x = node_x + node_rw + (_FUDGE_BEGINEND - 2)
+                b.ur_y = b0.ll_y
+                b.ll_y = node_y - node_ht2
+                b.ur_x += 1
+                endp.boxes = [b0, b]
+            start_y += 1
+            endp.boxn = 2
+        elif side & BOTTOM:
+            endp.sidemask = BOTTOM
+            b.ur_y = max(b.ur_y, start_y)
+            endp.boxes = [b]
+            endp.boxn = 1
+            start_y -= 1
+        elif side & LEFT:
+            endp.sidemask = LEFT
+            b.ur_x = start_x
+            b.ll_y = node_y - node_ht2
+            b.ur_y = start_y
+            endp.boxes = [b]
+            endp.boxn = 1
+            start_x -= 1
+        else:
+            endp.sidemask = RIGHT
+            b.ll_x = start_x
+            b.ll_y = node_y - node_ht2
+            b.ur_y = start_y
+            endp.boxes = [b]
+            endp.boxn = 1
+            start_x += 1
+        P.start.np = (start_x, start_y)
+        endp.np = P.start.np
+        return True  # caller should set clip=False on orig tail port
+
+    # ── FLATEDGE with a compass-port side ───────────────────────
+    if et == FLATEDGE and port_side:
+        side = port_side
+        b = Box(endp.nb.ll_x, endp.nb.ll_y, endp.nb.ur_x, endp.nb.ur_y)
+        if side & TOP:
+            b.ll_y = min(b.ll_y, start_y)
+            endp.boxes = [b]
+            endp.boxn = 1
+            start_y += 1
+        elif side & BOTTOM:
+            if endp.sidemask == TOP:
+                b0 = Box(
+                    ll_x=start_x,
+                    ll_y=node_y - node_ht2 - ranksep / 2,
+                    ur_x=b.ur_x + 1,
+                    ur_y=node_y - node_ht2,
+                )
+                b.ll_x = node_x + node_rw + (_FUDGE_BEGINEND - 2)
+                b.ll_y = b0.ur_y
+                b.ur_y = node_y + node_ht2
+                b.ur_x += 1
+                endp.boxes = [b0, b]
+                endp.boxn = 2
+            else:
+                b.ur_y = max(b.ur_y, start_y)
+                endp.boxes = [b]
+                endp.boxn = 1
+            start_y -= 1
+        elif side & LEFT:
+            b.ur_x = start_x + 1
+            if endp.sidemask == TOP:
+                b.ur_y = node_y + node_ht2
+                b.ll_y = start_y - 1
+            else:
+                b.ll_y = node_y - node_ht2
+                b.ur_y = start_y + 1
+            endp.boxes = [b]
+            endp.boxn = 1
+            start_x -= 1
+        else:
+            b.ll_x = start_x
+            if endp.sidemask == TOP:
+                b.ur_y = node_y + node_ht2
+                b.ll_y = start_y
+            else:
+                b.ll_y = node_y - node_ht2
+                b.ur_y = start_y + 1
+            endp.boxes = [b]
+            endp.boxn = 1
+            start_x += 1
+        endp.sidemask = side
+        P.start.np = (start_x, start_y)
+        endp.np = P.start.np
+        return True  # caller should set clip=False on orig tail port
+
+    # ── Fallback: no port side or pboxfn ────────────────────────
+    if et == REGULAREDGE:
+        side = BOTTOM
+    else:
+        side = endp.sidemask
+
+    endp.boxes = [Box(endp.nb.ll_x, endp.nb.ll_y, endp.nb.ur_x, endp.nb.ur_y)]
+    endp.boxn = 1
+
+    if et == FLATEDGE:
+        if endp.sidemask == TOP:
+            endp.boxes[0].ll_y = start_y
+        else:
+            endp.boxes[0].ur_y = start_y
+    elif et == REGULAREDGE:
+        endp.boxes[0].ur_y = start_y
+        endp.sidemask = BOTTOM
+        start_y -= 1
+
+    P.start.np = (start_x, start_y)
+    endp.np = P.start.np
+    return False
+
+
+def endpath(P: Path, et: int, endp: PathEnd, merge: bool, *,
+            node_x: float, node_y: float,
+            node_lw: float, node_rw: float, node_ht2: float,
+            port_p: tuple[float, float] = (0.0, 0.0),
+            port_side: int = 0,
+            port_theta: float = 0.0,
+            port_constrained: bool = False,
+            is_normal: bool = True,
+            ranksep: float = 0.0) -> bool:
+    """Set up boxes near the **head** node for spline routing.
+
+    C analogue: ``splines.c:endpath`` lines 575-771.
+
+    Mirror image of :func:`beginpath` for the head end.  Sets
+    ``P.end`` and fills ``endp`` for the final 1-2 boxes of the
+    corridor.  Returns ``True`` if the caller should set
+    ``clip = False`` on the original edge's head port.
+
+    Parameters are identical to :func:`beginpath`; see its docstring
+    for descriptions.
+    """
+    import math
+
+    end_x = node_x + port_p[0]
+    end_y = node_y + port_p[1]
+
+    if merge:
+        P.end.theta = math.pi / 2 + math.pi
+        P.end.constrained = True
+    else:
+        if port_constrained:
+            P.end.theta = port_theta
+            P.end.constrained = True
+        else:
+            P.end.constrained = False
+
+    endp.np = (end_x, end_y)
+    P.end.np = (end_x, end_y)
+
+    # ── REGULAREDGE with a compass-port side ────────────────────
+    if et == REGULAREDGE and is_normal and port_side:
+        side = port_side
+        b = Box(endp.nb.ll_x, endp.nb.ll_y, endp.nb.ur_x, endp.nb.ur_y)
+        if side & TOP:
+            endp.sidemask = TOP
+            b.ll_y = min(b.ll_y, end_y)
+            endp.boxes = [b]
+            endp.boxn = 1
+            end_y += 1
+        elif side & BOTTOM:
+            endp.sidemask = BOTTOM
+            if end_x < node_x:
+                b0 = Box(
+                    ll_x=b.ll_x - 1,
+                    ll_y=node_y - node_ht2 - ranksep / 2,
+                    ur_x=b.ur_x,
+                    ur_y=end_y,
+                )
+                b.ur_x = node_x - node_lw - (_FUDGE_BEGINEND - 2)
+                b.ll_y = b0.ur_y
+                b.ur_y = node_y + node_ht2
+                b.ll_x -= 1
+                endp.boxes = [b0, b]
+            else:
+                b0 = Box(
+                    ll_x=b.ll_x,
+                    ll_y=node_y - node_ht2 - ranksep / 2,
+                    ur_x=b.ur_x + 1,
+                    ur_y=end_y,
+                )
+                b.ll_x = node_x + node_rw + (_FUDGE_BEGINEND - 2)
+                b.ll_y = b0.ur_y
+                b.ur_y = node_y + node_ht2
+                b.ur_x += 1
+                endp.boxes = [b0, b]
+            endp.boxn = 2
+            end_y -= 1
+        elif side & LEFT:
+            endp.sidemask = LEFT
+            b.ur_x = end_x
+            b.ur_y = node_y + node_ht2
+            b.ll_y = end_y
+            endp.boxes = [b]
+            endp.boxn = 1
+            end_x -= 1
+        else:
+            endp.sidemask = RIGHT
+            b.ll_x = end_x
+            b.ur_y = node_y + node_ht2
+            b.ll_y = end_y
+            endp.boxes = [b]
+            endp.boxn = 1
+            end_x += 1
+        endp.sidemask = side
+        P.end.np = (end_x, end_y)
+        endp.np = P.end.np
+        return True  # caller should set clip=False on orig head port
+
+    # ── FLATEDGE with a compass-port side ───────────────────────
+    if et == FLATEDGE and port_side:
+        side = port_side
+        b = Box(endp.nb.ll_x, endp.nb.ll_y, endp.nb.ur_x, endp.nb.ur_y)
+        if side & TOP:
+            b.ll_y = min(b.ll_y, end_y)
+            endp.boxes = [b]
+            endp.boxn = 1
+            end_y += 1
+        elif side & BOTTOM:
+            if endp.sidemask == TOP:
+                b0 = Box(
+                    ll_x=b.ll_x - 1,
+                    ll_y=node_y - node_ht2 - ranksep / 2,
+                    ur_x=end_x,
+                    ur_y=node_y - node_ht2,
+                )
+                b.ur_x = node_x - node_lw - 2
+                b.ll_y = b0.ur_y
+                b.ur_y = node_y + node_ht2
+                b.ll_x -= 1
+                endp.boxes = [b0, b]
+                endp.boxn = 2
+            else:
+                b.ur_y = max(b.ur_y, P.start.np[1])
+                endp.boxes = [b]
+                endp.boxn = 1
+            end_y -= 1
+        elif side & LEFT:
+            b.ur_x = end_x + 1
+            if endp.sidemask == TOP:
+                b.ur_y = node_y + node_ht2
+                b.ll_y = end_y - 1
+            else:
+                b.ll_y = node_y - node_ht2
+                b.ur_y = end_y + 1
+            endp.boxes = [b]
+            endp.boxn = 1
+            end_x -= 1
+        else:
+            b.ll_x = end_x - 1
+            if endp.sidemask == TOP:
+                b.ur_y = node_y + node_ht2
+                b.ll_y = end_y - 1
+            else:
+                b.ll_y = node_y - node_ht2
+                b.ur_y = end_y
+            endp.boxes = [b]
+            endp.boxn = 1
+            end_x += 1
+        endp.sidemask = side
+        P.end.np = (end_x, end_y)
+        endp.np = P.end.np
+        return True  # caller should set clip=False on orig head port
+
+    # ── Fallback: no port side or pboxfn ────────────────────────
+    if et == REGULAREDGE:
+        side = TOP
+    else:
+        side = endp.sidemask
+
+    endp.boxes = [Box(endp.nb.ll_x, endp.nb.ll_y, endp.nb.ur_x, endp.nb.ur_y)]
+    endp.boxn = 1
+
+    if et == FLATEDGE:
+        if endp.sidemask == TOP:
+            endp.boxes[0].ll_y = end_y
+        else:
+            endp.boxes[0].ur_y = end_y
+    elif et == REGULAREDGE:
+        endp.boxes[0].ll_y = end_y
+        endp.sidemask = TOP
+        end_y += 1
+
+    P.end.np = (end_x, end_y)
+    endp.np = P.end.np
+    return False
