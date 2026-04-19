@@ -1,0 +1,248 @@
+@startuml dotgen_component_diagram
+!theme plain
+title Graphviz dotgen — Component Architecture\n(C source: lib/dotgen/)
+
+skinparam componentStyle rectangle
+skinparam defaultFontSize 11
+skinparam packageBorderColor #555
+skinparam componentBorderColor #888
+skinparam arrowColor #444
+skinparam noteBorderColor #999
+
+' ============================================================
+'  ENTRY POINT
+' ============================================================
+package "Entry Point" as entry #f0f8ff {
+    component "dot.c\n(dot.demo)" as dot_c <<driver>> #cce5ff
+    note right of dot_c
+        gvLayout(gvc, g, "dot")
+        → dot_layout(g)
+    end note
+}
+
+' ============================================================
+'  ORCHESTRATOR
+' ============================================================
+package "Orchestration" as orch #fffff0 {
+    component "dotinit.c" as dotinit <<orchestrator>> #fff2cc {
+        portin "dot_layout()" as dl
+        portout "cleanup" as cleanup
+    }
+    note bottom of dotinit
+        dot_layout():
+          1. dot_init_subg()
+          2. dot_init_node_edge()
+          3. dot_rank()
+          4. dot_mincross()
+          5. dot_position()
+          6. dot_splines()
+          7. dot_sameports()
+          8. dot_compoundEdges()
+          9. dotneato_postprocess()
+    end note
+}
+
+' ============================================================
+'  PHASE 1 — RANKING
+' ============================================================
+package "Phase 1: Ranking" as phase1 #f0fff0 {
+    component "rank.c" as rank #d5f5d5 {
+        port "dot_rank()" as dr
+    }
+    component "class1.c" as class1 #d5f5d5 {
+        port "class1()" as c1
+    }
+    component "acyclic.c" as acyclic #d5f5d5 {
+        port "acyclic()" as ac
+        port "reverse_edge()" as re
+    }
+    component "decomp.c" as decomp #d5f5d5 {
+        port "decompose()" as dc
+    }
+}
+note bottom of phase1
+    **Input:** Raw graph with edges
+    **Output:** ND_rank assigned to all nodes
+    **Algorithm:** Network Simplex
+end note
+
+' ============================================================
+'  PHASE 2 — CROSSING MINIMIZATION
+' ============================================================
+package "Phase 2: Crossing Minimization" as phase2 #fff0f0 {
+    component "mincross.c" as mincross #ffd5d5 {
+        port "dot_mincross()" as dm
+        port "allocate_ranks()" as ar
+        port "build_ranks()" as br
+        port "install_in_rank()" as ir
+    }
+    component "class2.c" as class2 #ffd5d5 {
+        port "class2()" as c2
+        port "merge_chain()" as mc2
+    }
+    component "cluster.c" as cluster #ffd5d5 {
+        port "expand_cluster()" as ec
+        port "install_cluster()" as ic
+        port "build_skeleton()" as bs
+        port "mark_clusters()" as mkc
+        port "mark_lowclusters()" as mlc
+    }
+    component "flat.c" as flat #ffd5d5 {
+        port "flat_edges()" as fe
+        port "flat_breakcycles()" as fbc
+        port "flat_reorder()" as fr
+    }
+}
+note bottom of phase2
+    **Input:** Ranked nodes
+    **Output:** ND_order within each rank
+    **Algorithm:** Iterative median/barycenter heuristic
+end note
+
+' ============================================================
+'  PHASE 3 — COORDINATE ASSIGNMENT
+' ============================================================
+package "Phase 3: Coordinate Assignment" as phase3 #f0f0ff {
+    component "position.c" as position #d5d5ff {
+        port "dot_position()" as dp
+        port "make_aux_edge()" as mae
+    }
+    component "conc.c" as conc #d5d5ff {
+        port "dot_concentrate()" as dcon
+    }
+    component "aspect.c" as aspect #e8e8ff {
+        port "setAspect()" as sa
+    }
+}
+note bottom of phase3
+    **Input:** Ranked & ordered nodes
+    **Output:** ND_coord (x,y) for all nodes
+    **Algorithm:** Aux-graph network simplex + Newton iterations
+end note
+
+' ============================================================
+'  PHASE 4 — EDGE ROUTING & POST-PROCESSING
+' ============================================================
+package "Phase 4: Edge Routing & Post-processing" as phase4 #fff0ff {
+    component "dotsplines.c" as dotsplines #f5d5f5 {
+        port "dot_splines()" as ds
+    }
+    component "sameport.c" as sameport #f5d5f5 {
+        port "dot_sameports()" as dsp
+    }
+    component "compound.c" as compound #f5d5f5 {
+        port "dot_compoundEdges()" as dce
+    }
+}
+note bottom of phase4
+    **Input:** Positioned nodes
+    **Output:** ED_spl spline paths, label positions
+    **Algorithm:** Box-based B-spline fitting
+end note
+
+' ============================================================
+'  INFRASTRUCTURE — shared utilities
+' ============================================================
+package "Infrastructure" as infra #f5f5f5 {
+    component "fastgr.c" as fastgr #e0e0e0 {
+        port "virtual_node()" as vn
+        port "virtual_edge()" as ve
+        port "find_fast_edge()" as ffe
+        port "fast_node() / fast_edge()" as fn
+        port "merge_oneway()" as mo
+        port "flat_edge() / delete_flat_edge()" as fed
+    }
+}
+note bottom of infra
+    Fast adjacency-list operations
+    used by **all phases**
+end note
+
+' ============================================================
+'  HEADERS
+' ============================================================
+package "Headers" as headers #fafafa {
+    component "dot.h" as doth <<header>> #eee
+    component "dotprocs.h" as dotprocs <<header>> #eee
+}
+
+' ============================================================
+'  RELATIONSHIPS — Pipeline Flow
+' ============================================================
+dot_c -[#2266aa,bold]-> dotinit : "gvLayout → dot_layout()"
+
+dotinit -[#228B22,bold]-> rank   : "1. dot_rank()"
+dotinit -[#cc3333,bold]-> mincross : "2. dot_mincross()"
+dotinit -[#3333cc,bold]-> position : "3. dot_position()"
+dotinit -[#993399,bold]-> dotsplines : "4. dot_splines()"
+dotinit -[#993399,bold]-> sameport : "5. dot_sameports()"
+dotinit -[#993399,bold]-> compound : "6. dot_compoundEdges()"
+
+' ============================================================
+'  RELATIONSHIPS — Phase 1 internal
+' ============================================================
+rank -[#228B22]-> class1 : "class1()"
+rank -[#228B22]-> decomp : "decompose()"
+rank -[#228B22]-> acyclic : "acyclic()"
+rank -[#228B22]-> cluster : "mark_clusters()"
+
+' ============================================================
+'  RELATIONSHIPS — Phase 2 internal
+' ============================================================
+mincross -[#cc3333]-> class2 : "class2()"
+mincross -[#cc3333]-> cluster : "expand_cluster()\ninstall_cluster()"
+mincross -[#cc3333]-> flat : "flat_breakcycles()\nflat_reorder()"
+class2 -[#cc3333]-> cluster : "build_skeleton()"
+
+' ============================================================
+'  RELATIONSHIPS — Phase 3 internal
+' ============================================================
+position -[#3333cc]-> conc : "dot_concentrate()"
+position -[#3333cc]-> flat : "flat_edges()"
+position -[#3333cc]-> cluster : "mark_lowclusters()"
+position -[#3333cc]-> aspect : "setAspect()"
+
+' ============================================================
+'  RELATIONSHIPS — Phase 4 internal
+' ============================================================
+dotsplines -[#993399]-> flat : "flat_edges()"
+
+' ============================================================
+'  RELATIONSHIPS — Infrastructure (dashed = utility calls)
+' ============================================================
+rank -[#777,dashed]-> fastgr : "virtual_edge\nmerge_oneway"
+class1 -[#777,dashed]-> fastgr : "find_fast_edge\nvirtual_edge"
+class2 -[#777,dashed]-> fastgr : "virtual_node\nvirtual_edge"
+acyclic -[#777,dashed]-> fastgr : "delete_fast_edge\nfind_fast_edge"
+decomp -[#777,dashed]-> fastgr : "fast_node\nvirtual_node"
+mincross -[#777,dashed]-> fastgr : "virtual_edge\nfind_fast_edge"
+cluster -[#777,dashed]-> fastgr : "virtual_node\nvirtual_edge"
+position -[#777,dashed]-> fastgr : "virtual_node\nvirtual_edge"
+conc -[#777,dashed]-> fastgr : "virtual_node\nmerge_oneway"
+dotsplines -[#777,dashed]-> fastgr : "virtual_node\nvirtual_edge"
+flat -[#777,dashed]-> fastgr : "flat_edge\nfind_flat_edge"
+
+' ============================================================
+'  HEADER DEPENDENCIES
+' ============================================================
+doth .[#aaa].> dotprocs
+dotinit .[#aaa].> doth
+rank .[#aaa].> doth
+mincross .[#aaa].> doth
+position .[#aaa].> doth
+dotsplines .[#aaa].> doth
+
+' ============================================================
+'  LEGEND
+' ============================================================
+legend bottom left
+  |= Color |= Meaning |
+  | <#228B22> | Phase 1: Ranking |
+  | <#cc3333> | Phase 2: Crossing Minimization |
+  | <#3333cc> | Phase 3: Coordinate Assignment |
+  | <#993399> | Phase 4: Edge Routing |
+  | <#777777> | Infrastructure (utility) |
+  | <#2266aa> | Entry point |
+endlegend
+
+@enduml
