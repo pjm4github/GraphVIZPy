@@ -333,6 +333,11 @@ def place_vnlabel(layout, le: "LayoutEdge") -> None:
     """
     if not le.label or not le.points:
         return
+    if le.label_pos:
+        # Already positioned — e.g. by E+.1 make_simple_flat_labels for
+        # stacked adjacent flat edges, or an upstream caller.  Don't
+        # clobber a deliberately-placed anchor.
+        return
 
     mx, my = edge_midpoint(layout, le)
 

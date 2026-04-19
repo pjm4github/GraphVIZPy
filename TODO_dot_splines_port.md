@@ -116,8 +116,8 @@ First arg is always `layout` (Python equivalent of `graph_t *g`); subsequent arg
 | 872 | `cloneNode` | — | missing | E | Node clone; wraps record label in `{...}` for LR rotation. |
 | 886 | `cloneEdge` | — | missing | E | Edge clone with attr copy. |
 | 895 | `transformf` | — | missing | E | Rotate-and-translate point for aux-graph coord transfer. |
-| 909 | `edgelblcmpfn` | — | missing | E | Sort order for `makeSimpleFlatLabels` (has-label, width, height). |
-| 946 | `makeSimpleFlatLabels` | — | missing | E | Alternating up/down label stacking for adjacent flat edges with labels. Uses `simpleSplineRoute`. |
+| 909 | `edgelblcmpfn` | `flat_edge.edge_label_key` | done | E+.1 | Ported 2026-04-18 as a Python sort-key (tuple of (has-label flag, -width, -height)) rather than a cmp fn. |
+| 946 | `makeSimpleFlatLabels` | `flat_edge.make_simple_flat_labels` | done | E+.1 | Ported 2026-04-18. Y-down convention: C `miny`/`maxy` roles swapped (above-y = smallest y, below-y = largest y). Phase 4 pre-groups parallel flat edges with ≥1 label into a bundle before calling make_flat_edge. |
 | 1077 | `makeSimpleFlat` | `flat_edge.make_simple_flat` | done | E | Ported 2026-04-16. Straight bezier spindle with stepy fan-out for multi-edges. EDGETYPE_PLINE branch included. |
 | 1124 | `make_flat_adj_edges` | — | missing | E+ | Deferred: clones graph, calls `dot_splines_` recursively. Falls back to `make_simple_flat` for the common no-port/no-label case. |
 | 1285 | `makeFlatEnd` | `flat_edge._make_flat_end(side=TOP)` | done | E | Ported 2026-04-16. Uses `beginpath`/`endpath` + `makeregularend` for TOP side. |

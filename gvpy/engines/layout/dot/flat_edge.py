@@ -79,6 +79,215 @@ def _make_flat_end(layout, sp: SplineInfo, P: Path, ln, le,
         endp.boxn += 1
 
 
+# ── edgelblcmpfn / makeSimpleFlatLabels (E+.1) ─────────────────────
+
+LBL_SPACE = 6.0  # C ``dotsplines.c:973`` — gap in points between stacked labels.
+
+
+def _flat_label_size(layout, le) -> tuple[float, float]:
+    """Return the (width, height) of an edge label using the layout's estimator."""
+    if not le.label:
+        return 0.0, 0.0
+    fs = 14.0
+    if le.edge is not None:
+        try:
+            fs = float(le.edge.attributes.get("labelfontsize",
+                       le.edge.attributes.get("fontsize", "14")))
+        except ValueError:
+            fs = 14.0
+    return layout._estimate_label_size(le.label, fs)
+
+
+def edge_label_key(layout, le) -> tuple:
+    """Sort key mirroring C ``edgelblcmpfn`` lines 943-971.
+
+    Lexicographic order:
+      1. labeled edges before unlabeled
+      2. wider labels first
+      3. taller labels first
+
+    Python uses a key function rather than a cmp — the tuple
+    ``(has_label_flag, -width, -height)`` sorts ascending to match C's
+    descending-by-size-then-has-label semantics.
+    """
+    if not le.label:
+        return (1, 0.0, 0.0)
+    w, h = _flat_label_size(layout, le)
+    return (0, -w, -h)
+
+
+def make_simple_flat_labels(layout, edges: list, tail, head, et: int) -> None:
+    """Route adjacent flat edges with labels using alternating up/down detours.
+
+    C analogue: ``lib/dotgen/dotsplines.c:makeSimpleFlatLabels`` lines 980-1108.
+
+    Called from :func:`make_flat_edge` when two nodes on the same rank
+    have multiple parallel edges and at least one carries a label.  The
+    algorithm:
+
+    1. Sort edges by :func:`edge_label_key` (labeled first, biggest first).
+    2. First edge (``i=0``) routes as a centered straight bezier; its
+       label sits directly above the edge line.
+    3. Subsequent labeled edges alternate:
+
+       - odd ``i`` → detour below the line, label below
+       - even ``i`` → detour above the line, label above (wrapping
+         around the first edge's label)
+
+    4. Unlabeled edges fill any remaining slots using the same
+       alternating detour shape with a wider default corridor.
+
+    Coordinate convention
+    ---------------------
+    C is y-up, Python dot-layout is y-down.  Variable ``miny`` in C
+    (smallest y = farthest below in y-up) becomes Python ``maxy``
+    (largest y = farthest below in y-down), and vice versa.  Point
+    offsets on the detour polygon flip sign accordingly.  The polygon
+    is passed to :func:`simple_spline_route` for shortest-path
+    routing; pathplan tolerates either orientation since it
+    triangulates the polygon interior.
+    """
+    from gvpy.engines.layout.dot.routespl import simple_spline_route
+    from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoly
+
+    if not edges:
+        return
+
+    earray = sorted(edges, key=lambda e: edge_label_key(layout, e))
+    n_lbls = sum(1 for le in earray if le.label)
+    cnt = len(earray)
+    if n_lbls == 0:
+        make_simple_flat(layout, edges, tail, head, et)
+        return
+
+    tp = (tail.x, tail.y)
+    hp = (head.x, head.y)
+    tail_hw = tail.width / 2
+    tail_hh = tail.height / 2
+    head_hw = head.width / 2
+    head_hh = head.height / 2
+    tail_shape = _node_shape(tail)
+    head_shape = _node_shape(head)
+
+    leftend = tp[0] + tail_hw
+    rightend = hp[0] - head_hw
+    ctrx = (leftend + rightend) / 2.0
+
+    def _clip_install(le, pts):
+        pts_pp = [p if isinstance(p, Ppoint) else Ppoint(p[0], p[1]) for p in pts]
+        clipped = clip_and_install(
+            pts_pp,
+            tail_x=tail.x, tail_y=tail.y,
+            tail_hw=tail_hw, tail_hh=tail_hh, tail_shape=tail_shape,
+            head_x=head.x, head_y=head.y,
+            head_hw=head_hw, head_hh=head_hh, head_shape=head_shape,
+        )
+        _install_points(le, clipped)
+
+    # ── First edge: straight bezier, label centered above. ──
+    e0 = earray[0]
+    w0, h0 = _flat_label_size(layout, e0)
+    _clip_install(e0, [tp, tp, hp, hp])
+    # Label above edge line (y-down: smaller y = above).
+    e0.label_pos = (round(ctrx, 2), round(tp[1] - (h0 + LBL_SPACE) / 2.0, 2))
+
+    # Stacking state (Python y-down):
+    #   maxy = farthest-below y of below-stack (initially "just above
+    #          edge" as a staging value, matches C miny initialization)
+    #   miny = farthest-above y of above-stack (consumed by the first
+    #          edge's label)
+    maxy = tp[1] - LBL_SPACE / 2.0   # C: miny = tp.y + LBL_SPACE/2
+    miny = maxy - h0                 # C: maxy = miny + dimen.y
+
+    uminx = ctrx - w0 / 2.0
+    umaxx = ctrx + w0 / 2.0
+    lminx = 0.0
+    lmaxx = 0.0
+
+    def _route_and_install(e, points, polyline):
+        poly = Ppoly(ps=[Ppoint(p[0], p[1]) for p in points])
+        ps = simple_spline_route((tp[0], tp[1]), (hp[0], hp[1]),
+                                 poly, polyline=polyline)
+        if not ps:
+            return False
+        _clip_install(e, ps)
+        return True
+
+    polyline = (et == EDGETYPE_PLINE)
+
+    # ── Labeled alternating loop (i=1..n_lbls-1). ──
+    last_i = 0
+    for i in range(1, n_lbls):
+        e = earray[i]
+        w, h = _flat_label_size(layout, e)
+        if i % 2 == 1:  # down (below edge line)
+            if i == 1:
+                lminx = ctrx - w / 2.0
+                lmaxx = ctrx + w / 2.0
+            maxy += LBL_SPACE + h    # C: miny -= LBL_SPACE + dimen.y
+            points = [
+                tp,
+                (tp[0], maxy + LBL_SPACE),
+                (hp[0], maxy + LBL_SPACE),
+                hp,
+                (lmaxx, hp[1]),
+                (lmaxx, maxy),
+                (lminx, maxy),
+                (lminx, tp[1]),
+            ]
+            ctry = maxy - h / 2.0    # C: miny + dimen.y/2
+        else:           # up (above edge line)
+            points = [
+                tp,
+                (uminx, tp[1]),
+                (uminx, miny),
+                (umaxx, miny),
+                (umaxx, hp[1]),
+                hp,
+                (hp[0], miny - LBL_SPACE),
+                (tp[0], miny - LBL_SPACE),
+            ]
+            ctry = miny - h / 2.0 - LBL_SPACE  # C: maxy + h/2 + LBL_SPACE
+            miny -= h + LBL_SPACE              # C: maxy += h + LBL_SPACE
+        if not _route_and_install(e, points, polyline):
+            return
+        e.label_pos = (round(ctrx, 2), round(ctry, 2))
+        last_i = i
+
+    # ── Unlabeled edges (i=n_lbls..cnt-1). ──
+    for i in range(n_lbls, cnt):
+        e = earray[i]
+        if i % 2 == 1:
+            if i == 1:
+                lminx = (2 * leftend + rightend) / 3.0
+                lmaxx = (leftend + 2 * rightend) / 3.0
+            maxy += LBL_SPACE
+            points = [
+                tp,
+                (tp[0], maxy + LBL_SPACE),
+                (hp[0], maxy + LBL_SPACE),
+                hp,
+                (lmaxx, hp[1]),
+                (lmaxx, maxy),
+                (lminx, maxy),
+                (lminx, tp[1]),
+            ]
+        else:
+            points = [
+                tp,
+                (uminx, tp[1]),
+                (uminx, miny),
+                (umaxx, miny),
+                (umaxx, hp[1]),
+                hp,
+                (hp[0], miny - LBL_SPACE),
+                (tp[0], miny - LBL_SPACE),
+            ]
+            miny -= LBL_SPACE
+        if not _route_and_install(e, points, polyline):
+            return
+
+
 # ── makeSimpleFlat ─────────────────────────────────────────────────
 
 def make_simple_flat(layout, edges: list, tail, head, et: int) -> None:
@@ -367,14 +576,22 @@ def make_flat_edge(layout, sp: SplineInfo, P: Path,
 
     # Check adjacency.  C uses the pre-computed ED_adjacent flag
     # (set by flat.c when no real nodes exist between the endpoints).
-    # Python approximates: adjacent = order diff 1, no ports, no labels.
-    has_ports = bool(le0.tailport or le0.headport)
-    has_label = bool(le0.label)
-    is_adjacent = (abs(tail.order - head.order) == 1
-                   and not has_ports and not has_label)
+    # Python approximates: adjacent = order diff 1, no ports.
+    any_label = any(le.label for le in edges)
+    any_ports = any(le.tailport or le.headport for le in edges)
+    is_adjacent_no_labels = (abs(tail.order - head.order) == 1
+                             and not any_ports and not any_label)
+    is_adjacent_with_labels = (abs(tail.order - head.order) == 1
+                                and not any_ports and any_label
+                                and len(edges) > 1)
 
-    if is_adjacent:
+    if is_adjacent_no_labels:
         make_simple_flat(layout, edges, tail, head, et)
+        return
+
+    if is_adjacent_with_labels:
+        # E+.1 — alternating up/down stacking for labeled adjacent edges.
+        make_simple_flat_labels(layout, edges, tail, head, et)
         return
 
     if le0.label:

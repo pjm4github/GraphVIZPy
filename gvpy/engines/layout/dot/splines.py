@@ -291,7 +291,41 @@ def phase4_routing(layout):
     et = edge_type_from_splines(layout.splines)
     P = Path()
 
+    # E+.1 — bundle parallel flat edges between adjacent same-rank
+    # nodes when at least one has a label; the bundle is handed to
+    # make_flat_edge once so make_simple_flat_labels can alternate
+    # labels up/down.  Any other flat-edge case (mixed ports,
+    # non-adjacent, heterogeneous) stays in the per-edge path below —
+    # bundling those regresses routing that already works edge-by-edge.
+    flat_bundles: dict = {}
     for le in sorted_real_edges:
+        tail = layout.lnodes.get(le.tail_name)
+        head = layout.lnodes.get(le.head_name)
+        if (tail is None or head is None or le.virtual
+                or le.tail_name == le.head_name
+                or tail.rank != head.rank
+                or abs(tail.order - head.order) != 1
+                or le.tailport or le.headport):
+            continue
+        key = frozenset((le.tail_name, le.head_name))
+        flat_bundles.setdefault(key, []).append(le)
+
+    flat_ids: set = set()
+    for key, bundle in list(flat_bundles.items()):
+        if len(bundle) <= 1 or not any(le.label for le in bundle):
+            del flat_bundles[key]
+            continue
+        for le in bundle:
+            flat_ids.add(id(le))
+
+    for bundle in flat_bundles.values():
+        make_flat_edge(layout, layout._spline_info, P, bundle, et)
+        for le in bundle:
+            layout._compute_label_pos(le)
+
+    for le in sorted_real_edges:
+        if id(le) in flat_ids:
+            continue
         tail = layout.lnodes.get(le.tail_name)
         head = layout.lnodes.get(le.head_name)
         if tail is None or head is None:
