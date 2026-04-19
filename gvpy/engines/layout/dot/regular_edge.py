@@ -82,6 +82,143 @@ def adjustregularpath(P: Path, fb: int, lb: int) -> None:
                 bp1.ur_x = bp2.ll_x + MINW
 
 
+# ── D+.2 — straight_len / straight_path / resize_vn / recover_slack ───
+
+_ALIGN_EPS = 0.01   # points; tolerance for "same x" comparison
+
+
+def straight_len(layout, start_ln) -> int:
+    """Count vertically aligned virtual nodes following ``start_ln``.
+
+    C analogue: ``lib/dotgen/dotsplines.c:straight_len`` lines 2059-2076.
+
+    Walks the first outgoing edge of each virtual, counting virtuals
+    whose x-coordinate matches ``start_ln``'s within :data:`_ALIGN_EPS`
+    and that are **single-pass** (exactly one in-edge and one
+    out-edge).  Stops at the first real node or any fan-in/out
+    virtual.  Returns the count (not including ``start_ln``).
+
+    Used to detect long straight runs in a virtual chain where a
+    spline fit would be wasteful compared to a polyline segment.
+    """
+    from gvpy.engines.layout.dot.splines import _node_out_edges, _node_in_edges
+
+    cnt = 0
+    v = start_ln
+    while True:
+        out_edges = _node_out_edges(layout, v)
+        if not out_edges:
+            break
+        nxt = layout.lnodes.get(out_edges[0].head_name)
+        if nxt is None or not nxt.virtual:
+            break
+        if (len(_node_out_edges(layout, nxt)) != 1
+                or len(_node_in_edges(layout, nxt)) != 1):
+            break
+        if abs(nxt.x - start_ln.x) > _ALIGN_EPS:
+            break
+        cnt += 1
+        v = nxt
+    return cnt
+
+
+def straight_path(layout, start_le, cnt: int, plist: list):
+    """Advance ``cnt`` steps along the virtual chain, doubling the tail anchor.
+
+    C analogue: ``lib/dotgen/dotsplines.c:straight_path`` lines 2078-2088.
+
+    Walks ``cnt`` successive out-edges starting from ``start_le`` and
+    returns the final :class:`LayoutEdge`.  Mirrors C's point-list
+    manipulation by appending the last point of ``plist`` twice (so a
+    cubic-bezier consumer sees a straight segment to the next anchor).
+    """
+    from gvpy.engines.layout.dot.splines import _node_out_edges
+
+    f = start_le
+    for _ in range(cnt):
+        head_ln = layout.lnodes.get(f.head_name)
+        if head_ln is None:
+            break
+        out_edges = _node_out_edges(layout, head_ln)
+        if not out_edges:
+            break
+        f = out_edges[0]
+    if plist:
+        last = plist[-1]
+        plist.append(last)
+        plist.append(last)
+    return f
+
+
+def resize_vn(vn, lx: float, cx: float, rx: float) -> None:
+    """Set a virtual node's x-coord and half-widths.
+
+    C analogue: ``lib/dotgen/dotsplines.c:resize_vn`` lines 2111-2114.
+
+    C stores left/right widths separately (``ND_lw`` / ``ND_rw``) so
+    asymmetric expansion is possible.  Python's :class:`LayoutNode`
+    carries a single ``width`` — we set ``width = rx - lx`` and store
+    the split on ad-hoc ``_lw`` / ``_rw`` attributes for downstream
+    consumers that want the C-accurate asymmetry (e.g. a label-bearing
+    virtual pushed right by :func:`recover_slack`).
+    """
+    vn.x = cx
+    vn.width = rx - lx
+    vn._lw = cx - lx
+    vn._rw = rx - cx
+
+
+def recover_slack(layout, vchain_names: list, P) -> None:
+    """Snap virtual-chain nodes onto the routed corridor.
+
+    C analogue: ``lib/dotgen/dotsplines.c:recover_slack`` lines 2090-2108.
+
+    After the box-corridor router has laid down the path, walk the
+    virtual chain tail→head and for each virtual find the path box
+    whose rank-axis extent (``ll_y..ur_y`` in y-down) contains the
+    virtual's y.  If found, :func:`resize_vn` snaps the virtual's x
+    and width to the box's x-extent:
+
+    - **No label**: center the virtual, expand to full box width.
+    - **Has label**: push virtual to the box's right edge, preserving
+      the original right half-width (matches C's one-sided expansion
+      for label-bearing virtuals).
+
+    Walks boxes in order, advancing past any entirely above the
+    current virtual (``box.ur_y < vn.y``) and skipping the virtual if
+    the current box is entirely below it (``box.ll_y > vn.y``).
+    """
+    from gvpy.engines.layout.dot.splines import spline_merge
+
+    boxes = P.boxes
+    if not boxes or not vchain_names:
+        return
+
+    b = 0
+    for vname in vchain_names:
+        vn = layout.lnodes.get(vname)
+        if vn is None or not vn.virtual:
+            continue
+        if spline_merge(layout, vn):
+            break
+        while b < len(boxes) and boxes[b].ur_y < vn.y:
+            b += 1
+        if b >= len(boxes):
+            break
+        if boxes[b].ll_y > vn.y:
+            continue
+        box = boxes[b]
+        has_label = bool(getattr(vn, "label", "")) or bool(
+            getattr(getattr(vn, "node", None), "attributes", {}).get("label", "")
+        )
+        if has_label:
+            original_rw = vn.width / 2
+            resize_vn(vn, box.ll_x, box.ur_x, box.ur_x + original_rw)
+        else:
+            cx = (box.ll_x + box.ur_x) / 2
+            resize_vn(vn, box.ll_x, cx, box.ur_x)
+
+
 # ── top_bound / bot_bound ──────────────────────────────────────────
 
 def top_bound(layout, tail_ln, ref_head_order: int, side: int):
@@ -351,6 +488,12 @@ def make_regular_edge(layout, sp: SplineInfo, P: Path,
 
     if not ps:
         return
+
+    # D+.2 — snap virtual-chain nodes to the routed corridor.
+    # Safe to call with P.boxes intact (clip_and_install below doesn't
+    # touch them).  Only runs for real chain walks (not direct edges).
+    if vchain:
+        recover_slack(layout, vchain, P)
 
     # Clip and install for single or multi-edge.
     tail_hw = tail.width / 2

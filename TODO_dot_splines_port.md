@@ -132,10 +132,10 @@ First arg is always `layout` (Python equivalent of `graph_t *g`); subsequent arg
 | 1954 | `makeregularend` | `regular_edge.makeregularend` | done | D | Ported 2026-04-15. Trivial box construction: BOTTOM extends down to y, TOP extends up to y. |
 | 1976 | `adjustregularpath` | `regular_edge.adjustregularpath` | done | D | Ported 2026-04-15. Enforces MINW/HALFMINW on interrank boxes + ensures MINW overlap between adjacent pairs. |
 | 2011 | `rank_box` | `splines.py:rank_box` | done | D | Ported 2026-04-14. Signature `rank_box(layout, sp, r) -> Box`. Cached in `sp.rank_box[r]`. Y-down formula: `ll_y = left0.y + ht1[r]`, `ur_y = left1.y - ht2[r+1]` (swapped node reference vs C's y-up). |
-| 2026 | `straight_len` | — | missing | D+ | Deferred optimization: count vertically aligned virtual nodes for straight-segment shortcut. |
-| 2044 | `straight_path` | — | missing | D+ | Deferred optimization: emit straight polyline for the detected run. |
-| 2056 | `recover_slack` | — | missing | D+ | Deferred optimization: push virtual nodes' `x` back into the routed corridor. |
-| 2077 | `resize_vn` | — | missing | D+ | Deferred optimization: set `ND_coord.x` / `ND_lw` / `ND_rw` from corridor. |
+| 2026 | `straight_len` | `regular_edge.straight_len` | done | D+.2 | Ported 2026-04-18. Utility only — smode dispatch inside make_regular_edge is not yet wired (requires multi-segment path refactor; tracked as D+.2b). |
+| 2044 | `straight_path` | `regular_edge.straight_path` | done | D+.2 | Ported 2026-04-18. Utility only — called by the deferred smode dispatch, not yet invoked in the live pipeline. |
+| 2056 | `recover_slack` | `regular_edge.recover_slack` | done | D+.2 | Ported 2026-04-18. Wired at end of make_regular_edge (after routesplines, before clip_and_install) to snap virtual-chain x/width onto the routed corridor. |
+| 2077 | `resize_vn` | `regular_edge.resize_vn` | done | D+.2 | Ported 2026-04-18. Stores asymmetric lw/rw on LayoutNode via ad-hoc `_lw` / `_rw` attrs since LayoutNode carries only a single `width`. |
 | 2083 | `top_bound` | `regular_edge.top_bound` | done | D+.1 | Ported 2026-04-18. Signature adapted to Python: takes `(layout, tail_ln, ref_head_order, side)` instead of `(edge, side)`. Filters by `getsplinepoints != None` (F+.1). |
 | 2099 | `bot_bound` | `regular_edge.bot_bound` | done | D+.1 | Ported 2026-04-18. Mirror of `top_bound` over in-edges. |
 | 2117 | `cl_vninside` | `splines.py:cl_vninside` | done | A | Ported 2026-04-15. Closed-interval point-in-bbox test (`ll_x <= x <= ur_x && ll_y <= y <= ur_y`). |
