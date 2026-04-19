@@ -1598,6 +1598,13 @@ class DotGraphInfo(LayoutEngine):
             placed.append((bx, by, lw, lh))
 
         # ── Edge head/tail labels ────────────────────
+        # If the edge sets ``labelangle`` or ``labeldistance``, the C
+        # path is ``place_portlabel`` (angle-based) rather than external
+        # label placement.  Python mirrors this: F+.2's
+        # :func:`label_place.make_port_labels` writes the same
+        # ``_headlabel_pos_{x,y}`` / ``_taillabel_pos_{x,y}`` slots.
+        # Without those attrs we keep the legacy grid-search path.
+        from gvpy.engines.layout.dot.label_place import make_port_labels
         all_edges = [le for le in self.ledges if not le.virtual] + self._chain_edges
         for le in all_edges:
             if not le.edge or not le.points:
@@ -1608,23 +1615,46 @@ class DotGraphInfo(LayoutEngine):
             except ValueError:
                 fs = 14.0
 
-            headlabel = le.edge.attributes.get("headlabel", "")
+            attrs = le.edge.attributes
+            angle_based = bool(attrs.get("labelangle", "")) \
+                        or bool(attrs.get("labeldistance", ""))
+
+            if angle_based:
+                # C-matching path: place_portlabel writes positions into
+                # the same attribute slots.  Record in ``placed`` so
+                # subsequent grid-searched labels avoid overlap.
+                make_port_labels(self, le)
+                for key in ("headlabel", "taillabel"):
+                    txt = attrs.get(key, "")
+                    if not txt:
+                        continue
+                    lw, lh = self._estimate_label_size(txt, fs)
+                    prefix = "_headlabel_pos" if key == "headlabel" else "_taillabel_pos"
+                    try:
+                        bx = float(attrs.get(f"{prefix}_x", ""))
+                        by = float(attrs.get(f"{prefix}_y", ""))
+                    except ValueError:
+                        continue
+                    placed.append((bx, by, lw, lh))
+                continue
+
+            headlabel = attrs.get("headlabel", "")
             if headlabel:
                 lw, lh = self._estimate_label_size(headlabel, fs)
                 hp = le.points[-1]
                 # Use small anchor box at head endpoint
                 bx, by = _find_best_position(hp[0], hp[1], 2, 2, lw, lh, pad=6.0)
-                le.edge.attributes["_headlabel_pos_x"] = str(round(bx, 2))
-                le.edge.attributes["_headlabel_pos_y"] = str(round(by, 2))
+                attrs["_headlabel_pos_x"] = str(round(bx, 2))
+                attrs["_headlabel_pos_y"] = str(round(by, 2))
                 placed.append((bx, by, lw, lh))
 
-            taillabel = le.edge.attributes.get("taillabel", "")
+            taillabel = attrs.get("taillabel", "")
             if taillabel:
                 lw, lh = self._estimate_label_size(taillabel, fs)
                 tp = le.points[0]
                 bx, by = _find_best_position(tp[0], tp[1], 2, 2, lw, lh, pad=6.0)
-                le.edge.attributes["_taillabel_pos_x"] = str(round(bx, 2))
-                le.edge.attributes["_taillabel_pos_y"] = str(round(by, 2))
+                attrs["_taillabel_pos_x"] = str(round(bx, 2))
+                attrs["_taillabel_pos_y"] = str(round(by, 2))
                 placed.append((bx, by, lw, lh))
 
         # ── Graph-level label ────────────────────────

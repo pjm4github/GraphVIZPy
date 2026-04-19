@@ -840,33 +840,16 @@ def port_point(ln: "LayoutNode", compass: str):
 
 
 def compute_label_pos(le: LayoutEdge):
-    """Set label_pos at the midpoint of the edge polyline, offset by labelangle/labeldistance.
-    C analogue: lib/dotgen/dotsplines.c edge label placement. Computes
-    the anchor for an edge label by interpolating along the edge route
-    at the configured labeldistance and labelangle.
+    """Set ``label_pos`` for the edge's main label.
+
+    Delegates to :func:`label_place.place_vnlabel`, the F+.2 port of
+    Graphviz's ``place_vnlabel()``.  Uses the length-parametric
+    polyline midpoint (via ``edge_midpoint``) instead of the old
+    naive index-based midpoint, so unequal-length segments pick a
+    visually centered anchor.
     """
-    if not le.label or not le.points:
-        return
-    n = len(le.points)
-    mid = n // 2
-    if n % 2 == 0 and n >= 2:
-        x = (le.points[mid - 1][0] + le.points[mid][0]) / 2.0
-        y = (le.points[mid - 1][1] + le.points[mid][1]) / 2.0
-    else:
-        x, y = le.points[mid]
-
-    # Apply labelangle and labeldistance if set on the edge
-    if le.edge:
-        import math
-        angle_str = le.edge.attributes.get("labelangle", "")
-        dist_str = le.edge.attributes.get("labeldistance", "")
-        if angle_str or dist_str:
-            angle = math.radians(float(angle_str)) if angle_str else 0.0
-            dist = float(dist_str) * 14.0 if dist_str else 0.0  # scale by font size
-            x += dist * math.cos(angle)
-            y += dist * math.sin(angle)
-
-    le.label_pos = (round(x, 2), round(y, 2))
+    from gvpy.engines.layout.dot.label_place import place_vnlabel
+    place_vnlabel(None, le)
 
 
 def apply_sameport(layout):

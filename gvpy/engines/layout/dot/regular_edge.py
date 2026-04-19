@@ -82,20 +82,117 @@ def adjustregularpath(P: Path, fb: int, lb: int) -> None:
                 bp1.ur_x = bp2.ll_x + MINW
 
 
+# ── top_bound / bot_bound ──────────────────────────────────────────
+
+def top_bound(layout, tail_ln, ref_head_order: int, side: int):
+    """Find a sibling out-edge of ``tail_ln`` routed farther in ``side``.
+
+    C analogue: ``lib/dotgen/dotsplines.c:top_bound`` lines 2117-2131.
+
+    Scans every out-edge ``f`` of ``tail_ln``; keeps only those whose
+    head's order lies strictly on ``side`` (``+1`` = right, ``-1`` =
+    left) of ``ref_head_order`` and that already have a computed
+    spline (checked via :func:`label_place.getsplinepoints`, which
+    walks the to_orig chain).  Returns the sibling with the closest
+    head order to the reference, or ``None`` if there is no such edge.
+
+    C passes a single ``edge_t *e`` and derives ``agtail(e)`` /
+    ``ND_order(aghead(e))``.  Python's bundle model and virtual chains
+    don't map cleanly to a single edge_t, so these two inputs are
+    passed explicitly — same semantics, different spelling.
+    """
+    from gvpy.engines.layout.dot.splines import _node_out_edges
+    from gvpy.engines.layout.dot.label_place import getsplinepoints
+
+    ans = None
+    ans_order = None
+    for f in _node_out_edges(layout, tail_ln):
+        f_head = layout.lnodes.get(f.head_name)
+        if f_head is None:
+            continue
+        f_order = f_head.order
+        # Equivalent to C: side*(ND_order(aghead(f)) - ND_order(aghead(e))) <= 0
+        if side * (f_order - ref_head_order) <= 0:
+            continue
+        if getsplinepoints(layout, f) is None:
+            continue
+        if ans is None or side * (ans_order - f_order) > 0:
+            ans = f
+            ans_order = f_order
+    return ans
+
+
+def bot_bound(layout, head_ln, ref_tail_order: int, side: int):
+    """Mirror of :func:`top_bound` for the head side.
+
+    C analogue: ``lib/dotgen/dotsplines.c:bot_bound`` lines 2133-2147.
+    """
+    from gvpy.engines.layout.dot.splines import _node_in_edges
+    from gvpy.engines.layout.dot.label_place import getsplinepoints
+
+    ans = None
+    ans_order = None
+    for f in _node_in_edges(layout, head_ln):
+        f_tail = layout.lnodes.get(f.tail_name)
+        if f_tail is None:
+            continue
+        f_order = f_tail.order
+        if side * (f_order - ref_tail_order) <= 0:
+            continue
+        if getsplinepoints(layout, f) is None:
+            continue
+        if ans is None or side * (ans_order - f_order) > 0:
+            ans = f
+            ans_order = f_order
+    return ans
+
+
 # ── completeregularpath ────────────────────────────────────────────
 
 def completeregularpath(P: Path, tendp: PathEnd, hendp: PathEnd,
-                        boxes: list[Box]) -> None:
+                        boxes: list[Box],
+                        *,
+                        layout=None,
+                        tail_ln=None, first_hop_order: int = 0,
+                        head_ln=None, last_hop_order: int = 0) -> bool:
     """Assemble the full box corridor from tail end + path + head end.
 
     C analogue: ``dotsplines.c:completeregularpath`` lines 1950-1982.
 
-    Simplified: ``top_bound``/``bot_bound`` neighbor checks are
-    skipped — they guard against corrupted parallel-edge state and
-    are an optimization, not required for correctness.
+    When ``layout`` / ``tail_ln`` / ``head_ln`` are supplied, runs the
+    C-matching ``top_bound``/``bot_bound`` neighbor checks: if any
+    parallel sibling on the left/right of either end is found but
+    :func:`label_place.getsplinepoints` returns ``None`` on it, abort
+    — leave ``P.boxes`` empty so downstream
+    ``routesplines``/``routepolylines`` no-ops and
+    :func:`make_regular_edge` bails cleanly.  Returns ``True`` on
+    normal completion, ``False`` on abort.
+
+    Without the keyword-only params the neighbor check is skipped
+    (backward-compatible with call sites that don't need it).
+
+    Note on defensiveness
+    ---------------------
+    Because ``top_bound`` / ``bot_bound`` already filter siblings by
+    ``getsplinepoints != None``, the post-check below is unreachable
+    under well-formed state — it mirrors the C source's own redundant
+    safety net, which defends against corrupted spline lists.
     """
+    from gvpy.engines.layout.dot.label_place import getsplinepoints
+
     P.boxes.clear()
     P.nbox = 0
+
+    if layout is not None and tail_ln is not None and head_ln is not None:
+        for side in (-1, 1):
+            n = top_bound(layout, tail_ln, first_hop_order, side)
+            if n is not None and getsplinepoints(layout, n) is None:
+                return False
+        for side in (-1, 1):
+            n = bot_bound(layout, head_ln, last_hop_order, side)
+            if n is not None and getsplinepoints(layout, n) is None:
+                return False
+
     for i in range(tendp.boxn):
         add_box(P, tendp.boxes[i])
     fb = P.nbox + 1
@@ -105,6 +202,7 @@ def completeregularpath(P: Path, tendp: PathEnd, hendp: PathEnd,
     for i in range(hendp.boxn - 1, -1, -1):
         add_box(P, hendp.boxes[i])
     adjustregularpath(P, fb, lb)
+    return True
 
 
 # ── Node geometry helper ──────────────────────────────────────────
@@ -230,7 +328,16 @@ def make_regular_edge(layout, sp: SplineInfo, P: Path,
         hend.boxn += 1
 
     # Assemble corridor and route.
-    completeregularpath(P, tend, hend, corridor_boxes)
+    # ``first_hn`` / ``cur_rank_node`` bracket the chain: the first is
+    # the tail's first out-hop (order used by top_bound); the last is
+    # the node feeding ``real_head`` (order used by bot_bound).  For
+    # direct (no-vchain) edges ``cur_rank_node`` is still ``tail``.
+    first_hop_order = first_hn.order if first_hn is not None else 0
+    last_hop_order = cur_rank_node.order if cur_rank_node is not None else 0
+    completeregularpath(P, tend, hend, corridor_boxes,
+                        layout=layout,
+                        tail_ln=tail, first_hop_order=first_hop_order,
+                        head_ln=real_head, last_hop_order=last_hop_order)
 
     if is_spline:
         ps = routesplines(P)

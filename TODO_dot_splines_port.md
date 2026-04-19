@@ -106,7 +106,7 @@ First arg is always `layout` (Python equivalent of `graph_t *g`); subsequent arg
 | 199 | `setEdgeLabelPos` | — | missing | A | Pre-place labels for ortho routing (reads `ND_alg`). |
 | 228 | `dot_splines_` | `splines.py:phase4_routing` | done | A | Ported 2026-04-15. Driver shape now mirrors C's dot_splines_: resetRW → classify+setflags → edgecmp sort → per-edge dispatch → edge_normalize. Per-edge routing still calls existing heuristic Python routers until Phase D/E/F ports replace them. Batch dispatch on equivalence classes deferred to Phase D. |
 | 481 | `dot_splines` | `splines.py:phase4_routing` | done | A | Trivial wrapper: `dot_splines_(g, 1)`. Same Python entry as above — Phase A step 6 ported 2026-04-15. |
-| 486 | `place_vnlabel` | — | missing | F+ | Deferred: label position from virtual-node coords. |
+| 486 | `place_vnlabel` | `label_place.place_vnlabel` | done | F+.2 | Ported 2026-04-18. Uses edge_midpoint for base position (polyline midpoint); legacy labelangle/labeldistance kept as Python-specific main-label extension. |
 | 499 | `setflags` | `splines.py:setflags` | done | A | Ported 2026-04-15. Auto-detects SELF*/FLAT/REGULAR edge type and FWD/BWD direction from tail/head rank+order when `hint1`/`hint2` are 0. Verified against C on parallel + self-loop + back-edge graphs. |
 | 537 | `edgecmp` | `splines.py:edgecmp` | done | A | Ported 2026-04-15. Full 9-step lex order with `getmainedge` resolution, `_edge_seq_map` for AGSEQ, `makefwdedge` swap for BWDEDGE, `portcmp` for tie-break. AGSEQ cached lazily on `layout._edge_seq_cache`. Verified determinism and SELFNP/SELFWP/FLAT/REG descending order on a parallel-edges smoke test. |
 | 638 | `attr_state_t` (struct) | — | missing | E | Save/restore global attrsym state around `make_flat_adj_edges` recursion. |
@@ -128,7 +128,7 @@ First arg is always `layout` (Python equivalent of `graph_t *g`); subsequent arg
 | 1620 | `leftOf` | — | missing | D | 2D cross-product sign test. Deferred — only used by `makeLineEdge`. |
 | 1638 | `makeLineEdge` | — | missing | D | `splines=line` straight polyline with optional label bend. Deferred — only used when `et == EDGETYPE_LINE`. |
 | 1702 | `make_regular_edge` | `regular_edge.make_regular_edge` | done | D | Ported 2026-04-15. Full box-corridor pipeline: `beginpath` / virtual-chain walk / `rank_box` / `maximal_bbox` / `endpath` / `completeregularpath` / `routesplines` / `clip_and_install`. Multi-edge Multisep offset supported. Straight-segment optimization (smode) and makeLineEdge deferred. |
-| 1916 | `completeregularpath` | `regular_edge.completeregularpath` | done | D | Ported 2026-04-15. Concatenates tend + corridor + hend boxes, calls `adjustregularpath`. `top_bound`/`bot_bound` neighbor checks simplified (always skipped — optimization, not correctness). |
+| 1916 | `completeregularpath` | `regular_edge.completeregularpath` | done | D / D+.1 | Ported 2026-04-15; neighbor check added 2026-04-18 (D+.1). Now runs `top_bound`/`bot_bound` on each side and aborts (empty P.boxes → downstream bail) if a routed sibling fails `getsplinepoints`. Post-check is defensive — unreachable under well-formed state since top/bot_bound already filter by spline availability. |
 | 1954 | `makeregularend` | `regular_edge.makeregularend` | done | D | Ported 2026-04-15. Trivial box construction: BOTTOM extends down to y, TOP extends up to y. |
 | 1976 | `adjustregularpath` | `regular_edge.adjustregularpath` | done | D | Ported 2026-04-15. Enforces MINW/HALFMINW on interrank boxes + ensures MINW overlap between adjacent pairs. |
 | 2011 | `rank_box` | `splines.py:rank_box` | done | D | Ported 2026-04-14. Signature `rank_box(layout, sp, r) -> Box`. Cached in `sp.rank_box[r]`. Y-down formula: `ll_y = left0.y + ht1[r]`, `ur_y = left1.y - ht2[r+1]` (swapped node reference vs C's y-up). |
@@ -136,8 +136,8 @@ First arg is always `layout` (Python equivalent of `graph_t *g`); subsequent arg
 | 2044 | `straight_path` | — | missing | D+ | Deferred optimization: emit straight polyline for the detected run. |
 | 2056 | `recover_slack` | — | missing | D+ | Deferred optimization: push virtual nodes' `x` back into the routed corridor. |
 | 2077 | `resize_vn` | — | missing | D+ | Deferred optimization: set `ND_coord.x` / `ND_lw` / `ND_rw` from corridor. |
-| 2083 | `top_bound` | — | missing | D+ | Deferred optimization: find already-routed parallel sibling above for `completeregularpath`. |
-| 2099 | `bot_bound` | — | missing | D+ | Deferred optimization: same, below. |
+| 2083 | `top_bound` | `regular_edge.top_bound` | done | D+.1 | Ported 2026-04-18. Signature adapted to Python: takes `(layout, tail_ln, ref_head_order, side)` instead of `(edge, side)`. Filters by `getsplinepoints != None` (F+.1). |
+| 2099 | `bot_bound` | `regular_edge.bot_bound` | done | D+.1 | Ported 2026-04-18. Mirror of `top_bound` over in-edges. |
 | 2117 | `cl_vninside` | `splines.py:cl_vninside` | done | A | Ported 2026-04-15. Closed-interval point-in-bbox test (`ll_x <= x <= ur_x && ll_y <= y <= ur_y`). |
 | 2131 | `cl_bound` | `splines.py:cl_bound` | done | A | Ported 2026-04-15. Walks n's tail/head cluster context + adj's cluster via `_virtual_orig_endpoints` for virtuals. Returns None when adj is in same cluster hierarchy. |
 | 2170 | `maximal_bbox` | `splines.py:maximal_bbox` | done | A | Ported 2026-04-15. Signature `maximal_bbox(layout, sp, vn, ie, oe) -> Box`. C literal in docstring. Y-axis flipped for y-down. Python divergences: `ND_label(vn)` branches elided (LayoutNode has no label tracking); `ND_mval(left)` approximated as `left.width/2`. |
@@ -168,13 +168,13 @@ First arg is always `layout` (Python equivalent of `graph_t *g`); subsequent arg
 | 1057 | `selfLeft` | `self_edge._self_left` | done | F | Ported 2026-04-16. Mirror of selfRight, extends left. |
 | 1139 | `selfRightSpace` | `self_edge.self_right_space` | done | F | Ported 2026-04-16. Right-margin reservation for self-loop. |
 | 1164 | `makeSelfEdge` | `self_edge.make_self_edge` | done | F | Ported 2026-04-16. Dispatcher: default → right; left port → left or top; top port → top; bottom port → bottom. |
-| 1205 | `makePortLabels` | — | missing | F+ | Deferred: head/tail label placement. Python uses `_compute_label_pos` heuristic. |
-| 1223 | `endPoints` | — | missing | F+ | Deferred: extract (sp, ep) from spline. |
-| 1247 | `polylineMidpoint` | — | missing | F+ | Deferred: length-parametric midpoint. |
-| 1283 | `edgeMidpoint` | — | missing | F+ | Deferred: edge label midpoint. |
-| 1307 | `addEdgeLabels` | — | missing | F+ | Deferred: head/tail/main label attachment. |
-| 1316 | `place_portlabel` | — | missing | F+ | Deferred: labelangle/labeldistance positioning. |
-| 1363 | `getsplinepoints` | — | missing | F+ | Deferred: sample points for edge bbox. |
+| 1205 | `makePortLabels` | `label_place.make_port_labels` | done | F+.2 | Ported 2026-04-18. Gated on labelangle or labeldistance; wired into dot_layout._compute_xlabel_positions. |
+| 1223 | `endPoints` | `label_place.end_points` | done | F+.1 | Ported 2026-04-18. Python single-bezier model; uses sflag/eflag + first/last point. |
+| 1247 | `polylineMidpoint` | `label_place.polyline_midpoint` | done | F+.1 | Ported 2026-04-18. Stride picked from spline_type (1 for polyline, 3 for bezier). |
+| 1283 | `edgeMidpoint` | `label_place.edge_midpoint` | done | F+.1 | Ported 2026-04-18. Falls back to polyline_midpoint for SPLINE/CURVED (dotneato_closest not ported). |
+| 1307 | `addEdgeLabels` | `label_place.add_edge_labels` | done | F+.2 | Ported 2026-04-18. Thin wrapper over make_port_labels; main label handled by place_vnlabel in phase 4. |
+| 1316 | `place_portlabel` | `label_place.place_portlabel` | done | F+.2 | Ported 2026-04-18. Tangent from endpoint + labelangle (default -25°, min -180°) + labeldistance (default 1.0, min 0.0, scale PORT_LABEL_DISTANCE=10). Bezier t=0.1/0.9 sampling for curved splines via existing clip.bezier_point. |
+| 1363 | `getsplinepoints` | `label_place.getsplinepoints` | done | F+.1 | Ported 2026-04-18. Walks to_orig via getmainedge; returns EdgeRoute or None. |
 
 ### 2.3 `lib/common/routespl.c` (~1000 lines, ~20 functions)
 
