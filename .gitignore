@@ -6,3 +6,24 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# Coverage artifacts
+.coverage
+htmlcov/
+coverage.xml
+
+# Debug / trace scratch files dumped at repo root by the instrumentation
+# workflow (see CLAUDE.md) — ad-hoc artifacts, not source of truth.
+/trace_*.txt
+/Snippet.py
+/aa*_c_ref.dot
+/c_*.dot
+/py_*.dot
+
+# Test-run reports (regenerated every run)
+/test_run.md
+/test_run_*.md
+
+# Rendered SVGs under test_data/ are debug artifacts, not inputs —
+# the .dot source files are the tracked test corpus.
+test_data/*.svg
