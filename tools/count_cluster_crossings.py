@@ -1,8 +1,11 @@
 """Count edges whose routed polyline crosses a non-member cluster.
 
-Used for the channel routing A/B regression metric.  Run as:
+Originally built for a channel-routing A/B metric; the standalone
+channel router was removed in commit B4 (its cluster-aware pieces are
+now part of ``make_regular_edge``'s ``maximal_bbox`` path).  Still used
+by ``tools/visual_audit.py`` as the Python-side crossing counter.  Run:
 
-    python tools/count_cluster_crossings.py test_data/aa1332.dot [--channel]
+    python tools/count_cluster_crossings.py test_data/aa1332.dot
 
 Exit status is always 0; results printed to stdout.
 """
@@ -69,10 +72,18 @@ def _cluster_nodes(layout, cl):
     return set(cl.nodes)
 
 
-def count_crossings(dot_path: str, use_channel: bool):
+def count_crossings(dot_path: str, use_channel: bool = False):
+    """Count edges in *dot_path* crossing non-member cluster bboxes.
+
+    The ``use_channel`` keyword is accepted but no longer has any
+    effect — the standalone channel router was removed (its cluster
+    clipping is in ``make_regular_edge``'s ``maximal_bbox`` now).
+    Kept as a keyword for callers that still pass it, e.g.
+    ``tools/visual_audit.py``.
+    """
+    del use_channel  # obsolete; retained for API back-compat
     graph = read_dot_file(dot_path)
     layout = DotLayout(graph)
-    layout._use_channel_routing = use_channel
     layout.layout()
 
     cluster_nodes = {cl.name: _cluster_nodes(layout, cl)
@@ -109,12 +120,10 @@ def count_crossings(dot_path: str, use_channel: bool):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dot_path")
-    ap.add_argument("--channel", action="store_true",
-                    help="Enable channel routing flag")
     args = ap.parse_args()
 
-    crossings = count_crossings(args.dot_path, args.channel)
-    mode = "channel ON" if args.channel else "channel OFF"
+    crossings = count_crossings(args.dot_path)
+    mode = "channel OFF"  # kept in the log line for output-format compat
     print(f"[{mode}] {args.dot_path}: "
           f"{len(crossings)} edges cross non-member clusters")
     for edge, offs in crossings:

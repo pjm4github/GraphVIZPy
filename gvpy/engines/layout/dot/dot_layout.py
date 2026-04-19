@@ -439,14 +439,6 @@ class DotGraphInfo(LayoutEngine):
         # NS solve, used by compute_cluster_boxes.
         self._cl_ln_x: dict[str, float] = {}
         self._cl_rn_x: dict[str, float] = {}
-        # Phase 4 feature flag: use the new cluster-aware channel
-        # router (splines.channel_route_edge) in place of the old
-        # route_regular_edge / route_through_chain.  Default flipped
-        # to True after steps 6a/6b brought the channel router ahead
-        # of the old path on the aa1332 regression metric (3 crossings
-        # vs. 8).  Set to False for A/B comparison or to reproduce
-        # pre-step-6 behaviour.
-        self._use_channel_routing: bool = True
 
     # ── Public API ───────────────────────────────
 
@@ -1831,18 +1823,6 @@ class DotGraphInfo(LayoutEngine):
         return splines.ortho_route(self, *args, **kwargs)
 
 
-    def _route_through_chain(self, *args, **kwargs) -> list[tuple[float, float]]:
-        """Route an edge through its virtual-node chain.
-
-        See: the virtual-node walk inside
-        ``lib/dotgen/dotsplines.c: make_regular_edge() @ 1736`` —
-        traverses ``ND_out(vn).list[0]`` from tail to head.
-
-        Delegates to :func:`splines.route_through_chain`.
-        """
-        return splines.route_through_chain(self, *args, **kwargs)
-
-
     @staticmethod
     def _boundary_point(ln, *args, **kwargs) -> tuple[float, float]:
         """Intersect a line from node center outward with the node boundary.
@@ -1901,15 +1881,6 @@ class DotGraphInfo(LayoutEngine):
         return splines.rank_box(self, self._spline_info, r)
 
 
-    def _route_regular_edge(self, *args, **kwargs) -> list[tuple[float, float]]:
-        """Legacy heuristic regular-edge router (replaced in Phase D).
-
-        See: ``lib/dotgen/dotsplines.c: make_regular_edge() @ 1736``.
-        The C-matching port lives in :mod:`regular_edge`.
-
-        Delegates to :func:`splines.route_regular_edge` (legacy fallback).
-        """
-        return splines.route_regular_edge(self, *args, **kwargs)
 
 
     def _classify_flat_edge(self, *args, **kwargs) -> str:
