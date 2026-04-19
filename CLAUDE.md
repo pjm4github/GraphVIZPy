@@ -32,10 +32,9 @@ This project is an adjacent module planned to merge with:
   pictosync merge (§7), diagnostics + tooling (§8). Always check this
   before starting new work.
 
-The legacy per-topic files (`TODO_dot_layout.md`, `TODO_dot_splines_port.md`,
-`TODO_layout_engines.md`, `TODO_main_gui.md`, `TODO_pictosync_merge.md`,
-`TODO_core_refactor.md`) are kept for archival history only and are not
-maintained.
+Legacy per-topic TODO files (`TODO_dot_layout.md`, `TODO_dot_splines_port.md`,
+etc.) were removed once their content was consolidated into `TODO.md` — see
+git history for the archival record.
 
 ## Reference C Implementation
 The authoritative Graphviz C source used for behavioral matching is located at:

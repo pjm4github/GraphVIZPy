@@ -23,7 +23,7 @@ and PyCBD-style synchronous block diagrams), and an interactive PyQt6 GUI.
 ## Architecture goals
 
 The long-term direction is a **view-architecture migration** described in
-``TODO_core_refactor.md``.  Every domain-specific projection of a Graph
+``TODO.md`` §4 (Core refactor).  Every domain-specific projection of a Graph
 (layout, simulation, analysis, render-state) lives behind a uniform
 attachment point:
 
@@ -1179,8 +1179,8 @@ See `pyproject.toml` for the full dependency specification.
 ## Current Status
 
 The codebase is in active refactor toward the view-architecture model
-described above.  Recent milestones (see ``TODO_core_refactor.md`` for
-the full timeline):
+described above.  Recent milestones (see ``TODO.md`` §4 for the full
+timeline):
 
 - ✅ **Core split** — `gvpy/core/graph.py` was 1680 lines mixing the
   `Graph` class with C-API helpers.  Helpers are now broken out into
@@ -1234,7 +1234,8 @@ the full timeline):
   `CBDSimulationView`), and the three-phase Mealy `CBDSolver`.
   9 smoke tests cover both paradigms end-to-end.
 - ⏳ **Pictosync engine** — `PictoGraphInfo(LayoutView)` is the
-  next planned addition (Step 9 in `TODO_core_refactor.md`).
+  next planned addition (tracked as phase 1 of the pictosync merge,
+  `TODO.md` §7).
 
 ## Test Coverage
 
