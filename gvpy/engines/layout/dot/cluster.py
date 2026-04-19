@@ -145,7 +145,14 @@ def dedup_cluster_nodes(layout):
     def _walk_tree(g, parent_cl: str | None):
         for sub_name, sub in g.subgraphs.items():
             if sub_name in cl_names:
-                tree_parent[sub_name] = parent_cl
+                # Duplicate-named nested cluster (e.g. two ``subgraph
+                # cluster { … }`` siblings nested inside each other) —
+                # treating this as self-parent creates a cycle in
+                # ``tree_parent`` and hangs ``_desc_nodes``.  Skip the
+                # cycle edge; inner clusters with the duplicate name
+                # just stay at the outer level in the tree.
+                if sub_name != parent_cl:
+                    tree_parent[sub_name] = parent_cl
                 _walk_tree(sub, sub_name)
             else:
                 # Non-cluster subgraph: pass through parent
@@ -157,17 +164,23 @@ def dedup_cluster_nodes(layout):
     for cn, par in tree_parent.items():
         tree_children.setdefault(par, []).append(cn)
 
-    # For each cluster, collect nodes from all descendant clusters
+    # For each cluster, collect nodes from all descendant clusters.
+    # Cycle guard defends against pathological tree_parent mappings
+    # (duplicate cluster names producing self-referential edges even
+    # with the ``_walk_tree`` guard above — belt-and-suspenders).
     _desc_nodes_cache: dict[str, set[str]] = {}
-    def _desc_nodes(cl_name: str) -> set[str]:
+    def _desc_nodes(cl_name: str, _visiting: frozenset = frozenset()) -> set[str]:
         if cl_name in _desc_nodes_cache:
             return _desc_nodes_cache[cl_name]
+        if cl_name in _visiting:
+            return set()
+        next_visiting = _visiting | {cl_name}
         result: set[str] = set()
         for kid in tree_children.get(cl_name, []):
             cl_obj = next((c for c in layout._clusters if c.name == kid), None)
             if cl_obj:
                 result.update(cl_obj.nodes)
-            result.update(_desc_nodes(kid))
+            result.update(_desc_nodes(kid, next_visiting))
         _desc_nodes_cache[cl_name] = result
         return result
 
