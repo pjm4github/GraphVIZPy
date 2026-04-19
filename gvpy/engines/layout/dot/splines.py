@@ -3458,7 +3458,13 @@ def rank_box(layout, sp: SplineInfo, r: int) -> Box:
     """
     cached = sp.rank_box.get(r)
     if cached is not None:
-        return cached
+        # Must return a fresh copy: ``routespl.routesplines_`` mutates
+        # box x-extents in place (to ``±inf`` after routing) so shared
+        # references would poison every subsequent fetch of the same
+        # rank.  C is immune because ``GD_rank(g)[r].rank_box`` is a
+        # value type; Python :class:`Box` is a mutable dataclass.
+        return Box(ll_x=cached.ll_x, ll_y=cached.ll_y,
+                   ur_x=cached.ur_x, ur_y=cached.ur_y)
 
     r_nodes = layout.ranks.get(r, [])
     r1_nodes = layout.ranks.get(r + 1, [])
@@ -3478,7 +3484,9 @@ def rank_box(layout, sp: SplineInfo, r: int) -> Box:
         ur_y=left1_y - layout._rank_ht2.get(r + 1, 18),
     )
     sp.rank_box[r] = b
-    return b
+    # Return a copy so the caller can own / mutate independently of
+    # the cache (same reason as the cached branch above).
+    return Box(ll_x=b.ll_x, ll_y=b.ll_y, ur_x=b.ur_x, ur_y=b.ur_y)
 
 
 def route_regular_edge(layout, le: LayoutEdge, tail: LayoutNode,
