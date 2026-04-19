@@ -9,6 +9,7 @@ Phase E of the splines port.
 """
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING
 
 from gvpy.engines.layout.dot.clip import clip_and_install
@@ -27,6 +28,55 @@ if TYPE_CHECKING:
 EDGETYPE_SPLINE = 5 << 1
 EDGETYPE_LINE = 1 << 1
 EDGETYPE_PLINE = 3 << 1
+
+
+class UnsupportedPortRoutingWarning(UserWarning):
+    """Adjacent flat-edge routing fell back to approximate port-aware splines.
+
+    Emitted when :func:`make_flat_adj_edges` encounters ports it can't
+    fully honor with option E+.2-**B** (compass-port attach points +
+    corridor):
+
+    * record-field ports such as ``a:field2``
+    * port strings with an unrecognised compass suffix
+    * non-empty ports on a node with a record shape
+
+    The route still installs but uses a best-effort attach point (the
+    node's compass boundary if a compass is present, else the node
+    centre).  A faithful fix is option E+.2-**A**: clone the two-node
+    subgraph and re-run ``rank`` → ``mincross`` → ``position`` →
+    ``dot_splines_`` on it with ``rank=source``, then transform the
+    resulting splines back.  See ``TODO_dot_splines_port.md``.
+    """
+
+
+# Compass direction tokens recognised by port_point / _COMPASS.
+_COMPASS_NAMES = frozenset({"n", "ne", "e", "se", "s", "sw", "w", "nw", "c", "_"})
+
+
+def _port_parts(port_str: str) -> tuple[str, str]:
+    """Split a port string into ``(field, compass)`` — either may be ``""``.
+
+    - ``""`` → ``("", "")``
+    - ``"n"`` → ``("", "n")`` (pure compass)
+    - ``"field1"`` → ``("field1", "")`` (record field, no compass)
+    - ``"field1:n"`` → ``("field1", "n")`` (record field + compass)
+    """
+    if not port_str:
+        return ("", "")
+    parts = port_str.split(":", 1)
+    if len(parts) == 1:
+        token = parts[0].strip().lower()
+        if token in _COMPASS_NAMES:
+            return ("", token)
+        return (parts[0], "")
+    return (parts[0], parts[1].strip().lower())
+
+
+def _is_compass_only_port(port_str: str) -> bool:
+    """True when the port string has no field component (empty or pure compass)."""
+    field, compass = _port_parts(port_str)
+    return not field and (not compass or compass in _COMPASS_NAMES)
 
 
 def _compass_to_side(port_str: str) -> int:
@@ -77,6 +127,154 @@ def _make_flat_end(layout, sp: SplineInfo, P: Path, ln, le,
     if b.ll_x < b.ur_x and b.ll_y < b.ur_y:
         endp.boxes.append(b)
         endp.boxn += 1
+
+
+# ── E+.2-B — port-aware adjacent-flat routing ─────────────────────
+
+def _node_is_record(ln) -> bool:
+    """True if the node's shape renders as a record (field-port-aware)."""
+    if ln is None or ln.node is None:
+        return False
+    shape = ln.node.attributes.get("shape", "").lower()
+    return shape in ("record", "mrecord")
+
+
+def _port_attach_point(layout, ln, port_str: str, is_tail: bool) -> tuple[float, float]:
+    """Compute the attach point on ``ln`` for *port_str*.
+
+    Uses :func:`splines.port_point` when the port has a pure compass
+    component; falls back to node centre otherwise.  Callers are
+    expected to have already routed non-compass ports through the
+    :class:`UnsupportedPortRoutingWarning` path.
+    """
+    from gvpy.engines.layout.dot.splines import port_point
+
+    _, compass = _port_parts(port_str)
+    if compass and compass in _COMPASS_NAMES:
+        p = port_point(ln, compass)
+        if p is not None:
+            return p
+    return (ln.x, ln.y)
+
+
+def _warn_port_a_gap(edges, tn, hn) -> None:
+    """Emit :class:`UnsupportedPortRoutingWarning` once if any edge uses
+    a port form only option E+.2-A can faithfully honor."""
+    # Walk all edges; emit at most one warning per call (``stacklevel=3``
+    # points at ``make_flat_adj_edges``'s caller).
+    tn_record = _node_is_record(tn)
+    hn_record = _node_is_record(hn)
+    offender = None
+    reason = ""
+    for le in edges:
+        t_field, _ = _port_parts(le.tailport)
+        h_field, _ = _port_parts(le.headport)
+        if (t_field and tn_record) or (h_field and hn_record):
+            offender = le
+            reason = "record-field port"
+            break
+        if (le.tailport and not _is_compass_only_port(le.tailport)) or \
+           (le.headport and not _is_compass_only_port(le.headport)):
+            offender = le
+            reason = "non-compass port"
+            break
+    if offender is None:
+        return
+    warnings.warn(
+        f"Adjacent flat edge {offender.tail_name}:{offender.tailport} -> "
+        f"{offender.head_name}:{offender.headport}: {reason} — routing "
+        "with compass/centre fallback. A faithful fix (option E+.2-A) "
+        "requires recursive clone + re-layout of the two-node "
+        "subgraph; see TODO_dot_splines_port.md.",
+        UnsupportedPortRoutingWarning,
+        stacklevel=3,
+    )
+
+
+def make_flat_adj_edges(layout, sp: SplineInfo, P: Path,
+                         edges: list, tn, hn, et: int) -> None:
+    """Route a bundle of flat edges between two adjacent same-rank nodes.
+
+    C analogue: ``lib/dotgen/dotsplines.c:make_flat_adj_edges`` lines
+    1158-1317.
+
+    The C version has two regimes:
+
+    1. **No ports**.  Dispatches to ``makeSimpleFlat`` (no labels) or
+       ``makeSimpleFlatLabels`` (labels) — Python mirrors via
+       :func:`make_simple_flat` / :func:`make_simple_flat_labels`.
+
+    2. **With ports**.  C clones the two-node subgraph, runs the full
+       ``dot_rank`` / ``dot_mincross`` / ``dot_position`` / ``dot_splines_``
+       pipeline on the clone with ``rank=source``, then transforms the
+       resulting splines back.  That is option **E+.2-A** — not ported.
+
+    This function implements option **E+.2-B**: port-aware attach points
+    via the existing :func:`splines.port_point`, plus per-edge
+    fan-out.  B covers the common case (pure compass ports on
+    non-record nodes); cases it can't fully honor fire
+    :class:`UnsupportedPortRoutingWarning` pointing at E+.2-A.
+    """
+    if not edges:
+        return
+
+    any_ports = any(le.tailport or le.headport for le in edges)
+    any_label = any(le.label for le in edges)
+
+    if not any_ports:
+        # C lines 1192-1201 — no-ports fast path.
+        if any_label and len(edges) > 1:
+            make_simple_flat_labels(layout, edges, tn, hn, et)
+        else:
+            make_simple_flat(layout, edges, tn, hn, et)
+        return
+
+    # ── E+.2-B port-aware routing. ──
+    _warn_port_a_gap(edges, tn, hn)
+
+    cnt = len(edges)
+    tail_hw = tn.width / 2
+    tail_hh = tn.height / 2
+    head_hw = hn.width / 2
+    head_hh = hn.height / 2
+    tail_shape = _node_shape(tn)
+    head_shape = _node_shape(hn)
+
+    for i, le in enumerate(edges):
+        tp = _port_attach_point(layout, tn, le.tailport, is_tail=True)
+        hp = _port_attach_point(layout, hn, le.headport, is_tail=False)
+
+        # Per-edge fan-out along the cross-rank axis — matches the
+        # C make_simple_flat shape but anchored at each edge's own
+        # port attach points instead of the shared node centres.
+        stepy = (tail_hh / (cnt - 1)) if cnt > 1 else 0.0
+        dy = tp[1] + (i - (cnt - 1) / 2.0) * stepy if cnt > 1 else tp[1]
+
+        if et == EDGETYPE_SPLINE or et == EDGETYPE_LINE:
+            ps = [
+                Ppoint(tp[0], tp[1]),
+                Ppoint((2 * tp[0] + hp[0]) / 3, dy),
+                Ppoint((2 * hp[0] + tp[0]) / 3, dy),
+                Ppoint(hp[0], hp[1]),
+            ]
+        else:
+            mid_l = ((2 * tp[0] + hp[0]) / 3, dy)
+            mid_r = ((2 * hp[0] + tp[0]) / 3, dy)
+            ps = [
+                Ppoint(tp[0], tp[1]), Ppoint(tp[0], tp[1]),
+                Ppoint(*mid_l), Ppoint(*mid_l), Ppoint(*mid_l),
+                Ppoint(*mid_r), Ppoint(*mid_r), Ppoint(*mid_r),
+                Ppoint(hp[0], hp[1]), Ppoint(hp[0], hp[1]),
+            ]
+
+        clipped = clip_and_install(
+            ps,
+            tail_x=tn.x, tail_y=tn.y,
+            tail_hw=tail_hw, tail_hh=tail_hh, tail_shape=tail_shape,
+            head_x=hn.x, head_y=hn.y,
+            head_hw=head_hw, head_hh=head_hh, head_shape=head_shape,
+        )
+        _install_points(le, clipped)
 
 
 # ── edgelblcmpfn / makeSimpleFlatLabels (E+.1) ─────────────────────
@@ -576,22 +774,14 @@ def make_flat_edge(layout, sp: SplineInfo, P: Path,
 
     # Check adjacency.  C uses the pre-computed ED_adjacent flag
     # (set by flat.c when no real nodes exist between the endpoints).
-    # Python approximates: adjacent = order diff 1, no ports.
-    any_label = any(le.label for le in edges)
-    any_ports = any(le.tailport or le.headport for le in edges)
-    is_adjacent_no_labels = (abs(tail.order - head.order) == 1
-                             and not any_ports and not any_label)
-    is_adjacent_with_labels = (abs(tail.order - head.order) == 1
-                                and not any_ports and any_label
-                                and len(edges) > 1)
-
-    if is_adjacent_no_labels:
-        make_simple_flat(layout, edges, tail, head, et)
-        return
-
-    if is_adjacent_with_labels:
-        # E+.1 — alternating up/down stacking for labeled adjacent edges.
-        make_simple_flat_labels(layout, edges, tail, head, et)
+    # Python approximates: adjacent = order diff 1.
+    if abs(tail.order - head.order) == 1:
+        # E+.2-B — unified adjacent-flat dispatcher.  Handles:
+        #   - no ports, no labels → make_simple_flat
+        #   - no ports, labels    → make_simple_flat_labels (E+.1)
+        #   - with ports          → port-aware B-path (warns for
+        #                           record-field / non-compass ports)
+        make_flat_adj_edges(layout, sp, P, edges, tail, head, et)
         return
 
     if le0.label:
