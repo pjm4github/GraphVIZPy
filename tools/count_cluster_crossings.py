@@ -18,18 +18,25 @@ from gvpy.grammar.gv_reader import read_dot_file
 from gvpy.engines.layout.dot.dot_layout import DotLayout
 
 
-def _sample_bezier(pts, samples_per_seg=12):
+def _sample_bezier(pts, samples_per_seg=12, is_bezier=None):
     """Sample a polyline or Bezier control-point list to a dense polyline.
 
     ``pts`` is either a raw polyline (anchor-only) or the Graphviz Bezier
     format ``[P0, C1, C2, P1, C3, C4, P2, ...]`` where every group of 4
-    control points after the first anchor defines one cubic segment.  We
-    detect Bezier by checking ``(len - 1) % 3 == 0 and len >= 4``.
+    control points after the first anchor defines one cubic segment.
+
+    *is_bezier* controls the interpretation explicitly — **callers must
+    pass it** for ortho / polyline output since the "(len−1) % 3 == 0"
+    shape heuristic wrongly treats a 4-point right-angle Z polyline as
+    a single cubic segment and returns a curve that wildly deviates
+    from the actual right-angle segments.  If unset we fall back to
+    the old heuristic for back-compat.
     """
     n = len(pts)
     if n < 2:
         return list(pts)
-    is_bezier = n >= 4 and (n - 1) % 3 == 0
+    if is_bezier is None:
+        is_bezier = n >= 4 and (n - 1) % 3 == 0
     if not is_bezier:
         return list(pts)
     out = [pts[0]]
@@ -46,9 +53,9 @@ def _sample_bezier(pts, samples_per_seg=12):
     return out
 
 
-def _segments_cross_bbox(pts, bb):
+def _segments_cross_bbox(pts, bb, is_bezier=None):
     x1, y1, x2, y2 = bb
-    sampled = _sample_bezier(pts)
+    sampled = _sample_bezier(pts, is_bezier=is_bezier)
     for (ax, ay), (bx, by) in zip(sampled, sampled[1:]):
         smin_x, smax_x = min(ax, bx), max(ax, bx)
         smin_y, smax_y = min(ay, by), max(ay, by)
@@ -78,6 +85,10 @@ def count_crossings(dot_path: str, use_channel: bool):
         pts = le.points or []
         if len(pts) < 2:
             continue
+        # Interpret the point list using the edge's recorded spline
+        # type — ortho output is a right-angle polyline, not a cubic,
+        # so forcing bezier interpretation introduces phantom crossings.
+        is_bezier = le.route.spline_type == "bezier"
         offenders = []
         for cl in layout._clusters:
             if not cl.bb:
@@ -88,7 +99,7 @@ def count_crossings(dot_path: str, use_channel: bool):
             # edge has to exit through that cluster's wall.)
             if le.tail_name in cnodes or le.head_name in cnodes:
                 continue
-            if _segments_cross_bbox(pts, cl.bb):
+            if _segments_cross_bbox(pts, cl.bb, is_bezier=is_bezier):
                 offenders.append(cl.name)
         if offenders:
             crossings.append((f"{le.tail_name}->{le.head_name}", offenders))

@@ -83,14 +83,14 @@ def _points_from_path_d(d_attr: str) -> list[tuple[float, float]]:
 
 
 def parse_c_svg(svg: str) -> tuple[dict[str, tuple[float, float, float, float]],
-                                    list[tuple[str, str, list[tuple[float, float]]]]]:
+                                    list[tuple[str, str, list[tuple[float, float]], bool]]]:
     """Extract (cluster_name → bbox) map and edge list from a C dot SVG.
 
-    Returns ``(clusters, edges)`` where ``edges`` is a list of
-    ``(tail_name, head_name, control_points)`` tuples parsed from the
-    edge ``<title>`` and ``<path d>``.  Tail/head port suffixes
-    (``:portname``) are stripped — cluster membership is tracked by
-    node identity, not by port.
+    Returns ``(clusters, edges)`` where each edge is
+    ``(tail_name, head_name, control_points, is_bezier)``.  ``is_bezier``
+    is inferred from the SVG path command letters: presence of ``C``
+    (cubic curveto) → bezier control-point list; otherwise interpret
+    the points as a polyline (ortho / line output).
     """
     clusters: dict[str, tuple[float, float, float, float]] = {}
     for m in _CLUSTER_BLOCK.finditer(svg):
@@ -104,7 +104,7 @@ def parse_c_svg(svg: str) -> tuple[dict[str, tuple[float, float, float, float]],
         if bb is not None:
             clusters[name] = bb
 
-    edges: list[tuple[str, str, list[tuple[float, float]]]] = []
+    edges: list[tuple[str, str, list[tuple[float, float]], bool]] = []
     for m in _EDGE_BLOCK.finditer(svg):
         block = m.group(1)
         title_m = _TITLE.search(block)
@@ -120,9 +120,12 @@ def parse_c_svg(svg: str) -> tuple[dict[str, tuple[float, float, float, float]],
         # Strip ":port" suffixes — we only need node identity.
         t = t.split(":", 1)[0].strip()
         h = h.split(":", 1)[0].strip()
-        pts = _points_from_path_d(path_m.group(1))
+        d_attr = path_m.group(1)
+        pts = _points_from_path_d(d_attr)
         if len(pts) >= 2:
-            edges.append((t, h, pts))
+            # Any uppercase/lowercase C is a cubic bezier command.
+            is_bezier = "C" in d_attr or "c" in d_attr
+            edges.append((t, h, pts, is_bezier))
     return clusters, edges
 
 
@@ -131,17 +134,17 @@ def parse_c_svg(svg: str) -> tuple[dict[str, tuple[float, float, float, float]],
 # ═══════════════════════════════════════════════════════════════════
 
 def _sample_bezier(pts: list[tuple[float, float]],
+                   is_bezier: bool,
                    samples_per_seg: int = 12) -> list[tuple[float, float]]:
-    """Densify cubic-Bezier control points to a polyline for bbox tests.
+    """Densify *pts* to a polyline for bbox-overlap tests.
 
-    Uses the same heuristic as ``tools/count_cluster_crossings.py``:
-    treat as cubic when ``(len - 1) % 3 == 0 and len >= 4``; else
-    polyline.
+    *is_bezier* is the authoritative choice — the audit parses the
+    SVG path to set it correctly.  When ``False`` we treat points as
+    polyline anchors (the right thing for ortho / line output).
     """
     n = len(pts)
     if n < 2:
         return list(pts)
-    is_bezier = n >= 4 and (n - 1) % 3 == 0
     if not is_bezier:
         return list(pts)
     out = [pts[0]]
@@ -157,9 +160,9 @@ def _sample_bezier(pts: list[tuple[float, float]],
     return out
 
 
-def _segments_cross_bbox(pts, bb) -> bool:
+def _segments_cross_bbox(pts, bb, is_bezier: bool) -> bool:
     x1, y1, x2, y2 = bb
-    sampled = _sample_bezier(pts)
+    sampled = _sample_bezier(pts, is_bezier=is_bezier)
     for (ax, ay), (bx, by) in zip(sampled, sampled[1:]):
         if max(ax, bx) < x1 or min(ax, bx) > x2:
             continue
@@ -171,19 +174,15 @@ def _segments_cross_bbox(pts, bb) -> bool:
 
 def count_c_crossings(svg: str,
                       cluster_membership: dict[str, set[str]]) -> int:
-    """Count edges in *svg* whose path crosses a non-member cluster bbox.
-
-    Membership comes from the Python layout's parse (ground truth —
-    same DOT file).  The C SVG provides cluster bboxes and edge paths.
-    """
+    """Count edges in *svg* whose path crosses a non-member cluster bbox."""
     clusters, edges = parse_c_svg(svg)
     count = 0
-    for tail, head, pts in edges:
+    for tail, head, pts, is_bezier in edges:
         for cname, bb in clusters.items():
             members = cluster_membership.get(cname, set())
             if tail in members or head in members:
                 continue
-            if _segments_cross_bbox(pts, bb):
+            if _segments_cross_bbox(pts, bb, is_bezier=is_bezier):
                 count += 1
                 break
     return count

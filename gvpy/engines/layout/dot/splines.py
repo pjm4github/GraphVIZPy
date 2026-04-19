@@ -1049,30 +1049,143 @@ def apply_sameport(layout):
 def ortho_route(layout, le: LayoutEdge, tail: LayoutNode,
                  head: LayoutNode) -> list[tuple[float, float]]:
     """Route with right-angle bends only (Z-shaped or L-shaped path).
-    C analogue: lib/ortho/ortho.c orthogonal routing.  Produces a
-    90-degree polyline route between tail and head, used when
-    splines=ortho.  Currently a simplified version that does NOT do the
-    full ortho channel routing — just places one or two right-angle
-    turns based on rank distance.
+
+    C analogue: ``lib/ortho/ortho.c`` — full orthogonal channel router
+    with obstacle-avoidance.  Python implements a simplified Z-shape
+    placeholder: vertical → horizontal → vertical polyline with one
+    adjustable mid-y.
+
+    Cluster avoidance (pragmatic, non-faithful-to-C): if the candidate
+    horizontal leg would cross a non-member cluster's bbox, shift
+    ``mid_y`` above or below the blocking cluster(s).  Handles simple
+    obstacle stacks; complex cases (obstacles on both sides, nested
+    cluster edges leaving through a foreign cluster's wall) still fall
+    through to whichever side has less deviation.  This closes the
+    visible gap on graphs like ``test_data/2620.dot`` without
+    committing to a full ``lib/ortho`` port.
+
+    Callers: :func:`phase4_routing` when ``splines=ortho``.  Runs
+    inside the TB frame set up by :func:`_phase4_to_tb`, so x is the
+    cross-rank axis and y is the rank axis regardless of output
+    rankdir.
     """
     # Exit point from tail
     p_start = layout._edge_start_point(le, tail, head)
     # Entry point into head
     p_end = layout._edge_end_point(le, head, tail)
 
-    mid_y = (p_start[1] + p_end[1]) / 2.0
-
     if abs(p_start[0] - p_end[0]) < 0.5:
         # Vertically aligned — straight vertical line
         return [p_start, p_end]
 
-    # Z-shaped: vertical from tail, horizontal, vertical into head
+    mid_y = _ortho_safe_midy(
+        layout, le,
+        p_start, p_end,
+        default_mid_y=(p_start[1] + p_end[1]) / 2.0,
+    )
+
     return [
         p_start,
         (p_start[0], mid_y),
         (p_end[0], mid_y),
         p_end,
     ]
+
+
+def _ortho_safe_midy(layout, le, p_start, p_end, default_mid_y: float) -> float:
+    """Pick a ``mid_y`` for the Z-shape's horizontal leg that clears
+    non-member cluster bboxes.
+
+    Heuristic: compute the edge's member-cluster set (clusters
+    containing either endpoint).  Any other cluster whose bbox (a)
+    straddles the candidate ``mid_y`` vertically *and* (b) overlaps
+    the [p_start.x, p_end.x] range horizontally is an obstacle.  If
+    obstacles exist, try shifting ``mid_y`` just above the highest
+    obstacle top or just below the lowest obstacle bottom; pick
+    whichever deviates less from ``default_mid_y`` and has no
+    remaining obstacles at the new height.  If neither side clears,
+    return the smaller-deviation side as a best effort.
+    """
+    members = _ortho_member_clusters(layout, le.tail_name, le.head_name)
+    xlo, xhi = sorted((p_start[0], p_end[0]))
+    margin = max(layout.nodesep / 2.0, 8.0)
+
+    # Gather obstacles at the default mid_y.
+    obstacles = []
+    for cl in layout._clusters:
+        if not cl.bb or cl.name in members:
+            continue
+        cx1, cy1, cx2, cy2 = cl.bb
+        # Horizontal overlap with the candidate leg.
+        if cx2 < xlo or cx1 > xhi:
+            continue
+        # Vertical straddle of default_mid_y.
+        if cy1 <= default_mid_y <= cy2:
+            obstacles.append((cy1, cy2))
+    if not obstacles:
+        return default_mid_y
+
+    # Candidate shifts: above (y < all obstacle tops) or below (y > all
+    # obstacle bottoms).  Node y-down convention: "above" = smaller y.
+    top_of_stack = min(o[0] for o in obstacles)
+    bot_of_stack = max(o[1] for o in obstacles)
+    above_y = top_of_stack - margin
+    below_y = bot_of_stack + margin
+
+    # Don't push past the edge's own endpoints (routing above tail
+    # y_min or below head y_max would loop the edge backwards).
+    y_lo_bound = min(p_start[1], p_end[1]) - margin * 4
+    y_hi_bound = max(p_start[1], p_end[1]) + margin * 4
+
+    above_ok = above_y >= y_lo_bound
+    below_ok = below_y <= y_hi_bound
+
+    above_valid = above_ok and not _ortho_any_obstacle_at(
+        layout, members, above_y, xlo, xhi)
+    below_valid = below_ok and not _ortho_any_obstacle_at(
+        layout, members, below_y, xlo, xhi)
+
+    if above_valid and below_valid:
+        return (above_y if abs(above_y - default_mid_y)
+                <= abs(below_y - default_mid_y) else below_y)
+    if above_valid:
+        return above_y
+    if below_valid:
+        return below_y
+    # Neither side clears everything — pick the smaller-deviation
+    # partial detour; at least reduces crossings versus the naïve Z.
+    if not above_ok and not below_ok:
+        return default_mid_y
+    if above_ok and not below_ok:
+        return above_y
+    if below_ok and not above_ok:
+        return below_y
+    return (above_y if abs(above_y - default_mid_y)
+            <= abs(below_y - default_mid_y) else below_y)
+
+
+def _ortho_member_clusters(layout, tail_name: str, head_name: str) -> set:
+    """Cluster names containing either endpoint."""
+    members = set()
+    for cl in layout._clusters:
+        nset = set(cl.nodes)
+        if tail_name in nset or head_name in nset:
+            members.add(cl.name)
+    return members
+
+
+def _ortho_any_obstacle_at(layout, members, y: float,
+                            xlo: float, xhi: float) -> bool:
+    """True if any non-member cluster overlaps the horizontal strip at *y*."""
+    for cl in layout._clusters:
+        if not cl.bb or cl.name in members:
+            continue
+        cx1, cy1, cx2, cy2 = cl.bb
+        if cx2 < xlo or cx1 > xhi:
+            continue
+        if cy1 <= y <= cy2:
+            return True
+    return False
 
 
 def route_through_chain(layout, tail_name: str, chain: list[str],
