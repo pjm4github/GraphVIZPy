@@ -96,6 +96,124 @@ if TYPE_CHECKING:
     from gvpy.engines.layout.dot.dot_layout import DotGraphInfo, LayoutEdge, LayoutNode
 
 
+def _phase4_to_tb(layout):
+    """Reverse ``position.apply_rankdir`` so phase-4 code sees TB coords.
+
+    C keeps its internal layout in a fixed y-rank frame and only
+    rotates at postproc; Python's ``apply_rankdir`` already rotated at
+    the end of phase 3, so every phase-4 site that reads ``ln.y`` as
+    the rank axis or uses ``sp.left_bound`` as the cross-rank bound is
+    wrong for LR/RL/BT.  Un-swap here, let phase 4 run pure-TB, then
+    re-apply the rotation in :func:`_phase4_from_tb` at exit — nodes,
+    cluster bboxes, edge splines, and label anchors all get the
+    reverse transform.
+    """
+    rankdir = layout.rankdir
+    if rankdir == "TB":
+        return None
+    state = {"rankdir": rankdir}
+    if rankdir == "BT":
+        max_y = max((ln.y for ln in layout.lnodes.values()), default=0.0)
+        state["max_y"] = max_y
+        for ln in layout.lnodes.values():
+            ln.y = max_y - ln.y
+        for cl in layout._clusters:
+            if cl.bb:
+                x1, y1, x2, y2 = cl.bb
+                cl.bb = (x1, max_y - y2, x2, max_y - y1)
+    elif rankdir == "LR":
+        for ln in layout.lnodes.values():
+            ln.x, ln.y = ln.y, ln.x
+            ln.width, ln.height = ln.height, ln.width
+        for cl in layout._clusters:
+            if cl.bb:
+                x1, y1, x2, y2 = cl.bb
+                cl.bb = (y1, x1, y2, x2)
+    elif rankdir == "RL":
+        # RL = LR + flip Y. Reverse: flip Y first, then swap x/y.
+        max_x = max((ln.x for ln in layout.lnodes.values()), default=0.0)
+        state["max_x"] = max_x
+        for ln in layout.lnodes.values():
+            ln.x = max_x - ln.x            # undo the final flip
+            ln.x, ln.y = ln.y, ln.x        # undo the LR-swap
+            ln.width, ln.height = ln.height, ln.width
+        for cl in layout._clusters:
+            if cl.bb:
+                x1, y1, x2, y2 = cl.bb
+                # apply the same two-step reverse
+                x1, x2 = max_x - x2, max_x - x1
+                cl.bb = (y1, x1, y2, x2)
+    layout.rankdir = "TB"
+    return state
+
+
+def _phase4_from_tb(layout, state):
+    """Reapply the saved rankdir transform, including to new edge output.
+
+    Companion of :func:`_phase4_to_tb`.  Besides restoring node and
+    cluster bboxes, this also transforms every :class:`EdgeRoute` the
+    phase-4 body just computed — ``points``, ``sp``, ``ep``, and
+    ``label_pos`` all live in the internal TB frame until now.
+    """
+    if state is None:
+        return
+    rankdir = state["rankdir"]
+    layout.rankdir = rankdir
+
+    def _xform(pt):
+        x, y = pt
+        if rankdir == "BT":
+            return (x, state["max_y"] - y)
+        if rankdir == "LR":
+            return (y, x)
+        if rankdir == "RL":
+            return (state["max_x"] - y, x)
+        return (x, y)
+
+    if rankdir == "BT":
+        max_y = state["max_y"]
+        for ln in layout.lnodes.values():
+            ln.y = max_y - ln.y
+        for cl in layout._clusters:
+            if cl.bb:
+                x1, y1, x2, y2 = cl.bb
+                cl.bb = (x1, max_y - y2, x2, max_y - y1)
+    elif rankdir == "LR":
+        for ln in layout.lnodes.values():
+            ln.x, ln.y = ln.y, ln.x
+            ln.width, ln.height = ln.height, ln.width
+        for cl in layout._clusters:
+            if cl.bb:
+                x1, y1, x2, y2 = cl.bb
+                cl.bb = (y1, x1, y2, x2)
+    elif rankdir == "RL":
+        # RL was produced from LR+flipY; redo LR swap then flip Y.
+        max_x = state["max_x"]
+        for ln in layout.lnodes.values():
+            ln.x, ln.y = ln.y, ln.x
+            ln.width, ln.height = ln.height, ln.width
+            ln.x = max_x - ln.x
+        for cl in layout._clusters:
+            if cl.bb:
+                x1, y1, x2, y2 = cl.bb
+                # LR swap then flip x
+                x1, y1, x2, y2 = y1, x1, y2, x2
+                x1, x2 = max_x - x2, max_x - x1
+                cl.bb = (x1, y1, x2, y2)
+
+    # Transform edge output.
+    all_edges = list(layout.ledges) + list(layout._chain_edges)
+    for le in all_edges:
+        if le.route.points:
+            le.route.points = [_xform(p) for p in le.route.points]
+        if le.route.sflag:
+            le.route.sp = _xform(le.route.sp)
+        if le.route.eflag:
+            le.route.ep = _xform(le.route.ep)
+        if le.label_pos:
+            le.label_pos = _xform(le.label_pos)
+
+
 def phase4_routing(layout):
     """phase4_routing — top-level edge routing driver.
 
@@ -145,6 +263,19 @@ def phase4_routing(layout):
     # always 1.
     trace("spline",
           f"phase4 begin: et={edge_type_from_splines(layout.splines)} normalize=1")
+
+    # Un-swap rankdir so the rest of phase 4 sees TB coords (matches C's
+    # fixed y-rank internal frame).  :func:`_phase4_from_tb` reverses
+    # this at the end, including transforming new edge splines.
+    _rankdir_state = _phase4_to_tb(layout)
+    try:
+        _phase4_routing_body(layout)
+    finally:
+        _phase4_from_tb(layout, _rankdir_state)
+
+
+def _phase4_routing_body(layout):
+    """Phase-4 body — always runs in TB frame (see :func:`phase4_routing`)."""
     # Pre-compute rank bounding info for obstacle-aware routing.
     # ``_rank_ht1`` / ``_rank_ht2`` are declared on DotGraphInfo so
     # PyCharm and mypy see them as proper instance attributes;
