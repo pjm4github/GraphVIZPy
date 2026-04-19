@@ -1,0 +1,9 @@
+digraph G {
+    rankdir=LR;
+    node [shape=record];
+    n1 [label="{{<In0>|<In1>|<In2>}|process|{<Out0>}}"];
+    a -> n1:In0;
+    b -> n1:In1;
+    c -> n1:In2;
+    n1:Out0 -> d;
+}

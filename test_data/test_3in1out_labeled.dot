@@ -1,0 +1,8 @@
+digraph G {
+    node [shape=record];
+    n1 [label="{{<In0>alpha|<In1>beta|<In2>gamma}|process_data|{<Out0>result}}"];
+    a -> n1:In0;
+    b -> n1:In1;
+    c -> n1:In2;
+    n1:Out0 -> d;
+}
