@@ -24,14 +24,18 @@ This project is an adjacent module planned to merge with:
 - Rendering is delegated to pictosync via attribute_schema.json
 - The layout tools will work with both code bases
 
-## Active TODO Files
-These files track outstanding work — always check them before starting a new task:
+## Active TODO File
 
-- **`TODO_dot_layout.md`** — outstanding work on `gvpy/engines/dot/dot_layout.py`
-- **`TODO_dot_splines_port.md`** — function-by-function alignment of `splines.py` with `lib/dotgen/dotsplines.c` + `lib/common/splines.c` + `lib/common/routespl.c` + `lib/pathplan/*`
-- **`TODO_layout_engines.md`** — outstanding work on other layout engines
-- **`TODO_main_gui.md`** — outstanding work on `MainGraphvisPy.py`
-- **`TODO_pictosync_merge.md`** — outstanding work on the Pictosync merge boundary
+- **`TODO.md`** — consolidated roadmap. Python ↔ C divergence table (§1),
+  dot-engine priority work (§2), splines port completion status (§3), core
+  refactor (§4), other layout engines (§5), MainGraphvisPy GUI (§6),
+  pictosync merge (§7), diagnostics + tooling (§8). Always check this
+  before starting new work.
+
+The legacy per-topic files (`TODO_dot_layout.md`, `TODO_dot_splines_port.md`,
+`TODO_layout_engines.md`, `TODO_main_gui.md`, `TODO_pictosync_merge.md`,
+`TODO_core_refactor.md`) are kept for archival history only and are not
+maintained.
 
 ## Reference C Implementation
 The authoritative Graphviz C source used for behavioral matching is located at:
@@ -96,7 +100,8 @@ generating new ones to avoid redundant builds.
 
 The workflow is:
 
-1. **Check TODO_dot_layout.md** for the current target phase before starting.
+1. **Check `TODO.md`** (§1 divergences + §2 priority items) for the current
+   target before starting.
 
 2. **Read the corresponding C source** in
    `C:\Users\pmora\OneDrive\Documents\Git\GitHub\graphviz\lib\dotgen\`
@@ -132,7 +137,8 @@ $DOT = "C:\Users\pmora\OneDrive\Documents\Git\GitHub\graphviz\cmake-build-debug-
 
 8. **Fix `gvpy/engines/dot/dot_layout.py`** to match the C behavior at the divergence point.
 
-9. **Update TODO_dot_layout.md** to reflect what was completed and what is next.
+9. **Update `TODO.md`** — mark the divergence resolved (§1) or update the
+   priority entry (§2) to reflect what was completed and what is next.
 
 10. **Repeat** for the next phase.
 
