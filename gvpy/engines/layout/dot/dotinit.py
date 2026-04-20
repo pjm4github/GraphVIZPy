@@ -266,7 +266,13 @@ def collect_edges_recursive(layout, g: Graph, seen: set):
         # that since our ranksep handling differs.
         if edge.attributes.get("label") and ml == 1:
             ml = 2
-        wt = min(int(edge.attributes.get("weight", "1")), 1000)
+        # C accepts float weights (e.g. ``0.49...``) on edges; our
+        # earlier ``int(...)`` rejected them with a ValueError.  Parse
+        # as float first then truncate — same as C's ``(int)atof(s)``.
+        try:
+            wt = min(int(float(edge.attributes.get("weight", "1"))), 1000)
+        except (ValueError, TypeError):
+            wt = 1
         cstr = edge.attributes.get("constraint", "true").lower()
         has_constraint = cstr not in ("false", "none", "no", "0")
         label = edge.attributes.get("label", "")
