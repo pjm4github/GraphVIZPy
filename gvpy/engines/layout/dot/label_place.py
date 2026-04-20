@@ -136,21 +136,9 @@ PORT_LABEL_ANGLE = -25.0     # degrees; positive is CCW
 PORT_LABEL_DISTANCE = 10.0   # point scale for labeldistance multiplier
 
 
-def _late_double(attr_str: str, default: float, minimum: float) -> float:
-    """Read a numeric attribute with default and minimum clamp.
-
-    See: /lib/common/utils.c @ 55
-
-    An empty / missing / unparseable string yields *default*; otherwise
-    the parsed value, clamped up to *minimum*.
-    """
-    if not attr_str:
-        return default
-    try:
-        v = float(attr_str)
-    except ValueError:
-        return default
-    return max(v, minimum)
+# Canonical implementation in :mod:`common.labels` as ``late_double``;
+# the leading-underscore alias is preserved here for in-module use.
+from gvpy.engines.layout.common.labels import late_double as _late_double  # noqa: F401
 
 
 def _near_endpoint(route: "EdgeRoute", head_p: bool) -> tuple[
