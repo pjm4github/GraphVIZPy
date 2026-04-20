@@ -4,8 +4,8 @@ See: /lib/pathplan/inpoly.c @ 26
 """
 from __future__ import annotations
 
-from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoint, Ppoly
-from gvpy.engines.layout.dot.pathplan.visibility import wind
+from gvpy.engines.layout.pathplan.pathgeom import Ppoint, Ppoly
+from gvpy.engines.layout.pathplan.visibility import wind
 
 
 def in_poly(poly: Ppoly, q: Ppoint) -> bool:

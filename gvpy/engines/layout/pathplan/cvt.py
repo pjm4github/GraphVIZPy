@@ -18,10 +18,10 @@ pipeline: a single ``Pobspath`` call drives
 """
 from __future__ import annotations
 
-from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoint, Ppoly, Ppolyline
-from gvpy.engines.layout.dot.pathplan.shortestpth import makePath
-from gvpy.engines.layout.dot.pathplan.visibility import ptVis, visibility
-from gvpy.engines.layout.dot.pathplan.vispath import Vconfig
+from gvpy.engines.layout.pathplan.pathgeom import Ppoint, Ppoly, Ppolyline
+from gvpy.engines.layout.pathplan.shortestpth import makePath
+from gvpy.engines.layout.pathplan.visibility import ptVis, visibility
+from gvpy.engines.layout.pathplan.vispath import Vconfig
 
 
 def Pobsopen(obs: list[Ppoly]) -> Vconfig:

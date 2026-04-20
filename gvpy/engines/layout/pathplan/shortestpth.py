@@ -13,11 +13,9 @@ Two functions:
 """
 from __future__ import annotations
 
-import math
-
-from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoint
-from gvpy.engines.layout.dot.pathplan.vispath import Vconfig
-from gvpy.engines.layout.dot.pathplan.visibility import directVis
+from gvpy.engines.layout.pathplan.pathgeom import Ppoint
+from gvpy.engines.layout.pathplan.vispath import Vconfig
+from gvpy.engines.layout.pathplan.visibility import directVis
 
 
 # See: /lib/pathplan/shortestpth.c @ 30

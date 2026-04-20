@@ -4,7 +4,7 @@ See: /lib/pathplan/util.c @ 19
 """
 from __future__ import annotations
 
-from gvpy.engines.layout.dot.pathplan.pathgeom import Pedge, Ppoly, Ppolyline
+from gvpy.engines.layout.pathplan.pathgeom import Pedge, Ppoly, Ppolyline
 
 
 def Ppolybarriers(polys: list[Ppoly]) -> list[Pedge]:

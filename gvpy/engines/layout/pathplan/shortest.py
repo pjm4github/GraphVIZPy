@@ -29,11 +29,10 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoint, Ppoly, Ppolyline
-from gvpy.engines.layout.dot.pathplan.triang import (
+from gvpy.engines.layout.pathplan.pathgeom import Ppoint, Ppoly, Ppolyline
+from gvpy.engines.layout.pathplan.triang import (
     ISCCW,
     ISCW,
-    ISON,
     ccw,
     isdiagonal,
 )

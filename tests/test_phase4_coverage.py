@@ -9,7 +9,7 @@ obstacle-avoidance primitives.
 import math
 import pytest
 
-from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoint, Ppoly, Ppolyline, Pedge
+from gvpy.engines.layout.pathplan import Ppoint, Ppoly, Pedge
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -483,7 +483,7 @@ class TestRoutesplCoverage:
 
     def test_checkpath_empty(self):
         from gvpy.engines.layout.dot.routespl import checkpath
-        from gvpy.engines.layout.dot.path import Path, PathEnd, Box
+        from gvpy.engines.layout.dot.path import Path, PathEnd
         pp = Path(start=PathEnd(np=(50, 25)), end=PathEnd(np=(50, 75)))
         status, boxes = checkpath([], pp)
         assert status == 1
@@ -513,7 +513,7 @@ class TestRoutesplCoverage:
 class TestPathplanCoverage:
 
     def test_ppolybarriers(self):
-        from gvpy.engines.layout.dot.pathplan.util import Ppolybarriers
+        from gvpy.engines.layout.pathplan import Ppolybarriers
         poly = Ppoly(ps=[
             Ppoint(0, 0), Ppoint(100, 0),
             Ppoint(100, 100), Ppoint(0, 100),
@@ -523,7 +523,7 @@ class TestPathplanCoverage:
         assert all(isinstance(b, Pedge) for b in bars)
 
     def test_in_poly(self):
-        from gvpy.engines.layout.dot.pathplan.inpoly import in_poly
+        from gvpy.engines.layout.pathplan import in_poly
         # CW vertex order for screen coords (y-down)
         poly = Ppoly(ps=[Ppoint(0, 0), Ppoint(0, 100),
                          Ppoint(100, 100), Ppoint(100, 0)])
@@ -531,16 +531,16 @@ class TestPathplanCoverage:
         assert in_poly(poly, Ppoint(200, 200)) is False
 
     def test_visibility_basic(self):
-        from gvpy.engines.layout.dot.pathplan.visibility import (
-            visibility, area2, wind,
+        from gvpy.engines.layout.pathplan import (
+            area2, wind,
         )
         assert area2(Ppoint(0, 0), Ppoint(1, 0), Ppoint(0, 1)) != 0
         w = wind(Ppoint(0, 0), Ppoint(1, 0), Ppoint(0, 1))
         assert w in (1, 2)  # ISCW or ISCCW
 
     def test_pobsopen_pobspath(self):
-        from gvpy.engines.layout.dot.pathplan.cvt import Pobsopen, Pobspath
-        from gvpy.engines.layout.dot.pathplan.vispath import POLYID_NONE
+        from gvpy.engines.layout.pathplan import Pobsopen, Pobspath
+        from gvpy.engines.layout.pathplan import POLYID_NONE
         # CW polygon (pathplan convention) as obstacle in the middle
         polys = [
             Ppoly(ps=[Ppoint(40, 40), Ppoint(40, 60),
@@ -554,7 +554,7 @@ class TestPathplanCoverage:
         assert path.pn >= 2
 
     def test_shortestpth_dijkstra(self):
-        from gvpy.engines.layout.dot.pathplan.shortestpth import shortestPath
+        from gvpy.engines.layout.pathplan import shortestPath
         # 4-node graph: 0-1 (w=1), 1-2 (w=1), 0-2 (w=5), 2-3 (w=1)
         adj = [[0, 1, 5, 0],
                [1, 0, 1, 0],
@@ -566,7 +566,7 @@ class TestPathplanCoverage:
         assert dad[1] == 0
 
     def test_triang_basic(self):
-        from gvpy.engines.layout.dot.pathplan.triang import Ptriangulate
+        from gvpy.engines.layout.pathplan import Ptriangulate
         # Ptriangulate expects CCW vertices.  In screen coords (y-down),
         # CCW is: (0,0) → (0,100) → (100,100) → (100,0).
         poly = Ppoly(ps=[

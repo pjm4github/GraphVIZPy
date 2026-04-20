@@ -10,16 +10,15 @@ to the node boundary by :func:`clip.clip_and_install`.
 """
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING
 
 from gvpy.engines.layout.dot.clip import clip_and_install
-from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoint
+from gvpy.engines.layout.pathplan import Ppoint
 from gvpy.engines.layout.dot.path import BOTTOM, TOP, LEFT, RIGHT
 from gvpy.engines.layout.dot.regular_edge import _node_shape, _install_points
 
 if TYPE_CHECKING:
-    from gvpy.engines.layout.dot.dot_layout import LayoutEdge, LayoutNode
+    pass
 
 SELF_EDGE_SIZE = 18
 

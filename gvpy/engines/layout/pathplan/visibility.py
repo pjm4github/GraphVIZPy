@@ -23,8 +23,8 @@ from __future__ import annotations
 
 import math
 
-from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoint, Ppoly
-from gvpy.engines.layout.dot.pathplan.vispath import POLYID_NONE, POLYID_UNKNOWN, Vconfig
+from gvpy.engines.layout.pathplan.pathgeom import Ppoint, Ppoly
+from gvpy.engines.layout.pathplan.vispath import POLYID_NONE, POLYID_UNKNOWN, Vconfig
 
 # Note: ``in_poly`` is imported lazily inside :func:`polyhit` to avoid
 # a circular import — ``inpoly.py`` depends on :func:`wind` from this
@@ -242,7 +242,7 @@ def polyhit(conf: Vconfig, p: Ppoint) -> int:
     See: /lib/pathplan/visibility.c @ 224
     """
     # Lazy import: inpoly.py → visibility.py → inpoly.py cycle.
-    from gvpy.engines.layout.dot.pathplan.inpoly import in_poly
+    from gvpy.engines.layout.pathplan.inpoly import in_poly
 
     for i in range(conf.Npoly):
         sub_ps = conf.P[conf.start[i]:conf.start[i + 1]]

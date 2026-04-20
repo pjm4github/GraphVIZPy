@@ -24,15 +24,15 @@ See ``TODO_dot_splines_port.md`` for the full roadmap.
 """
 from __future__ import annotations
 
-from gvpy.engines.layout.dot.pathplan.pathgeom import (
+from gvpy.engines.layout.pathplan.pathgeom import (
     Pedge,
     Ppoint,
     Ppoly,
     Ppolyline,
     Pvector,
 )
-from gvpy.engines.layout.dot.pathplan.solvers import solve1, solve2, solve3
-from gvpy.engines.layout.dot.pathplan.visibility import (
+from gvpy.engines.layout.pathplan.solvers import solve1, solve2, solve3
+from gvpy.engines.layout.pathplan.visibility import (
     allocArray,
     area2,
     clear,
@@ -49,18 +49,18 @@ from gvpy.engines.layout.dot.pathplan.visibility import (
     visibility,
     wind,
 )
-from gvpy.engines.layout.dot.pathplan.inpoly import in_poly
-from gvpy.engines.layout.dot.pathplan.util import (
+from gvpy.engines.layout.pathplan.inpoly import in_poly
+from gvpy.engines.layout.pathplan.util import (
     Ppolybarriers,
     freePath,
     make_polyline,
 )
-from gvpy.engines.layout.dot.pathplan.vispath import (
+from gvpy.engines.layout.pathplan.vispath import (
     POLYID_NONE,
     POLYID_UNKNOWN,
     Vconfig,
 )
-from gvpy.engines.layout.dot.pathplan.triang import (
+from gvpy.engines.layout.pathplan.triang import (
     ISCCW,
     ISCW,
     ISON,
@@ -68,9 +68,9 @@ from gvpy.engines.layout.dot.pathplan.triang import (
     ccw,
     isdiagonal,
 )
-from gvpy.engines.layout.dot.pathplan.shortest import Pshortestpath
-from gvpy.engines.layout.dot.pathplan.shortestpth import makePath, shortestPath
-from gvpy.engines.layout.dot.pathplan.cvt import Pobsopen, Pobsclose, Pobspath
+from gvpy.engines.layout.pathplan.shortest import Pshortestpath
+from gvpy.engines.layout.pathplan.shortestpth import makePath, shortestPath
+from gvpy.engines.layout.pathplan.cvt import Pobsopen, Pobsclose, Pobspath
 
 __all__ = [
     # pathgeom

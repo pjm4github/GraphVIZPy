@@ -4,10 +4,9 @@ See: /lib/pathplan/pathgeom.h @ 34  (C counterpart: Ppoint / Ppoly /
 Ppolyline / Pedge)
 See: /lib/common/geomprocs.h  (bounding-box helpers, bbox_intersect)
 
-Types moved here from ``dot/pathplan/pathgeom.py`` so any engine can
-depend on geometry primitives without pulling in the dot-specific
-pathplan subpackage.  ``dot/pathplan/pathgeom.py`` re-exports for
-back-compat.
+Types moved here from ``pathplan/pathgeom.py`` so any engine can
+depend on geometry primitives without pulling in the pathplan
+subpackage.  ``pathplan/pathgeom.py`` re-exports for back-compat.
 """
 from __future__ import annotations
 

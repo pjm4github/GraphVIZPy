@@ -32,10 +32,10 @@ import math
 import sys
 
 from gvpy.engines.layout.dot.path import Box, Path
-from gvpy.engines.layout.dot.pathplan.pathgeom import Pedge, Ppoint, Ppoly, Ppolyline
-from gvpy.engines.layout.dot.pathplan.route import Proutespline
-from gvpy.engines.layout.dot.pathplan.shortest import Pshortestpath
-from gvpy.engines.layout.dot.pathplan.util import make_polyline
+from gvpy.engines.layout.pathplan import Pedge, Ppoint, Ppoly
+from gvpy.engines.layout.pathplan.route import Proutespline
+from gvpy.engines.layout.pathplan import Pshortestpath
+from gvpy.engines.layout.pathplan import make_polyline
 
 
 # ── Constants ──────────────────────────────────────────────────────

@@ -15,12 +15,12 @@ from gvpy.engines.layout.dot.path import (
     BOTTOM, TOP, FLATEDGE,
     add_box, beginpath, endpath,
 )
-from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoint
+from gvpy.engines.layout.pathplan import Ppoint
 from gvpy.engines.layout.dot.regular_edge import makeregularend, _node_geom, _node_shape, _install_points
 from gvpy.engines.layout.dot.routespl import routesplines, routepolylines
 
 if TYPE_CHECKING:
-    from gvpy.engines.layout.dot.dot_layout import LayoutEdge, LayoutNode
+    pass
 
 EDGETYPE_SPLINE = 5 << 1
 EDGETYPE_LINE = 1 << 1
@@ -341,7 +341,7 @@ def make_simple_flat_labels(layout, edges: list, tail, head, et: int) -> None:
     triangulates the polygon interior.
     """
     from gvpy.engines.layout.dot.routespl import simple_spline_route
-    from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoly
+    from gvpy.engines.layout.pathplan import Ppoly
 
     if not edges:
         return
@@ -750,7 +750,6 @@ def make_flat_edge(layout, sp: SplineInfo, P: Path,
     with ports/labels) is deferred — falls back to ``make_simple_flat``.
     """
     from gvpy.engines.layout.dot.path import BWDEDGE
-    from gvpy.engines.layout.dot.dotsplines import maximal_bbox
 
     if not edges:
         return

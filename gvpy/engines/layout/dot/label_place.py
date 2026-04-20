@@ -155,7 +155,7 @@ def _near_endpoint(route: "EdgeRoute", head_p: bool) -> tuple[
     """
     # Lazy import to keep label_place.py's top-level cheap.
     from gvpy.engines.layout.dot.clip import bezier_point
-    from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoint
+    from gvpy.engines.layout.pathplan import Ppoint
 
     pts = route.points
     stride = _segment_stride(route)

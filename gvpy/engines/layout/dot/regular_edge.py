@@ -9,7 +9,6 @@ Phase D of the splines port.  Replaces the heuristic
 """
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING
 
 from gvpy.engines.layout.dot.clip import clip_and_install
@@ -19,11 +18,11 @@ from gvpy.engines.layout.dot.path import (
     MINW, HALFMINW,
     add_box, beginpath, endpath,
 )
-from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoint
+from gvpy.engines.layout.pathplan import Ppoint
 from gvpy.engines.layout.dot.routespl import routesplines, routepolylines
 
 if TYPE_CHECKING:
-    from gvpy.engines.layout.dot.edge_route import EdgeRoute
+    pass
 
 # Avoid importing these at module level to prevent circular deps.
 # They are accessed via the ``layout`` object or late-imported.
@@ -373,8 +372,7 @@ def make_regular_edge(layout, sp: SplineInfo, P: Path,
     """
     from gvpy.engines.layout.dot.dotsplines import (
         maximal_bbox, rank_box, spline_merge,
-        _node_out_edges, _node_in_edges,
-    )
+        _node_out_edges, )
     from gvpy.engines.layout.dot.path import BWDEDGE
 
     if not edges:

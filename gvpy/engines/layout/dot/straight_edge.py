@@ -10,11 +10,11 @@ import math
 from typing import TYPE_CHECKING
 
 from gvpy.engines.layout.dot.clip import clip_and_install
-from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoint
+from gvpy.engines.layout.pathplan import Ppoint
 from gvpy.engines.layout.dot.regular_edge import _node_shape, _install_points
 
 if TYPE_CHECKING:
-    from gvpy.engines.layout.dot.dot_layout import LayoutEdge, LayoutNode
+    pass
 
 MILLIPOINT = 0.001
 EDGETYPE_CURVED = 2 << 1

@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
-from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoint, Ppoly
+from gvpy.engines.layout.pathplan.pathgeom import Ppoint, Ppoly
 
 # ── ccw return values ──────────────────────────────────────────────
 # See: /lib/pathplan/tri.h @ 41

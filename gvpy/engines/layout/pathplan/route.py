@@ -27,8 +27,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from gvpy.engines.layout.dot.pathplan.pathgeom import Pedge, Ppoint, Ppolyline, Pvector
-from gvpy.engines.layout.dot.pathplan.solvers import solve3
+from gvpy.engines.layout.pathplan.pathgeom import Pedge, Ppoint, Ppolyline, Pvector
+from gvpy.engines.layout.pathplan.solvers import solve3
 
 
 # ── Constants ──────────────────────────────────────────────────────
