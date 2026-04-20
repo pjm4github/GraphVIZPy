@@ -995,6 +995,96 @@ class OrthoEdgeInput:
     tail_pos: Ppoint
     head_pos: Ppoint
     edge_id: int  # opaque caller handle (typically ``id(le)``)
+    tail_name: str = ""
+    head_name: str = ""
+
+
+# ---- Phase 7+ cluster-avoidance layer (not in C's ortho.c) ----
+
+
+@dataclass
+class _ClusterInfo:
+    """Cluster topology the routing pipeline uses to penalize paths
+    through non-member clusters.  Populated once per :func:`ortho_edges`
+    call; ``cell_idxs[i]`` is the index set of maze cells whose bbox
+    sits entirely inside ``bboxes[i]``.
+    """
+    names: list[str] = field(default_factory=list)
+    bboxes: list[Boxf] = field(default_factory=list)
+    member_nodes: list[set[str]] = field(default_factory=list)
+    cell_idxs: list[set[int]] = field(default_factory=list)
+
+
+# Weight added to each sedge in a cell whose bbox sits inside a
+# non-member cluster.  Tuned so a single cluster crossing outweighs
+# the base ``(hwt+vwt)/2 + mu`` cost of several typical channels but
+# does not overflow when stacked with :mod:`maze`'s own ``BIG``
+# channel-width penalty.
+_CLUSTER_PENALTY = 1_000_000.0
+
+
+def _compute_cluster_info(layout, mp) -> _ClusterInfo:
+    """Pull cluster bboxes + membership off the layout and map each
+    cluster to the set of maze cells contained in its bbox.
+    """
+    info = _ClusterInfo()
+    clusters = getattr(layout, "_clusters", ()) or ()
+    for cl in clusters:
+        bb_tuple = getattr(cl, "bb", None)
+        if not bb_tuple:
+            continue
+        x1, y1, x2, y2 = bb_tuple
+        if x1 >= x2 or y1 >= y2:
+            continue
+        info.names.append(cl.name)
+        info.bboxes.append(
+            Boxf(LL=Ppoint(x1, y1), UR=Ppoint(x2, y2)),
+        )
+        info.member_nodes.append(set(cl.nodes))
+        info.cell_idxs.append(set())
+
+    # A cell belongs to a cluster's avoid-set if ANY part of its bbox
+    # overlaps the cluster bbox.  Strict containment misses boundary
+    # cells — routes threading through a boundary cell visually cross
+    # the cluster even though the cell isn't wholly inside it.
+    for cell_idx, cp in enumerate(mp.cells):
+        for ci, cbb in enumerate(info.bboxes):
+            if (cbb.LL.x < cp.bb.UR.x and cp.bb.LL.x < cbb.UR.x
+                    and cbb.LL.y < cp.bb.UR.y and cp.bb.LL.y < cbb.UR.y):
+                info.cell_idxs[ci].add(cell_idx)
+    return info
+
+
+def _edge_member_cluster_idxs(inp: "OrthoEdgeInput",
+                              info: _ClusterInfo) -> set[int]:
+    """Cluster indexes containing either endpoint of ``inp``.
+
+    A route between two nodes that share a cluster should be free to
+    use that cluster's interior cells; otherwise the avoidance
+    penalty would block same-cluster edges from routing at all.
+    """
+    members: set[int] = set()
+    for i, nodes in enumerate(info.member_nodes):
+        if inp.tail_name in nodes or inp.head_name in nodes:
+            members.add(i)
+    return members
+
+
+def _apply_cluster_penalty(mp: Maze, avoid_cell_idxs: set[int]) -> None:
+    """Bump every sedge in the named cells by :data:`_CLUSTER_PENALTY`.
+
+    Starts from ``base_weight`` each time so per-edge penalties don't
+    accumulate across routing iterations.
+    """
+    # Reset all edges to base first (clears prior iteration's bumps).
+    for cp in mp.cells:
+        for e in cp.edges:
+            e.weight = e.base_weight
+    # Apply the current edge's penalties.
+    for idx in avoid_cell_idxs:
+        cp = mp.cells[idx]
+        for e in cp.edges:
+            e.weight = e.base_weight + _CLUSTER_PENALTY
 
 
 def ortho_edges(layout, *, use_lbls: bool) -> dict[int, list]:
@@ -1027,6 +1117,15 @@ def ortho_edges(layout, *, use_lbls: bool) -> dict[int, list]:
     gcell_bboxes = _unique_gcell_bboxes(inputs)
     mp = mk_maze(gcell_bboxes)
 
+    # Precompute cluster-to-cell membership.  Phase 7+ cluster-avoidance
+    # layer runs per-edge before short_path and mirrors the dodge logic
+    # the legacy Z-router had in _ortho_safe_midy — see TODO §5b.
+    cluster_info = _compute_cluster_info(layout, mp)
+    print(
+        f"[TRACE ortho-route] clusters n={len(cluster_info.bboxes)}",
+        file=sys.stderr,
+    )
+
     # Attach each LayoutNode's cell (by bbox lookup).
     bb_to_cell = {_bb_key(c.bb): c for c in mp.gcells}
 
@@ -1052,6 +1151,7 @@ def ortho_edges(layout, *, use_lbls: bool) -> dict[int, list]:
 
     pq = fpq.pq_gen(sg.nnodes + 2)
 
+    all_cluster_idxs = set(range(len(cluster_info.bboxes)))
     routes: list[Route] = []
     routed_inputs: list[OrthoEdgeInput] = []
     for inp in sorted_inputs:
@@ -1061,6 +1161,15 @@ def ortho_edges(layout, *, use_lbls: bool) -> dict[int, list]:
             routes.append(Route(segs=[]))
             routed_inputs.append(inp)
             continue
+
+        # Per-edge cluster avoidance: weight up every cell whose bbox
+        # sits inside a cluster that contains neither endpoint.
+        if cluster_info.bboxes:
+            member_idxs = _edge_member_cluster_idxs(inp, cluster_info)
+            avoid_cells: set[int] = set()
+            for ci in all_cluster_idxs - member_idxs:
+                avoid_cells |= cluster_info.cell_idxs[ci]
+            _apply_cluster_penalty(mp, avoid_cells)
 
         if start_cell is dest_cell:
             _add_loop(sg, start_cell, dn, sn)
@@ -1078,6 +1187,13 @@ def ortho_edges(layout, *, use_lbls: bool) -> dict[int, list]:
         routes.append(rte)
         routed_inputs.append(inp)
         reset(sg)
+
+    # Restore base weights so downstream channel/track assignment sees
+    # the original per-cell cost structure, not the last edge's penalty.
+    if cluster_info.bboxes:
+        for cp in mp.cells:
+            for e in cp.edges:
+                e.weight = e.base_weight
 
     mp.hchans = _extract_h_chans(mp)
     mp.vchans = _extract_v_chans(mp)
@@ -1136,6 +1252,8 @@ def _collect_inputs(layout) -> list[OrthoEdgeInput]:
                 tail_pos=Ppoint(tail.x, tail.y),
                 head_pos=Ppoint(head.x, head.y),
                 edge_id=id(le),
+                tail_name=le.tail_name,
+                head_name=le.head_name,
             ))
     return inputs
 

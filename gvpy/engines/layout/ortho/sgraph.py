@@ -52,11 +52,19 @@ class Snode:
 
 @dataclass
 class Sedge:
-    """Port of ``struct sedge`` in ``sgraph.h``."""
+    """Port of ``struct sedge`` in ``sgraph.h``.
+
+    :attr:`base_weight` is a GraphvizPy addition, not in the C struct.
+    It caches the weight assigned at :func:`create_sedge` time so
+    :mod:`ortho`'s cluster-avoidance layer can reset per-edge
+    penalties between routing iterations without losing the original
+    channel-width cost.  Phase 7+ — see TODO §5b for the design note.
+    """
     weight: float = 0.0
     cnt: int = 0
     v1: int = 0
     v2: int = 0
+    base_weight: float = 0.0
 
 
 @dataclass
@@ -104,7 +112,7 @@ def create_sedge(g: Sgraph, v1: Snode, v2: Snode, wt: float) -> Sedge:
     """``createSEdge`` — append a new edge, hook into both endpoints."""
     idx = g.nedges
     g.nedges += 1
-    e = Sedge(v1=v1.index, v2=v2.index, weight=wt, cnt=0)
+    e = Sedge(v1=v1.index, v2=v2.index, weight=wt, cnt=0, base_weight=wt)
     # C pre-allocates the edges array; Python grows on demand.
     if idx < len(g.edges):
         g.edges[idx] = e

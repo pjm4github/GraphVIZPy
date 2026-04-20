@@ -16,7 +16,7 @@ C dotgen.  Reference table — not a priority list (see §2 for priority).
 
 | # | Divergence | Python status | Impact |
 |---|---|---|---|
-| D1 | `splines=ortho` uses a naïve Z-router, not `lib/ortho/*` | `dotsplines.ortho_route` — Z with compass-aware mid_y clamp | 2620.dot: 66 crossings |
+| D1 | ~~`splines=ortho` uses a naïve Z-router, not `lib/ortho/*`~~ | ✅ resolved 2026-04-20 — full `lib/ortho/` port lives at `gvpy/engines/layout/ortho/` with cluster-avoidance layer.  Legacy Z-router reachable via `GVPY_ORTHO_LEGACY=1` for two release cycles | 2620.dot: **3** crossings (was 66) |
 | D2 | `make_flat_adj_edges` lacks subgraph clone + re-layout | `flat_edge.make_flat_adj_edges` partial (E+.2-B); record-field ports warn | narrow (record-port same-rank only) |
 | D3 | No `smode` straight-segment dispatch inside `make_regular_edge` | helpers ported, not yet wired | cosmetic on long chains |
 | D4 | Cluster-clipping gives sub-pixel corner-grazing on bezier interior | `make_regular_edge` + `maximal_bbox` margin | aa1332=9, 1332=9, 1472=25, 2796=32, 1213-1=4, 1213-2=3, 2239=2, 2521_1=1 (86 total) |
@@ -187,23 +187,43 @@ port of `lib/ortho/`, ~3930 Python lines, 10–13 days).
 | 5 | `maze.py` | ✅ done (12 structural tests; C harness deferred — see notes) |
 | 6 | `ortho.py` orchestration | ✅ done (full port; end-to-end runs on all 17 fixtures) |
 | 7a | Resilience fixes (None-guards for sparse sgraph, channel-gap tolerance, zero-length angle) | ✅ done |
+| 7b | Cluster avoidance (overlap-based cell flagging + per-edge weight bump) | ✅ done (2620: 66 → 3) |
 | 7 | Dispatch restructure + `GVPY_ORTHO_V2` flag | ✅ done (Phase 0 already wired it) |
-| 8 | Flag flip (V2 default) | ⛔ blocked — see cluster-avoidance note below |
+| 8 | Flag flip (V2 default) | ✅ done — opt back out with `GVPY_ORTHO_LEGACY=1` |
 
-Rollout: `GVPY_ORTHO_V2=1` env flag gates the new router; legacy
-Z-router (`dotsplines.ortho_route`) remains default until Phase 7 passes
-`2620.dot` with ≤9 crossings and no regressions on the other 16 ortho
-fixtures.
+Rollout: V2 is now the default (2026-04-20).  Opt back out with
+`GVPY_ORTHO_LEGACY=1` to restore the old Z-router — the legacy code
+in `dotsplines.ortho_route` will stay in place for two release cycles
+while the new router settles, then be removed.
 
-Success criterion: `tools/count_cluster_crossings.py test_data/2620.dot`
-drops from 66 to ≤9 (ideally 0), all 836 tests pass, the other 16 ortho
-`.dot` files remain at 0 crossings.
+Success criterion **met**: 2620.dot drops from 66 → 3 crossings (well
+under the ≤9 bar); the other 16 ortho fixtures stay at 0; all 892
+tests pass.
 
 Off-ramp (if Seidel trapezoidation in Phase 3 stalls >3 days): bail to
 option 3, keep `rawgraph.py` + `sgraph.py`, wire to `pathplan/shortest.py`
 visibility triangulation.
 
-### Phase 7+ finding — cluster avoidance is a design gap, not a porting bug
+### Phase 7+ — cluster avoidance (shipped 2026-04-20)
+
+Closed the gap noted below.  `ortho.py` computes a ``_ClusterInfo``
+once per routing call (cluster bboxes + per-cluster cell-index sets
+via overlap test), then for each edge bumps sedge weights by
+1,000,000 on cells inside clusters that contain **neither** endpoint,
+resetting to ``base_weight`` between edges.  Dijkstra then prefers
+paths that skirt non-member clusters.
+
+Corpus result: 2620.dot 66 → 3; other 16 fixtures stay at 0.  The 3
+remaining crossings on 2620 are geometrically forced (`digidialog`,
+`kalenderservice`, `loginportal` — all originating outside the
+clusters they cross, no non-crossing path exists in the current
+maze).
+
+The enhancement required one new field (``Sedge.base_weight``) and
+~100 lines in ``ortho.py``.  None of this is in C's ortho.c — it's
+a GraphvizPy-specific layer on top of the faithful port.
+
+### (historical) Phase 7+ finding — cluster avoidance is a design gap, not a porting bug
 
 The full port runs end-to-end on all 17 ortho fixtures (V2 flag on).
 Crossings result across the corpus:

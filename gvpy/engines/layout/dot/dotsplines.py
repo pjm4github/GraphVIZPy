@@ -452,14 +452,17 @@ def _phase4_routing_body(layout):
         for le in bundle:
             layout._compute_label_pos(le)
 
-    # V2 ortho router batch dispatch (gated on GVPY_ORTHO_V2=1).
-    # When the flag is set and splines=ortho, route all ortho edges in
-    # one call matching C's orthoEdges(g, useLbls).  The returned dict
-    # {id(le): points} overrides per-edge ortho dispatch below; missing
-    # keys fall through to the legacy Z-router.  See ORTHO_PORT_PLAN.md.
+    # V2 ortho router batch dispatch.  Routes all ortho edges in one
+    # call matching C's orthoEdges(g, useLbls), plus GraphvizPy's
+    # per-edge cluster-avoidance layer (see ORTHO_PORT_PLAN.md +
+    # TODO §5b).  The returned dict ``{id(le): points}`` overrides
+    # per-edge ortho dispatch below; missing keys fall through to the
+    # legacy Z-router.  Set ``GVPY_ORTHO_LEGACY=1`` in the environment
+    # to force the old Z-router back on (kept for two release cycles
+    # while the new router settles).
     ortho_routes: dict = {}
     if (layout.splines == "ortho"
-            and os.environ.get("GVPY_ORTHO_V2") == "1"):
+            and os.environ.get("GVPY_ORTHO_LEGACY") != "1"):
         from gvpy.engines.layout.ortho import ortho_edges as _ortho_v2_edges
         ortho_routes = _ortho_v2_edges(layout, use_lbls=False)
 
