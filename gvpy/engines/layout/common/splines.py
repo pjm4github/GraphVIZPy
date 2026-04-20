@@ -20,7 +20,41 @@ from __future__ import annotations
 
 import math
 
-from gvpy.engines.layout.common.geom import Ppolyline
+from gvpy.engines.layout.common.geom import Ppoint, Ppolyline
+
+
+def bezier_point(V: list, t: float,
+                 left: list | None = None,
+                 right: list | None = None) -> Ppoint:
+    """Evaluate a cubic Bezier at parameter *t* via de Casteljau.
+
+    See: /lib/common/utils.c @ 175
+
+    Optionally fills *left* (4 elements) with the left sub-curve
+    ``[V[0], …, point]`` and *right* (4 elements) with the right
+    sub-curve ``[point, …, V[3]]``.
+
+    *V* is a 4-element list of :class:`Ppoint`.
+    """
+    degree = 3
+    Vt = [[Ppoint(0.0, 0.0)] * (degree + 1) for _ in range(degree + 1)]
+    for j in range(degree + 1):
+        Vt[0][j] = Ppoint(V[j].x, V[j].y)
+    for i in range(1, degree + 1):
+        for j in range(degree - i + 1):
+            Vt[i][j] = Ppoint(
+                (1.0 - t) * Vt[i - 1][j].x + t * Vt[i - 1][j + 1].x,
+                (1.0 - t) * Vt[i - 1][j].y + t * Vt[i - 1][j + 1].y,
+            )
+    if left is not None:
+        left.clear()
+        for j in range(degree + 1):
+            left.append(Ppoint(Vt[j][0].x, Vt[j][0].y))
+    if right is not None:
+        right.clear()
+        for j in range(degree + 1):
+            right.append(Ppoint(Vt[degree - j][j].x, Vt[degree - j][j].y))
+    return Ppoint(Vt[degree][0].x, Vt[degree][0].y)
 
 
 def make_polyline(line: Ppolyline) -> Ppolyline:
