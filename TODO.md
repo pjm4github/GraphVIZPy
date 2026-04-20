@@ -18,7 +18,7 @@ C dotgen.  Reference table — not a priority list (see §2 for priority).
 |---|---|---|---|
 | D1 | ~~`splines=ortho` uses a naïve Z-router, not `lib/ortho/*`~~ | ✅ resolved 2026-04-20 — full `lib/ortho/` port lives at `gvpy/engines/layout/ortho/` with cluster-avoidance layer.  Legacy Z-router reachable via `GVPY_ORTHO_LEGACY=1` for two release cycles | 2620.dot: **3** crossings (was 66) |
 | D2 | `make_flat_adj_edges` lacks subgraph clone + re-layout | `flat_edge.make_flat_adj_edges` partial (E+.2-B); record-field ports warn | narrow (record-port same-rank only) |
-| D3 | No `smode` straight-segment dispatch inside `make_regular_edge` | helpers ported, not yet wired | cosmetic on long chains |
+| D3 | ~~No `smode` straight-segment dispatch inside `make_regular_edge`~~ | ✅ shipped 2026-04-20 — `flatten_straight_runs` post-hoc pass in `regular_edge.py` with cluster-safety guard | —
 | D4 | Cluster-clipping gives sub-pixel corner-grazing on bezier interior; also control-point-deep-inside cases where tail/head straddle a non-member cluster on adjacent ranks | `make_regular_edge` + `cluster_detour.reshape_around_clusters` (ships 2026-04-20: post-hoc detour reshape with 8-pt rounded corners — arc radius > typical 4.5-pt node rounded-rect radius).  Partial cover — residuals are D5/D6 positioning symptoms | was 86, now 40: aa1332=1, 1332=3, 1472=12, 2796=18, 1213-1=3, 1213-2=2, 2239=1, 2521_1=0 |
 | D5 | Mincross places multi-rank edges on opposite sides of a cluster where C keeps them same-side | `mincross.py` — needs instrumentation pass | contributes to D4 on aa1332 / 1332 |
 | D6 | Phase 3 position lacks hard keep-out constraints for virtuals vs. non-member cluster y-bands | `position.py` — ~80-120 lines | compounds D4 |
@@ -53,10 +53,15 @@ Ordered by payoff.  Each item is independently shippable.
    clears all other non-member clusters near the edge.  The reshape
    handles the straight-cubic-through-interior case (2521_1 style)
    cleanly; closing the rest means tackling D5/D6 directly.
-2. **`smode` dispatch** (D+.2b).  Wire the ported `straight_len` /
-   `straight_path` / `recover_slack` helpers into `make_regular_edge`'s
-   virtual-chain loop.  Requires restructuring to emit multiple path
-   segments per edge.  Cosmetic win on long vertical chains.
+2. ~~**`smode` dispatch** (D+.2b)~~.  ✅ shipped as a post-hoc
+   flattening pass (`flatten_straight_runs` in `regular_edge.py`).
+   Rather than restructure the corridor-build loop to emit multiple
+   path segments, we detect x-aligned runs in the output bezier and
+   replace the cubic control points with linear interpolation.  The
+   cosmetic effect matches C's smode on long vertical chains (no
+   more subtle wobble on straight runs).  Includes a cluster-safety
+   guard that skips runs where the straight chord would cut through
+   a non-member cluster bbox.
 3. **Layout-level fixes** (D5, D6).  Item D5 is a multi-phase
    instrumentation job on mincross; D6 is ~80–120 lines in
    `position.py`.  Defer until after D4.

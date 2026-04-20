@@ -148,6 +148,134 @@ def straight_path(layout, start_le, cnt: int, plist: list):
     return f
 
 
+def _has_edge_labels(layout) -> bool:
+    """Rough analogue of C's ``GD_has_labels(g->root) & EDGE_LABEL`` —
+    whether any non-virtual edge carries a label (affects the smode
+    threshold because labelled edges need a longer straight run to
+    warrant the break).
+    """
+    for le in getattr(layout, "ledges", ()):
+        if getattr(le, "virtual", False):
+            continue
+        if getattr(le, "label", ""):
+            return True
+    return False
+
+
+def flatten_straight_runs(ps: list[Ppoint], le, layout) -> list[Ppoint]:
+    """D+.2b cosmetic pass — straighten x-aligned bezier runs.
+
+    C's ``make_regular_edge`` detects a run of ``>= 3`` vertically
+    aligned virtual nodes in the edge's chain (``>= 5`` when the
+    graph carries edge labels) and breaks the corridor at the start
+    of that run, routing the middle as an explicit straight polyline
+    instead of fitting a single smooth bezier over the whole chain.
+    See ``lib/dotgen/dotsplines.c:1807`` (``smode = true`` branch)
+    and :func:`straight_len` / :func:`straight_path`.
+
+    We ship the cosmetic effect as a post-hoc pass rather than a
+    full restructure of the corridor-build loop: scan the bezier
+    output for consecutive anchors that share an x-coordinate (to
+    :data:`_ALIGN_EPS`), and in any run of ``>= threshold``
+    consecutive aligned segments, replace the control points with
+    linear interpolation so that run renders as straight instead of
+    a subtly-curving bezier.  Visually identical to C's smode output
+    without the accompanying corridor-restructure work; byte output
+    differs from C on the control-point coordinates.
+
+    **Cluster-safety check.**  The original wobbly controls
+    sometimes curved the bezier around a non-member cluster that a
+    straight chord would cut through.  Before flattening any run we
+    sample the candidate chord against every non-member cluster
+    bbox; if it crosses, we skip that run so the D4 guarantee isn't
+    silently undone.
+    """
+    if len(ps) < 4:
+        return ps
+
+    stride = 3  # cubic bezier: 1 + 3·segments control points
+    n_anchors = (len(ps) - 1) // stride + 1
+    if n_anchors < 2:
+        return ps
+
+    # Originally ``threshold = 3 (resp. 5 with edge labels)`` per C's
+    # ``straight_len >= 3`` virtual-count check.  But ``routesplines``
+    # performs aggressive curve-fitting that collapses many virtuals
+    # into a single bezier segment — a 10-rank straight chain often
+    # emerges as one cubic with control points dramatically offset
+    # from the anchor-to-anchor line.  So at the output-bezier level
+    # we use threshold 1: any single segment whose two anchors share
+    # an x is supposed to render as a vertical straight line, and
+    # flattening its controls to linear interpolation removes the
+    # wobble even when the underlying virtual chain was short.  Safe
+    # for chains the router already drew straight (controls already
+    # on the chord — no visual change).  ``_has_edge_labels`` is
+    # retained only to keep the C parallel readable.
+    _ = _has_edge_labels(layout)
+    threshold = 1
+
+    # Collect x-aligned runs of consecutive anchors.
+    anchors = [ps[i * stride] for i in range(n_anchors)]
+    runs: list[tuple[int, int]] = []  # (first_segment_idx, run_length)
+    i = 0
+    while i < n_anchors - 1:
+        j = i + 1
+        while (j < n_anchors
+               and abs(anchors[j].x - anchors[i].x) < _ALIGN_EPS):
+            j += 1
+        run_length = j - i - 1
+        if run_length >= threshold:
+            runs.append((i, run_length))
+        i = j if j > i + 1 else i + 1
+
+    if not runs:
+        return ps
+
+    # Cluster-safety: if the straight chord across a run crosses a
+    # non-member cluster bbox, skip flattening that run.  Without
+    # this guard the original wobbly controls sometimes curved the
+    # bezier around a cluster that a straight segment would intersect.
+    clusters = getattr(layout, "_clusters", None) or []
+    member_names: set[str] = set()
+    if clusters and le is not None:
+        tail, head = le.tail_name, le.head_name
+        for cl in clusters:
+            if tail in cl.nodes or head in cl.nodes:
+                member_names.add(cl.name)
+    offenders = [cl for cl in clusters
+                 if cl.bb and cl.name not in member_names]
+
+    def _chord_crosses_offender(p0: Ppoint, p1: Ppoint) -> bool:
+        for cl in offenders:
+            x1, y1, x2, y2 = cl.bb
+            for k in range(1, 16):
+                t = k / 16.0
+                sx = p0.x + t * (p1.x - p0.x)
+                sy = p0.y + t * (p1.y - p0.y)
+                if x1 < sx < x2 and y1 < sy < y2:
+                    return True
+        return False
+
+    # Replace controls in each run's segments with linear interpolation
+    # so the cubic degenerates to a straight line between anchors.
+    out = list(ps)
+    for start, length in runs:
+        run_p0 = anchors[start]
+        run_p1 = anchors[start + length]
+        if offenders and _chord_crosses_offender(run_p0, run_p1):
+            continue
+        for seg_idx in range(start, start + length):
+            p0 = out[seg_idx * stride]
+            p1 = out[(seg_idx + 1) * stride]
+            dx = p1.x - p0.x
+            dy = p1.y - p0.y
+            out[seg_idx * stride + 1] = Ppoint(
+                p0.x + dx / 3.0, p0.y + dy / 3.0)
+            out[seg_idx * stride + 2] = Ppoint(
+                p0.x + 2.0 * dx / 3.0, p0.y + 2.0 * dy / 3.0)
+    return out
+
+
 def resize_vn(vn, lx: float, cx: float, rx: float) -> None:
     """Set a virtual node's x-coord and half-widths.
 
@@ -494,6 +622,14 @@ def make_regular_edge(layout, sp: SplineInfo, P: Path,
     # between tail and head on opposite sides.  See
     # ``cluster_detour.py`` for the strategy.
     ps = reshape_around_clusters(ps, edges[0], layout)
+
+    # D+.2b — flatten x-aligned runs of bezier anchors to straight
+    # lines (cosmetic; matches C's smode dispatch effect on long
+    # vertical chains).  Runs AFTER the D4 reshape so any detour
+    # the reshape inserted is preserved; the flattening itself
+    # guards against newly introducing a cluster crossing (see
+    # :func:`flatten_straight_runs`).
+    ps = flatten_straight_runs(ps, edges[0], layout)
 
     # D+.2 — snap virtual-chain nodes to the routed corridor.
     # Safe to call with P.boxes intact (clip_and_install below doesn't
