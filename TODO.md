@@ -166,6 +166,97 @@ entry for the B2 fix + audit tool context, then `grep -n "ortho_route\|
 _ortho_safe_midy" gvpy/engines/layout/dot/dotsplines.py` to see the
 existing code, then pick one of the three architecture options.
 
+**Decision (2026-04-19):** option 1 (top-down port) chosen.  Full
+implementation plan lives in [`ORTHO_PORT_PLAN.md`](ORTHO_PORT_PLAN.md)
+— see §5b below for status.
+
+---
+
+## 5b. Ortho port — execution tracker
+
+Plan: [`ORTHO_PORT_PLAN.md`](ORTHO_PORT_PLAN.md) (option 1, top-down
+port of `lib/ortho/`, ~3930 Python lines, 10–13 days).
+
+| Phase | Module | Status |
+|---|---|---|
+| 0 | Scaffolding + `structures.py` + stub `ortho_edges` | ✅ done |
+| 1 | `rawgraph.py` | ✅ done (18 tests, hand-traced 6-node DAG) |
+| 2 | `fpq.py` + `sgraph.py` | ✅ done (18 tests, NetworkX cross-check) |
+| 3 | `trapezoid.py` (Seidel) | ✅ done (4 fixtures, byte-match vs C harness) |
+| 4 | `partition.py` | ✅ done (4 fixtures, match-vs-C harness) |
+| 5 | `maze.py` | ✅ done (12 structural tests; C harness deferred — see notes) |
+| 6 | `ortho.py` orchestration | ✅ done (full port; end-to-end runs on all 17 fixtures) |
+| 7a | Resilience fixes (None-guards for sparse sgraph, channel-gap tolerance, zero-length angle) | ✅ done |
+| 7 | Dispatch restructure + `GVPY_ORTHO_V2` flag | ✅ done (Phase 0 already wired it) |
+| 8 | Flag flip (V2 default) | ⛔ blocked — see cluster-avoidance note below |
+
+Rollout: `GVPY_ORTHO_V2=1` env flag gates the new router; legacy
+Z-router (`dotsplines.ortho_route`) remains default until Phase 7 passes
+`2620.dot` with ≤9 crossings and no regressions on the other 16 ortho
+fixtures.
+
+Success criterion: `tools/count_cluster_crossings.py test_data/2620.dot`
+drops from 66 to ≤9 (ideally 0), all 836 tests pass, the other 16 ortho
+`.dot` files remain at 0 crossings.
+
+Off-ramp (if Seidel trapezoidation in Phase 3 stalls >3 days): bail to
+option 3, keep `rawgraph.py` + `sgraph.py`, wire to `pathplan/shortest.py`
+visibility triangulation.
+
+### Phase 7+ finding — cluster avoidance is a design gap, not a porting bug
+
+The full port runs end-to-end on all 17 ortho fixtures (V2 flag on).
+Crossings result across the corpus:
+
+| fixture | legacy | V2 | delta |
+|---|---:|---:|---:|
+| 14 fixtures | 0 | 0 | — |
+| 2183.dot | 0 | 1 | +1 |
+| 2620.dot | 66 | 85 | +19 |
+
+The regressions are not porting bugs — they are **faithful to C's
+ortho.c**.  The legacy Python Z-router
+(`dotsplines.ortho_route` + `_ortho_safe_midy`) has a GraphvizPy-
+specific cluster-bbox clamp that bends the route's mid-y to avoid
+non-member clusters.  C's `ortho.c` has no equivalent clamp — its
+channel router just treats cells as obstacles by width weight, with
+no notion of "avoid this non-member cluster".  So a faithful port
+naturally loses legacy's dodge behaviour.
+
+To meet the §5b success criterion (`2620 ≤ 9`), Phase 8 needs an
+**additive enhancement** beyond the C port:
+
+1. **Cluster-weighted maze** — in `maze._create_sedges`, bump edge
+   weights to `BIG` on cells whose bbox sits inside a cluster the
+   current edge does not belong to.  Requires the adapter in
+   `ortho_edges` to pass `layout.clusters` into `mk_maze` and a
+   per-edge membership tag.
+2. **Port legacy's clamp into V2** — replicate `_ortho_safe_midy`
+   logic after `attachOrthoEdges` to post-process the waypoints.
+3. **Hybrid dispatch** — keep V2 for simple graphs, fall back to
+   legacy when the route crosses any non-member cluster.
+
+Neither option is a one-line fix, and none of them are in the C
+source.  This is the decision point the plan flagged as
+"option 3 (incremental Z-router extension)" being complementary to
+option 1's strict port.
+
+**Resilience fixes shipped during Phase 7 debug pass:**
+- `_find_channel` — relaxed assertion, added intersect + nearest
+  fallbacks for channel-gap segments caused by Python↔C partition
+  cell-ordering divergence (RNG identity vs `srand48(173)`).
+- `_cell_of` / `_convert_sp_to_route` — tolerate `None` cells
+  links (C's `assert` compiles out in release; Python was crashing).
+- `_is_parallel` — demoted comm_coord assert to return `False`
+  (matches C release-build behaviour).
+- `_get_angle` — return `-4.0` sentinel on zero-length edges
+  (C silently divides by zero).
+- `_make_new_monotone_poly` — grow `vnext`/`vpos` beyond C's
+  hardcoded `[4]` to avoid buffer-overflow crashes.
+
+With these in place, every fixture runs without error and
+892/892 tests still pass.
+
 ---
 
 ## 6. MainGraphvisPy GUI

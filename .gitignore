@@ -27,3 +27,7 @@ coverage.xml
 # Rendered SVGs under test_data/ are debug artifacts, not inputs —
 # the .dot source files are the tracked test corpus.
 test_data/*.svg
+
+# Ortho-port C test harness binaries (rebuild via tools/*_harness/build.ps1)
+tools/trapezoid_harness/harness.exe
+tools/partition_harness/harness.exe

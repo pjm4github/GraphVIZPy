@@ -1,0 +1,8 @@
+trapezoids ntraps=9
+trap i=2 lseg=1 rseg=0 hi=10.000000,0.000000 lo=0.000000,0.000000 u0=6 u1=-1 d0=3 d1=0
+trap i=3 lseg=0 rseg=0 hi=0.000000,0.000000 lo=-INF,-INF u0=5 u1=2 d0=0 d1=0
+trap i=4 lseg=0 rseg=0 hi=INF,INF lo=5.000000,10.000000 u0=0 u1=0 d0=5 d1=6
+trap i=5 lseg=0 rseg=3 hi=5.000000,10.000000 lo=0.000000,0.000000 u0=4 u1=-1 d0=3 d1=0
+trap i=6 lseg=2 rseg=0 hi=5.000000,10.000000 lo=10.000000,0.000000 u0=4 u1=0 d0=2 d1=-1
+trap i=7 lseg=3 rseg=2 hi=5.000000,10.000000 lo=10.000000,0.000000 u0=-1 u1=-1 d0=8 d1=-1
+trap i=8 lseg=3 rseg=1 hi=10.000000,0.000000 lo=0.000000,0.000000 u0=7 u1=-1 d0=-1 d1=-1
