@@ -180,18 +180,77 @@ read_dot_all = read_gv_all
 
 
 def _split_graph_blocks(text: str) -> list[str]:
-    """Split text into individual graph blocks by tracking brace nesting."""
+    """Split text into individual top-level graph blocks.
+
+    Only ``graph`` / ``digraph`` keywords at brace-depth 0 (i.e. outside
+    any ``{ ... }`` body) mark the start of a new block.  The earlier
+    naïve regex also matched the ``graph`` attribute statement inside a
+    body (e.g. ``graph [compound=true]``) and split a single graph into
+    bogus pieces — which caused :func:`read_gv` to parse only the
+    opening line and return an empty Graph.  ``concentrate``,
+    ``ranksep``, and any other body attribute that contained the
+    substring ``graph`` would trigger the same failure mode.
+
+    Quoted strings and comments are honoured so a literal ``graph``
+    inside a string or ``//`` comment doesn't split the file either.
+    """
     pattern = re.compile(
-        r'(?:^|\n)\s*(?:strict\s+)?(?:di)?graph\b',
+        r'(?:strict\s+)?(?:di)?graph\b',
         re.IGNORECASE,
     )
-    starts = [m.start() for m in pattern.finditer(text)]
+
+    starts: list[int] = []
+    depth = 0
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        # Skip over // line comments.
+        if ch == '/' and i + 1 < n and text[i + 1] == '/':
+            while i < n and text[i] != '\n':
+                i += 1
+            continue
+        # Skip over /* ... */ block comments.
+        if ch == '/' and i + 1 < n and text[i + 1] == '*':
+            i += 2
+            while i + 1 < n and not (text[i] == '*' and text[i + 1] == '/'):
+                i += 1
+            i += 2
+            continue
+        # Skip over quoted strings.
+        if ch == '"':
+            i += 1
+            while i < n and text[i] != '"':
+                if text[i] == '\\' and i + 1 < n:
+                    i += 2
+                    continue
+                i += 1
+            i += 1
+            continue
+        if ch == '{':
+            depth += 1
+            i += 1
+            continue
+        if ch == '}':
+            depth -= 1
+            i += 1
+            continue
+        # Only candidate starts are at depth 0 and at a word boundary.
+        if depth == 0 and (i == 0 or not (text[i - 1].isalnum()
+                                          or text[i - 1] == '_')):
+            m = pattern.match(text, i)
+            if m:
+                starts.append(i)
+                i = m.end()
+                continue
+        i += 1
+
     if len(starts) <= 1:
         return [text.strip()] if text.strip() else []
 
-    blocks = []
-    for i, start in enumerate(starts):
-        end = starts[i + 1] if i + 1 < len(starts) else len(text)
+    blocks: list[str] = []
+    for j, start in enumerate(starts):
+        end = starts[j + 1] if j + 1 < len(starts) else len(text)
         block = text[start:end].strip()
         if block:
             blocks.append(block)
