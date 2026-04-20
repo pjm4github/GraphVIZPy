@@ -407,116 +407,21 @@ class LayoutEngine(LayoutView):
         postproc.apply_center(self)
 
     # ── Label placement ──────────────────────────
+    # Delegate to common.text; keep method shims for subclass / caller compat.
 
     @staticmethod
     def _estimate_label_size(text: str, font_size: float = 14.0) -> tuple[float, float]:
-        """Estimate label bounding box in points (width, height)."""
-        lines = text.replace("\\n", "\n").split("\n")
-        max_chars = max(len(line) for line in lines) if lines else len(text)
-        return (max(max_chars * font_size * 0.6, 20.0),
-                len(lines) * font_size * 1.2)
+        from gvpy.engines.layout.common import text as _text
+        return _text.estimate_label_size(text, font_size)
 
     @staticmethod
     def _overlap_area(ax, ay, aw, ah, bx, by, bw, bh) -> float:
-        """Compute overlap area between two center-based rectangles."""
-        dx = min(ax + aw / 2, bx + bw / 2) - max(ax - aw / 2, bx - bw / 2)
-        dy = min(ay + ah / 2, by + bh / 2) - max(ay - ah / 2, by - bh / 2)
-        return dx * dy if dx > 0 and dy > 0 else 0.0
+        from gvpy.engines.layout.common import text as _text
+        return _text.overlap_area(ax, ay, aw, ah, bx, by, bw, bh)
 
     def _compute_label_positions(self):
-        """Compute positions for xlabel, headlabel, taillabel, graph label.
-
-        Uses collision-aware 6-position search around each anchor object.
-        """
-        obstacles = [(ln.x, ln.y, ln.width, ln.height)
-                     for ln in self.lnodes.values()]
-        placed: list[tuple[float, float, float, float]] = []
-
-        def _find_best(ax, ay, ow, oh, lw, lh, pad=4.0):
-            half_ow, half_oh = ow / 2, oh / 2
-            candidates = [
-                (ax + half_ow + pad + lw / 2, ay),
-                (ax + half_ow + pad + lw / 2, ay + half_oh + pad + lh / 2),
-                (ax + half_ow + pad + lw / 2, ay - half_oh - pad - lh / 2),
-                (ax, ay + half_oh + pad + lh / 2),
-                (ax, ay - half_oh - pad - lh / 2),
-                (ax - half_ow - pad - lw / 2, ay),
-            ]
-            best_pos, best_ov = candidates[0], float("inf")
-            for cx, cy in candidates:
-                total = sum(self._overlap_area(cx, cy, lw, lh, *o)
-                            for o in obstacles)
-                total += sum(self._overlap_area(cx, cy, lw, lh, *p)
-                             for p in placed)
-                if total == 0:
-                    return (cx, cy)
-                if total < best_ov:
-                    best_ov, best_pos = total, (cx, cy)
-            return best_pos
-
-        # Node xlabels
-        for name, ln in self.lnodes.items():
-            if not ln.node:
-                continue
-            xlabel = ln.node.attributes.get("xlabel", "")
-            if not xlabel:
-                continue
-            try:
-                fs = float(ln.node.attributes.get("fontsize", "14"))
-            except ValueError:
-                fs = 14.0
-            lw, lh = self._estimate_label_size(xlabel, fs)
-            bx, by = _find_best(ln.x, ln.y, ln.width, ln.height, lw, lh)
-            ln.node.attributes["_xlabel_pos_x"] = str(round(bx, 2))
-            ln.node.attributes["_xlabel_pos_y"] = str(round(by, 2))
-            placed.append((bx, by, lw, lh))
-
-        # Edge head/tail labels
-        for key, edge in self.graph.edges.items():
-            t_ln = self.lnodes.get(edge.tail.name)
-            h_ln = self.lnodes.get(edge.head.name)
-            if not t_ln or not h_ln:
-                continue
-            try:
-                fs = float(edge.attributes.get("labelfontsize",
-                           edge.attributes.get("fontsize", "14")))
-            except ValueError:
-                fs = 14.0
-
-            for attr_name, ref_ln in [("headlabel", h_ln), ("taillabel", t_ln)]:
-                lbl = edge.attributes.get(attr_name, "")
-                if lbl:
-                    lw, lh = self._estimate_label_size(lbl, fs)
-                    bx, by = _find_best(ref_ln.x, ref_ln.y, 2, 2, lw, lh, 6)
-                    prefix = "_headlabel" if "head" in attr_name else "_taillabel"
-                    edge.attributes[f"{prefix}_pos_x"] = str(round(bx, 2))
-                    edge.attributes[f"{prefix}_pos_y"] = str(round(by, 2))
-                    placed.append((bx, by, lw, lh))
-
-        # Graph label
-        graph_label = self.graph.get_graph_attr("label")
-        if graph_label:
-            try:
-                gfs = float(self.graph.get_graph_attr("fontsize") or "14")
-            except ValueError:
-                gfs = 14.0
-            lw, lh = self._estimate_label_size(graph_label, gfs)
-            labelloc = (self.graph.get_graph_attr("labelloc") or "b").lower()
-            labeljust = (self.graph.get_graph_attr("labeljust") or "c").lower()
-            real = list(self.lnodes.values())
-            if real:
-                gbb_x1 = min(ln.x - ln.width / 2 for ln in real)
-                gbb_x2 = max(ln.x + ln.width / 2 for ln in real)
-                gbb_y1 = min(ln.y - ln.height / 2 for ln in real)
-                gbb_y2 = max(ln.y + ln.height / 2 for ln in real)
-            else:
-                gbb_x1 = gbb_y1 = 0
-                gbb_x2 = gbb_y2 = 100
-            gcx = (gbb_x1 + gbb_x2) / 2
-            gx = {"l": gbb_x1 + lw / 2, "r": gbb_x2 - lw / 2}.get(labeljust, gcx)
-            gy = gbb_y1 - lh / 2 - 8 if labelloc == "t" else gbb_y2 + lh / 2 + 8
-            self.graph.set_graph_attr("_label_pos_x", str(round(gx, 2)))
-            self.graph.set_graph_attr("_label_pos_y", str(round(gy, 2)))
+        from gvpy.engines.layout.common import text as _text
+        _text.compute_label_positions(self)
 
     # ── Edge boundary clipping ───────────────────
 
