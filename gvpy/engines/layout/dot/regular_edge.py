@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from gvpy.engines.layout.dot.clip import clip_and_install
+from gvpy.engines.layout.dot.cluster_detour import reshape_around_clusters
 from gvpy.engines.layout.dot.path import (
     Box, Path, PathEnd, SplineInfo,
     BOTTOM, TOP, REGULAREDGE,
@@ -484,6 +485,15 @@ def make_regular_edge(layout, sp: SplineInfo, P: Path,
 
     if not ps:
         return
+
+    # D4 post-hoc guard — reshape the bezier around any non-member
+    # cluster whose interior the spline still pierces.  No-op for
+    # edges that route cleanly (the overwhelming common case); adds
+    # a detour via-point when the interrank corridor gave
+    # ``routesplines`` no room to steer around a cluster that sits
+    # between tail and head on opposite sides.  See
+    # ``cluster_detour.py`` for the strategy.
+    ps = reshape_around_clusters(ps, edges[0], layout)
 
     # D+.2 — snap virtual-chain nodes to the routed corridor.
     # Safe to call with P.boxes intact (clip_and_install below doesn't
