@@ -99,9 +99,17 @@ def reshape_around_clusters(
     if not clusters:
         return ps
 
-    member_names = _member_cluster_names(le, clusters)
+    # Membership by object identity — DOT files with anonymous
+    # subgraphs named ``cluster`` produce several distinct
+    # LayoutClusters all sharing the same ``.name``, so a name-keyed
+    # membership set collapses them and disables the detour for
+    # every cluster with a duplicate name.  1436.dot has 6
+    # ``cluster``-named clusters; keyed by name, membership in one
+    # was treated as membership in all six.  ``id(cl)`` is unique
+    # per LayoutCluster object.
+    member_ids = _member_cluster_ids(le, clusters)
     offenders = [cl for cl in clusters
-                 if cl.bb and cl.name not in member_names]
+                 if cl.bb and id(cl) not in member_ids]
     if not offenders:
         return ps
 
@@ -139,16 +147,19 @@ def reshape_around_clusters(
 # --- member clusters ---------------------------------------------------
 
 
-def _member_cluster_names(le: "LayoutEdge", clusters) -> set[str]:
-    """Cluster names containing either endpoint.  Matches
-    :func:`dotsplines._ortho_member_clusters` semantics.
+def _member_cluster_ids(le: "LayoutEdge", clusters) -> set[int]:
+    """Return ``id(cl)`` for every cluster containing either endpoint.
+
+    Identity-keyed rather than name-keyed to survive DOT files with
+    multiple anonymous ``cluster`` subgraphs (see
+    :func:`reshape_around_clusters` for the 1436.dot reproducer).
     """
-    members: set[str] = set()
+    members: set[int] = set()
     tail, head = le.tail_name, le.head_name
     for cl in clusters:
-        nset = cl.nodes  # already a list; ``in`` is fine
+        nset = cl.nodes  # list; ``in`` is fine
         if tail in nset or head in nset:
-            members.add(cl.name)
+            members.add(id(cl))
     return members
 
 
