@@ -182,36 +182,30 @@ existing call site continues to resolve.
   extracting would force a base-class-bloat tradeoff.  Defer until a
   second engine needs the same extension point.
 
-### 4.2 Second common/ pass: `lib/common/` citations (planned)
+### 4.2 Second common/ pass: `lib/common/` citations (done 2026-04-19)
 
-The first pass pulled obviously-shared code (post-processing, font metrics,
-Schneider fit).  A broader audit of `See: /lib/common/` citations in
-`gvpy/engines/layout/dot/` identified **15 more engine-agnostic candidates**
-(77 total `/lib/common/` references across dot; 38 stay because they read
-`LayoutEdge` / `LayoutNode` / `layout._*` state).
+Shipped in five commits (`84d0ff5` → `83d2bd1`), 836 tests pass at each
+step, zero behavioral change.
 
-Proposed five commits, same cadence as §4.1:
+| # | Commit | Target module | Moved |
+|---|---|---|---|
+| 1 | `84d0ff5` | `common/shapes.py` (new) | `Box` dataclass, `InsideFn`, `ellipse_inside`, `box_inside`, `make_inside_fn`, `self_loop_points` |
+| 2 | `e3d0d5b` | `common/clip.py` (new) + `common/splines.py` (extend) | `bezier_clip`, `shape_clip0`, `shape_clip`, `clip_and_install`, `conc_slope`, `bezier_point` |
+| 3 | `4570af4` | `common/splines.py` (extend) | `polyline_midpoint_raw` (the `pts + stride` core split out of `label_place.polyline_midpoint`) |
+| 4 | `fc12807` | `common/labels.py` (new) | `late_double` numeric-attribute parser |
+| 5 | `83d2bd1` | `common/geom.py` (extend) | `approx_eq`, `interval_overlap`, `MILLIPOINT` |
 
-| # | Target module | Candidates | Source file(s) | Risk |
-|---|---|---|---|---|
-| 1 | `common/shapes.py` (NEW) | `ellipse_inside`, `box_inside`, `make_inside_fn`, `self_loop_points`, `Box` dataclass | `dot/clip.py`, `dot/splines.py`, `dot/path.py` | low |
-| 2 | `common/clip.py` (NEW) | `bezier_clip`, `shape_clip0`, `shape_clip`, `clip_and_install`, `conc_slope` | `dot/clip.py` | **medium** (critical path) |
-| 3 | `common/splines.py` (extend) | `bezier_point` (de Casteljau), pure-geometry core of `polyline_midpoint` | `dot/clip.py`, `dot/label_place.py` | low |
-| 4 | `common/labels.py` (NEW) | `_late_double` attribute-parse helper | `dot/label_place.py` | low |
-| 5 | `common/geom.py` (extend) | `_approx_eq`, `overlap` (interval overlap) | `dot/clip.py`, `dot/routespl.py` | low |
+Every moved symbol left a one-line re-export (or legacy alias) at the
+original location, so existing call sites continue to resolve unchanged.
 
-**Must stay in `dot/`** (sample — reason in parens):
-- `end_points`, `getsplinepoints`, `place_portlabel`, `place_vnlabel`, `make_port_labels`, `add_edge_labels` (read `le.route` / `le.points` / `le.edge.attributes`)
-- `edge_start_point`, `edge_end_point`, `record_port_point`, `port_point` (read `le.tailport` / `le.headport` / node shape)
-- `_node_out_edges`, `_node_in_edges`, `_clust` (walk `layout.ledges` / `layout._chain_edges` / `layout._clusters`)
-- `beginpath`, `endpath` (mutate `PathEnd` + node-geometry workspace)
-- `routesplines_`, `routesplines`, `routepolylines`, `limit_boxes`, `checkpath` (routing pipeline state)
-- All `self_edge.py` / `straight_edge.py` functions (operate on `LayoutEdge` + `layout` structure)
-
-**SPLIT note**: `edge_midpoint` stays in `dot/label_place.py` because it calls `end_points`; its pure-geometry core `polyline_midpoint` moves to `common/splines.py` and is re-exported from `label_place.py` for back-compat.
-
-**Back-compat**: every moved symbol will leave a one-line re-export in its
-current module so no existing import breaks.
+**Stayed in `dot/`** (coupled to layout state): `end_points`,
+`getsplinepoints`, `place_portlabel`, `place_vnlabel`, `make_port_labels`,
+`add_edge_labels`, `edge_start_point`, `edge_end_point`,
+`record_port_point`, `port_point`, `_node_out_edges`, `_node_in_edges`,
+`_clust`, `beginpath`, `endpath`, `routesplines_`, `routesplines`,
+`routepolylines`, `limit_boxes`, `checkpath`, all `self_edge.py` and
+`straight_edge.py` functions — all read `LayoutEdge` / `LayoutNode` /
+`layout._*` state.
 
 ---
 
