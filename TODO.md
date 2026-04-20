@@ -122,11 +122,11 @@ All architectural work from the original `TODO_core_refactor.md` landed
   `cluster.py` / `dotinit.py`, `SimulationView` skeleton (7 modules, 9 tests).
 - **Deferred**: `PictoGraphInfo` — planned as Phase 1 of the pictosync merge.
 
-### 4.1 `gvpy.engines.layout.common` package (planned)
+### 4.1 `gvpy.engines.layout.common` package (done 2026-04-19)
 
 Mirrors Graphviz's `lib/common/` library — engine-agnostic utilities every
-layout binary links against (shapes, splines, text layout, geometry). Current
-state + migration plan:
+layout binary links against (shapes, splines, text layout, geometry).  Five
+commits (`2e7cfd1` → `73c569c`), each 836 tests pass, no behavioral change:
 
 **Audit findings:**
 - No cross-engine imports exist today (`circo`, `fdp`, `neato`, `osage`,
@@ -161,39 +161,26 @@ gvpy/engines/layout/common/
                     #   pack_components_lr  (mirrors lib/common/postproc.c)
 ```
 
-**Migration order (five commits, each low-risk):**
+**Shipped modules:**
 
-1. Create `common/__init__.py` + move `Ppoint`/`Ppoly`/`Ppolyline` from
-   `dot/pathplan/pathgeom.py` → `common/geom.py`. Re-export from the
-   original location for back-compat.
-2. Move post-processing helpers (`_apply_normalize`, `_apply_rotation`,
-   `_apply_center`, `_find_components`, `_pack_components_lr`) from
-   `base.py` → `common/postproc.py`. `base.LayoutEngine` delegates.
-3. Move `font_metrics.py` → `common/text.py`; add
-   `_estimate_label_size` and `_compute_label_positions` from `base.py`.
-4. Extract stateless spline helpers from `dot/splines.py` +
-   `dot/pathplan/util.py` (`to_bezier`, `make_polyline`,
-   cubic-bezier control-point math) → `common/splines.py`. Dot imports
-   back.
-5. Create `common/ns_solver.py` as a re-export of `dot/ns_solver.py`
-   (NetworkSimplex usable by future neato KK or other engines).
+| Module | Contents | C counterpart |
+|---|---|---|
+| `common/geom.py` | `Ppoint`, `Pvector`, `Ppoly`, `Ppolyline`, `Pedge` | `lib/pathplan/pathgeom.h` |
+| `common/postproc.py` | `apply_normalize`, `apply_rotation`, `apply_center`, `find_components`, `pack_components_lr` | `lib/common/postproc.c` |
+| `common/text.py` | Times-Roman AFM + tkinter metrics, `estimate_label_size`, `overlap_area`, `compute_label_positions` | `lib/common/labels.c` |
+| `common/splines.py` | `to_bezier` (Schneider recursive fit), `make_polyline` | `lib/common/splines.c` + `lib/pathplan/util.c @ 44` |
+| `common/ns_solver.py` | Re-exports `NetworkSimplex` from `dot/ns_solver.py` | `lib/common/ns.c @ 623` |
 
-Optional follow-on: `LayoutNodeBase` dataclass with the six universal
-fields — each engine's `LayoutNode` already defines these plus its own
-specific fields. Extracting would force a base-class-bloat tradeoff; defer
-until a second engine needs the same extension point.
+**Back-compat preserved everywhere.**  `dot/pathplan/pathgeom.py`,
+`dot/pathplan/util.py`, `dot/splines.py`'s `to_bezier`, and the standalone
+`gvpy/engines/layout/font_metrics.py` all became re-exports so every
+existing call site continues to resolve.
 
-**Risks:**
-- Spline extraction (step 4): `dot/splines.py` is 2284 lines with many
-  interdependencies. Pull only pure-geometry stateless helpers; leave the
-  phase-4 routing pipeline in `dot/`.
-- Circular imports: `base.py` ↔ `common/postproc.py` — easy to avoid if
-  `common/` never imports from `base.py` (only the reverse).
-
-**Non-goals:**
-- No behavioral change — this is pure code organization.
-- No test changes expected; existing 836 should all still pass after each
-  step.
+**Deferred (optional):**
+- `LayoutNodeBase` dataclass with the six universal fields.  Each engine's
+  `LayoutNode` already defines these plus engine-specific extensions;
+  extracting would force a base-class-bloat tradeoff.  Defer until a
+  second engine needs the same extension point.
 
 ---
 
