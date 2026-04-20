@@ -19,11 +19,20 @@ the bound purely for parity with the ``Heap overflow`` error path.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from gvpy.engines.layout.ortho.sgraph import Snode
+
+# C's ``PQcheck`` invariant runs only under ``#ifdef DEBUG``; release
+# builds skip it.  Python followed the debug path on every heap
+# operation, which profiled as ~50 % of total runtime on 2620.dot
+# (37.7 s out of 76 s across 2.37 M invocations).  Gate the check
+# behind an opt-in env var so production runs skip the O(n) walk
+# while diagnostic sessions can still flip it on.
+_PQCHECK_ENABLED = os.environ.get("GVPY_PQCHECK") == "1"
 
 
 @dataclass
@@ -64,7 +73,8 @@ def pq_insert(pq: Pq, np) -> int:
     pq.cnt += 1
     pq.pq[pq.cnt] = np
     _pq_upheap(pq, pq.cnt)
-    _pq_check(pq)
+    if _PQCHECK_ENABLED:
+        _pq_check(pq)
     return 0
 
 
@@ -76,7 +86,8 @@ def pq_remove(pq: Pq):
         pq.cnt -= 1
         if pq.cnt:
             _pq_downheap(pq, 1)
-        _pq_check(pq)
+        if _PQCHECK_ENABLED:
+            _pq_check(pq)
         return n
     return None
 
@@ -85,7 +96,8 @@ def pq_update(pq: Pq, n, d: int) -> None:
     """``PQupdate`` — set ``n.n_val = d`` and re-heapify in place."""
     n.n_val = d
     _pq_upheap(pq, n.n_idx)
-    _pq_check(pq)
+    if _PQCHECK_ENABLED:
+        _pq_check(pq)
 
 
 def _pq_upheap(pq: Pq, k: int) -> None:
