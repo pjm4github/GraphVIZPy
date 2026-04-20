@@ -57,51 +57,15 @@ def bezier_point(V: list, t: float,
 
 
 # ── Inside-test helpers ────────────────────────────────────────────
+# Canonical definitions moved to :mod:`common.shapes`.  Re-export so
+# existing call sites continue to resolve.
 
-InsideFn = Callable[[Ppoint], bool]
-
-
-def ellipse_inside(hw: float, hh: float) -> InsideFn:
-    """Return an inside-test for an axis-aligned ellipse centred at origin.
-
-    *hw* and *hh* are the half-width and half-height.  The test
-    uses the standard ``(x/hw)^2 + (y/hh)^2 <= 1`` form.
-    """
-    def _inside(p: Ppoint) -> bool:
-        if hw <= 0 or hh <= 0:
-            return False
-        return (p.x / hw) ** 2 + (p.y / hh) ** 2 <= 1.0
-    return _inside
-
-
-def box_inside(hw: float, hh: float) -> InsideFn:
-    """Return an inside-test for an axis-aligned rectangle centred at origin."""
-    def _inside(p: Ppoint) -> bool:
-        return abs(p.x) <= hw and abs(p.y) <= hh
-    return _inside
-
-
-def make_inside_fn(shape: str, hw: float, hh: float) -> InsideFn:
-    """Build a node-boundary inside-test from shape name and half-sizes.
-
-    This replaces C's ``ND_shape(n)->fns->insidefn`` callback.
-    Currently handles ``ellipse`` (default) and ``box``/``rect``
-    families.  Other shapes fall back to ellipse.
-    """
-    s = (shape or "").lower()
-    if s in ("box", "rect", "rectangle", "square",
-             "record", "mrecord", "plaintext", "plain",
-             "none", "underline", "tab", "folder",
-             "component", "note", "signature", "rpromoter",
-             "rarrow", "larrow", "lpromoter",
-             "cds", "promoter", "terminator",
-             "utr", "primersite", "restrictionsite",
-             "fivepoverhang", "threepoverhang",
-             "noverhang", "assembly", "insulator",
-             "ribosite", "rnastab", "proteasesite",
-             "proteinstab"):
-        return box_inside(hw, hh)
-    return ellipse_inside(hw, hh)
+from gvpy.engines.layout.common.shapes import (  # noqa: F401
+    InsideFn,
+    ellipse_inside,
+    box_inside,
+    make_inside_fn,
+)
 
 
 # ── bezier_clip ────────────────────────────────────────────────────

@@ -133,36 +133,11 @@ GRAPHTYPEMASK = 192
 
 
 # ── Box ──────────────────────────────────────────────────────────────────
-# See: /lib/common/geom.h @ 41
+# Canonical definition now in :mod:`common.shapes`.  Re-export so
+# existing ``from gvpy.engines.layout.dot.path import Box`` imports
+# keep resolving.
 
-@dataclass
-class Box:
-    """Axis-aligned 2D bounding box.
-
-    Mutable so router box-path construction can widen a box in place
-    (see ``adjustregularpath`` in ``dotsplines.c``, which stretches box
-    edges to meet ``MINW``).
-    """
-
-    ll_x: float = 0.0
-    ll_y: float = 0.0
-    ur_x: float = 0.0
-    ur_y: float = 0.0
-
-    @property
-    def width(self) -> float:
-        return self.ur_x - self.ll_x
-
-    @property
-    def height(self) -> float:
-        return self.ur_y - self.ll_y
-
-    def is_valid(self) -> bool:
-        """True iff ``ll`` is strictly below-and-left of ``ur``.
-
-        See: /lib/common/geom.h @ 41
-        """
-        return self.ll_x < self.ur_x and self.ll_y < self.ur_y
+from gvpy.engines.layout.common.shapes import Box  # noqa: F401
 
 
 # ── Port ─────────────────────────────────────────────────────────────────

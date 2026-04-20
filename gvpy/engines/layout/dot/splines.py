@@ -1048,22 +1048,8 @@ def boundary_point(ln: LayoutNode, tx: float, ty: float) -> tuple[float, float]:
     return (cx + dx * scale, cy + dy * scale)
 
 
-def self_loop_points(ln: LayoutNode) -> list[tuple[float, float]]:
-    """self_loop_points.
-
-    See: /lib/common/splines.c @ 1164
-
-    Returns a small arc of control points that loops back to the
-    same node, anchored just above the node.
-    """
-    hw = ln.width / 2.0
-    loop = 20.0
-    return [
-        (ln.x + hw, ln.y),
-        (ln.x + hw + loop, ln.y - loop),
-        (ln.x + hw + loop, ln.y + loop),
-        (ln.x + hw, ln.y),
-    ]
+# Canonical implementation in :mod:`common.shapes`; re-exported here.
+from gvpy.engines.layout.common.shapes import self_loop_points  # noqa: F401
 
 
 # ── Cluster-aware obstacle bbox family ──────────────────────────────────
