@@ -6,7 +6,7 @@ See: /lib/common/splines.c @ 1164    (self-loop arc control points)
 
 Engine-agnostic: the dataclass, inside-test closures, and self-loop
 helper touch only primitive coordinates, so any layout engine can pull
-them in.  ``dot/path.py``, ``dot/clip.py``, and ``dot/splines.py``
+them in.  ``dot/path.py``, ``dot/clip.py``, and ``dot/dotsplines.py``
 re-export for back-compat so existing imports keep working.
 """
 from __future__ import annotations

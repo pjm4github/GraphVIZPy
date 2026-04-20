@@ -228,7 +228,7 @@ from gvpy.engines.layout.dot import dotinit  # noqa: E402
 from gvpy.engines.layout.dot import mincross  # noqa: E402
 from gvpy.engines.layout.dot import position  # noqa: E402
 from gvpy.engines.layout.dot import rank  # noqa: E402
-from gvpy.engines.layout.dot import splines  # noqa: E402
+from gvpy.engines.layout.dot import dotsplines  # noqa: E402
 
 
 # ── Internal data structures ─────────────────────
@@ -251,7 +251,7 @@ class LayoutNode:
     ``resetRW`` in phase 4 to restore a node's pre-inflation right
     half-width: when a node carries self-loops, the position phase
     inflates ``ND_rw`` and stashes the original value in ``mval`` so
-    the splines phase can swap them back via :func:`splines.resetRW`.
+    the splines phase can swap them back via :func:`dotsplines.resetRW`.
     Default ``0.0`` means uninflated (current Python behaviour — real
     self-loop inflation lands in Phase F)."""
 
@@ -1697,59 +1697,59 @@ class DotGraphInfo(LayoutEngine):
         that dispatches each edge to ``make_regular_edge`` /
         ``make_flat_edge`` / ``makeSelfEdge`` based on edge type.
 
-        Delegates to :func:`splines.phase4_routing`.
+        Delegates to :func:`dotsplines.phase4_routing`.
         """
-        return splines.phase4_routing(self, *args, **kwargs)
+        return dotsplines.phase4_routing(self, *args, **kwargs)
 
 
     def _clip_compound_edges(self, *args, **kwargs):
         """Clip compound (cluster-to-cluster) edges to cluster boundaries.
 
-        See: ``lib/common/splines.c`` compound-edge clipping logic
+        See: ``lib/common/dotsplines.c`` compound-edge clipping logic
         triggered by ``lhead`` / ``ltail`` attributes.
 
-        Delegates to :func:`splines.clip_compound_edges`.
+        Delegates to :func:`dotsplines.clip_compound_edges`.
         """
-        return splines.clip_compound_edges(self, *args, **kwargs)
+        return dotsplines.clip_compound_edges(self, *args, **kwargs)
 
 
     @staticmethod
     def _clip_to_bb(inside, *args, **kwargs) -> tuple | None:
         """Clip a point/line to a bounding box.
 
-        Class-callable alias to module function ``splines.clip_to_bb``.
+        Class-callable alias to module function ``dotsplines.clip_to_bb``.
         Staticmethod (not instance method) — the first arg is the
         ``inside`` point, not ``self``.
 
         See: geometry helpers in ``lib/common/geomprocs.c`` —
         ``lineToBox`` / equivalent.
         """
-        return splines.clip_to_bb(inside, *args, **kwargs)
+        return dotsplines.clip_to_bb(inside, *args, **kwargs)
 
 
     @staticmethod
     def _to_bezier(pts, *args, **kwargs) -> list[tuple]:
         """Convert a polyline to a smooth cubic Bezier control sequence.
 
-        Class-callable alias to module function ``splines.to_bezier``.
+        Class-callable alias to module function ``dotsplines.to_bezier``.
         Staticmethod — the first arg is the point list, not ``self``.
 
         See: ``lib/pathplan/util.c: make_polyline() @ 44`` +
         B-spline fitting in ``lib/dotgen/dotsplines.c``.
         """
-        return splines.to_bezier(pts, *args, **kwargs)
+        return dotsplines.to_bezier(pts, *args, **kwargs)
 
 
     def _edge_start_point(self, *args, **kwargs) -> tuple[float, float]:
         """Compute the starting point on the tail node's boundary.
 
-        See: port-resolution logic in ``lib/common/splines.c``
+        See: port-resolution logic in ``lib/common/dotsplines.c``
         that combines ``ND_coord`` + ``ED_tail_port.p`` into the
         edge's anchor point.
 
-        Delegates to :func:`splines.edge_start_point`.
+        Delegates to :func:`dotsplines.edge_start_point`.
         """
-        return splines.edge_start_point(self, *args, **kwargs)
+        return dotsplines.edge_start_point(self, *args, **kwargs)
 
 
     def _edge_end_point(self, *args, **kwargs) -> tuple[float, float]:
@@ -1758,9 +1758,9 @@ class DotGraphInfo(LayoutEngine):
         See: mirror of :meth:`_edge_start_point` using
         ``ED_head_port``.
 
-        Delegates to :func:`splines.edge_end_point`.
+        Delegates to :func:`dotsplines.edge_end_point`.
         """
-        return splines.edge_end_point(self, *args, **kwargs)
+        return dotsplines.edge_end_point(self, *args, **kwargs)
 
 
     def _record_port_point(self, *args, **kwargs) -> tuple[float, float] | None:
@@ -1769,35 +1769,35 @@ class DotGraphInfo(LayoutEngine):
         See: ``lib/common/shapes.c: record_port() @ 3810`` — walks the
         record field tree to find a named port's bounding box center.
 
-        Delegates to :func:`splines.record_port_point`.
+        Delegates to :func:`dotsplines.record_port_point`.
         """
-        return splines.record_port_point(self, *args, **kwargs)
+        return dotsplines.record_port_point(self, *args, **kwargs)
 
 
     @staticmethod
     def _port_point(ln, *args, **kwargs):
         """Resolve a compass port string to an offset on the node boundary.
 
-        Class-callable alias to module function ``splines.port_point``.
+        Class-callable alias to module function ``dotsplines.port_point``.
         Staticmethod — the first arg is a ``LayoutNode``, not ``self``.
 
         See: ``lib/common/shapes.c: compassPort() @ 2699`` +
         ``lib/common/shapes.c: poly_port() @ 2893``.
         """
-        return splines.port_point(ln, *args, **kwargs)
+        return dotsplines.port_point(ln, *args, **kwargs)
 
 
     @staticmethod
     def _compute_label_pos(le, *args, **kwargs):
         """Position an edge label at the midpoint of its spline.
 
-        Class-callable alias to module function ``splines.compute_label_pos``.
+        Class-callable alias to module function ``dotsplines.compute_label_pos``.
         Staticmethod — the first arg is a ``LayoutEdge``, not ``self``.
 
-        See: ``lib/common/splines.c: edgeMidpoint() @ 1283`` /
+        See: ``lib/common/dotsplines.c: edgeMidpoint() @ 1283`` /
         ``addEdgeLabels() @ 1307``.
         """
-        return splines.compute_label_pos(le, *args, **kwargs)
+        return dotsplines.compute_label_pos(le, *args, **kwargs)
 
 
     def _apply_sameport(self, *args, **kwargs):
@@ -1807,9 +1807,9 @@ class DotGraphInfo(LayoutEngine):
         coalesces multiple edges meeting at the same port so they
         share a common anchor point.
 
-        Delegates to :func:`splines.apply_sameport`.
+        Delegates to :func:`dotsplines.apply_sameport`.
         """
-        return splines.apply_sameport(self, *args, **kwargs)
+        return dotsplines.apply_sameport(self, *args, **kwargs)
 
 
     def _ortho_route(self, *args, **kwargs) -> list[tuple[float, float]]:
@@ -1818,36 +1818,36 @@ class DotGraphInfo(LayoutEngine):
         See: ``lib/ortho/ortho.c: orthoEdges() @ 1162`` — orthogonal edge
         router based on the Sander / Eades algorithm.
 
-        Delegates to :func:`splines.ortho_route`.
+        Delegates to :func:`dotsplines.ortho_route`.
         """
-        return splines.ortho_route(self, *args, **kwargs)
+        return dotsplines.ortho_route(self, *args, **kwargs)
 
 
     @staticmethod
     def _boundary_point(ln, *args, **kwargs) -> tuple[float, float]:
         """Intersect a line from node center outward with the node boundary.
 
-        Class-callable alias to module function ``splines.boundary_point``.
+        Class-callable alias to module function ``dotsplines.boundary_point``.
         Staticmethod — the first arg is a ``LayoutNode``, not ``self``.
 
         See: ``lib/common/shapes.c`` shape-specific boundary
         intersection (``poly_path`` / ``ellipse_path``).
         """
-        return splines.boundary_point(ln, *args, **kwargs)
+        return dotsplines.boundary_point(ln, *args, **kwargs)
 
 
     @staticmethod
     def _self_loop_points(ln, *args, **kwargs) -> list[tuple[float, float]]:
         """Route a self-loop edge (simple heuristic fallback).
 
-        Class-callable alias to module function ``splines.self_loop_points``.
+        Class-callable alias to module function ``dotsplines.self_loop_points``.
         Staticmethod — the first arg is a ``LayoutNode``, not ``self``.
 
-        See: ``lib/common/splines.c: makeSelfEdge() @ 1164`` +
+        See: ``lib/common/dotsplines.c: makeSelfEdge() @ 1164`` +
         ``selfRight`` / ``selfLeft`` / ``selfTop`` / ``selfBottom``.
         The C-matching port lives in :mod:`self_edge`.
         """
-        return splines.self_loop_points(ln, *args, **kwargs)
+        return dotsplines.self_loop_points(ln, *args, **kwargs)
 
 
     def _maximal_bbox(self, vn_ln, ie=None, oe=None):
@@ -1861,9 +1861,9 @@ class DotGraphInfo(LayoutEngine):
         Requires ``self._spline_info`` to be populated (phase-4 only).
         Returns a :class:`Box`.
 
-        Delegates to :func:`splines.maximal_bbox`.
+        Delegates to :func:`dotsplines.maximal_bbox`.
         """
-        return splines.maximal_bbox(self, self._spline_info, vn_ln, ie, oe)
+        return dotsplines.maximal_bbox(self, self._spline_info, vn_ln, ie, oe)
 
 
     def _rank_box(self, r: int):
@@ -1876,9 +1876,9 @@ class DotGraphInfo(LayoutEngine):
         Requires ``self._spline_info`` to be populated (only true during
         a phase-4 routing pass).  Returns a :class:`Box`.
 
-        Delegates to :func:`splines.rank_box`.
+        Delegates to :func:`dotsplines.rank_box`.
         """
-        return splines.rank_box(self, self._spline_info, r)
+        return dotsplines.rank_box(self, self._spline_info, r)
 
 
 
@@ -1889,9 +1889,9 @@ class DotGraphInfo(LayoutEngine):
         See: dispatch logic inside
         ``lib/dotgen/dotsplines.c: make_flat_edge() @ 1538``.
 
-        Delegates to :func:`splines.classify_flat_edge`.
+        Delegates to :func:`dotsplines.classify_flat_edge`.
         """
-        return splines.classify_flat_edge(self, *args, **kwargs)
+        return dotsplines.classify_flat_edge(self, *args, **kwargs)
 
 
     def _count_flat_edge_index(self, *args, **kwargs) -> int:
@@ -1901,9 +1901,9 @@ class DotGraphInfo(LayoutEngine):
         ``lib/dotgen/dotsplines.c: make_flat_edge() @ 1538`` loop that offsets
         parallel flat edges.
 
-        Delegates to :func:`splines.count_flat_edge_index`.
+        Delegates to :func:`dotsplines.count_flat_edge_index`.
         """
-        return splines.count_flat_edge_index(self, *args, **kwargs)
+        return dotsplines.count_flat_edge_index(self, *args, **kwargs)
 
 
     def _flat_edge_route(self, *args, **kwargs) -> list[tuple[float, float]]:
@@ -1912,9 +1912,9 @@ class DotGraphInfo(LayoutEngine):
         See: ``lib/dotgen/dotsplines.c: make_flat_edge() @ 1538``.
         The C-matching port lives in :mod:`flat_edge`.
 
-        Delegates to :func:`splines.flat_edge_route` (legacy fallback).
+        Delegates to :func:`dotsplines.flat_edge_route` (legacy fallback).
         """
-        return splines.flat_edge_route(self, *args, **kwargs)
+        return dotsplines.flat_edge_route(self, *args, **kwargs)
 
 
     def _flat_adjacent(self, *args, **kwargs):
@@ -1923,9 +1923,9 @@ class DotGraphInfo(LayoutEngine):
         See: ``lib/dotgen/dotsplines.c: makeSimpleFlat() @ 1111``.
         The C-matching port lives in :mod:`flat_edge`.
 
-        Delegates to :func:`splines.flat_adjacent` (legacy fallback).
+        Delegates to :func:`dotsplines.flat_adjacent` (legacy fallback).
         """
-        return splines.flat_adjacent(self, *args, **kwargs)
+        return dotsplines.flat_adjacent(self, *args, **kwargs)
 
 
     def _flat_labeled(self, *args, **kwargs):
@@ -1934,9 +1934,9 @@ class DotGraphInfo(LayoutEngine):
         See: ``lib/dotgen/dotsplines.c: make_flat_labeled_edge() @ 1350``.
         The C-matching port lives in :mod:`flat_edge`.
 
-        Delegates to :func:`splines.flat_labeled` (legacy fallback).
+        Delegates to :func:`dotsplines.flat_labeled` (legacy fallback).
         """
-        return splines.flat_labeled(self, *args, **kwargs)
+        return dotsplines.flat_labeled(self, *args, **kwargs)
 
 
     def _flat_arc(self, *args, **kwargs):
@@ -1946,9 +1946,9 @@ class DotGraphInfo(LayoutEngine):
         and the top-arc corridor in ``make_flat_edge()``.  The C-matching
         port lives in :mod:`flat_edge`.
 
-        Delegates to :func:`splines.flat_arc` (legacy fallback).
+        Delegates to :func:`dotsplines.flat_arc` (legacy fallback).
         """
-        return splines.flat_arc(self, *args, **kwargs)
+        return dotsplines.flat_arc(self, *args, **kwargs)
 
 
     # ── Write-back and output ────────────────────
@@ -2072,7 +2072,7 @@ class DotGraphInfo(LayoutEngine):
             # Include record port positions from Node.record_fields.
             # Emitted as a linear fraction [0..1] along the node's
             # cross-rank face — the same convention used by
-            # splines.record_port_point for edge attach points, so
+            # dotsplines.record_port_point for edge attach points, so
             # downstream renderers (pictosync) can reproduce the exact
             # attach coordinates the layout engine used.  We do NOT
             # emit port_fraction() here because that returns C's

@@ -14,7 +14,7 @@ import math
 
 from gvpy.engines.layout.dot.dot_layout import DotGraphInfo
 from gvpy.engines.layout.dot.path import SplineInfo
-from gvpy.engines.layout.dot.splines import rank_box
+from gvpy.engines.layout.dot.dotsplines import rank_box
 from gvpy.grammar.gv_reader import read_dot
 
 

@@ -99,7 +99,7 @@ def straight_len(layout, start_ln) -> int:
     Used to detect long straight runs in a virtual chain where a
     spline fit would be wasteful compared to a polyline segment.
     """
-    from gvpy.engines.layout.dot.splines import _node_out_edges, _node_in_edges
+    from gvpy.engines.layout.dot.dotsplines import _node_out_edges, _node_in_edges
 
     cnt = 0
     v = start_ln
@@ -130,7 +130,7 @@ def straight_path(layout, start_le, cnt: int, plist: list):
     manipulation by appending the last point of ``plist`` twice (so a
     cubic-bezier consumer sees a straight segment to the next anchor).
     """
-    from gvpy.engines.layout.dot.splines import _node_out_edges
+    from gvpy.engines.layout.dot.dotsplines import _node_out_edges
 
     f = start_le
     for _ in range(cnt):
@@ -186,7 +186,7 @@ def recover_slack(layout, vchain_names: list, P) -> None:
     current virtual (``box.ur_y < vn.y``) and skipping the virtual if
     the current box is entirely below it (``box.ll_y > vn.y``).
     """
-    from gvpy.engines.layout.dot.splines import spline_merge
+    from gvpy.engines.layout.dot.dotsplines import spline_merge
 
     boxes = P.boxes
     if not boxes or not vchain_names:
@@ -236,7 +236,7 @@ def top_bound(layout, tail_ln, ref_head_order: int, side: int):
     don't map cleanly to a single edge_t, so these two inputs are
     passed explicitly — same semantics, different spelling.
     """
-    from gvpy.engines.layout.dot.splines import _node_out_edges
+    from gvpy.engines.layout.dot.dotsplines import _node_out_edges
     from gvpy.engines.layout.dot.label_place import getsplinepoints
 
     ans = None
@@ -262,7 +262,7 @@ def bot_bound(layout, head_ln, ref_tail_order: int, side: int):
 
     See: /lib/dotgen/dotsplines.c @ 2133
     """
-    from gvpy.engines.layout.dot.splines import _node_in_edges
+    from gvpy.engines.layout.dot.dotsplines import _node_in_edges
     from gvpy.engines.layout.dot.label_place import getsplinepoints
 
     ans = None
@@ -371,7 +371,7 @@ def make_regular_edge(layout, sp: SplineInfo, P: Path,
 
     Multi-edge offset (``Multisep``) is applied when ``len(edges) > 1``.
     """
-    from gvpy.engines.layout.dot.splines import (
+    from gvpy.engines.layout.dot.dotsplines import (
         maximal_bbox, rank_box, spline_merge,
         _node_out_edges, _node_in_edges,
     )

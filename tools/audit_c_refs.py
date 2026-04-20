@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 FILES = [
-    "rank.py", "mincross.py", "position.py", "splines.py",
+    "rank.py", "mincross.py", "position.py", "dotsplines.py",
     "cluster.py", "dotinit.py",
 ]
 ROOT = Path("gvpy/engines/dot")

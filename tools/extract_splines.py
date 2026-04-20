@@ -1,5 +1,5 @@
 """One-shot script: extract the Phase 4 (spline routing)
-methods from dot_layout.py into splines.py as free functions.
+methods from dot_layout.py into dotsplines.py as free functions.
 
 Same transformation rules as tools/extract_mincross.py.  See that
 script's docstring for full details.
@@ -46,7 +46,7 @@ METHODS = [
 ]
 
 SRC = Path("gvpy/engines/dot/dot_layout.py")
-DST = Path("gvpy/engines/dot/splines.py")
+DST = Path("gvpy/engines/dot/dotsplines.py")
 
 
 def find_signature_end(lines: list[str], start: int) -> int:
@@ -127,9 +127,9 @@ def make_wrapper(method_name: str, lines: list[str],
     sig_lines = lines[start:sig_end + 1]
     indent = "        "
     body = [
-        f'{indent}"""Delegates to gvpy.engines.layout.dot.splines.{func_name}."""\n',
-        f"{indent}from gvpy.engines.layout.dot import splines\n",
-        f"{indent}return splines.{func_name}(self, *args, **kwargs)\n",
+        f'{indent}"""Delegates to gvpy.engines.layout.dot.dotsplines.{func_name}."""\n',
+        f"{indent}from gvpy.engines.layout.dot import dotsplines\n",
+        f"{indent}return dotsplines.{func_name}(self, *args, **kwargs)\n",
         "\n",
     ]
     full_sig = "".join(sig_lines).rstrip()

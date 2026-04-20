@@ -97,7 +97,7 @@ def _make_flat_end(layout, sp: SplineInfo, P: Path, ln, le,
 
     See: /lib/dotgen/dotsplines.c @ 1319
     """
-    from gvpy.engines.layout.dot.splines import maximal_bbox
+    from gvpy.engines.layout.dot.dotsplines import maximal_bbox
 
     endp.nb = maximal_bbox(layout, sp, ln, None, None)
     endp.sidemask = side
@@ -143,7 +143,7 @@ def _port_attach_point(layout, ln, port_str: str, is_tail: bool) -> tuple[float,
     expected to have already routed non-compass ports through the
     :class:`UnsupportedPortRoutingWarning` path.
     """
-    from gvpy.engines.layout.dot.splines import port_point
+    from gvpy.engines.layout.dot.dotsplines import port_point
 
     _, compass = _port_parts(port_str)
     if compass and compass in _COMPASS_NAMES:
@@ -750,7 +750,7 @@ def make_flat_edge(layout, sp: SplineInfo, P: Path,
     with ports/labels) is deferred — falls back to ``make_simple_flat``.
     """
     from gvpy.engines.layout.dot.path import BWDEDGE
-    from gvpy.engines.layout.dot.splines import maximal_bbox
+    from gvpy.engines.layout.dot.dotsplines import maximal_bbox
 
     if not edges:
         return

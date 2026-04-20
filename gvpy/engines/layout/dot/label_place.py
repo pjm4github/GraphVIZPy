@@ -3,7 +3,7 @@
 See: /lib/common/splines.c @ 1205
 
 F+ bucket of the splines port.  Replaces the heuristic
-``compute_label_pos`` in ``splines.py`` with a C-matching
+``compute_label_pos`` in ``dotsplines.py`` with a C-matching
 implementation.
 
 F+.1 (this commit) ports the spline geometry primitives:
@@ -72,7 +72,7 @@ def getsplinepoints(layout, le: "LayoutEdge") -> "EdgeRoute | None":
     """
     if le.route.points:
         return le.route
-    from gvpy.engines.layout.dot.splines import getmainedge
+    from gvpy.engines.layout.dot.dotsplines import getmainedge
     main = getmainedge(layout, le)
     if main is not le and main.route.points:
         return main.route

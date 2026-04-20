@@ -56,7 +56,7 @@ Related modules
 - :mod:`gvpy.engines.layout.dot.mincross` — Phase 2, consumes ``layout.ranks``
   and reorders nodes within each rank.
 - :mod:`gvpy.engines.layout.dot.position` — Phase 3 coordinate assignment.
-- :mod:`gvpy.engines.layout.dot.splines`  — Phase 4 edge routing.
+- :mod:`gvpy.engines.layout.dot.dotsplines`  — Phase 4 edge routing.
 - :mod:`gvpy.engines.layout.dot.dot_layout` — holds ``DotGraphInfo`` (state
   container), Phase 1 init helpers (``_collect_edges``,
   ``_collect_clusters``, ``_dedup_cluster_nodes``), cluster geometry,
