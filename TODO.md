@@ -79,18 +79,92 @@ Ordered by payoff.  Each item is independently shippable.
 
 Priority order:
 
-1. **neato** — stress majorization / Kamada-Kawai.  Highest priority —
-   widely used, well-documented.
-2. **fdp** — Fruchterman-Reingold with cluster support.
-3. **twopi** — radial BFS; straightforward; good for trees / DAGs.
-4. **sfdp** — multiscale force-directed, Barnes-Hut for 10K+ nodes.
-5. **osage** — cluster packing.
-6. **patchwork** — squarified treemap.
-7. **mingle** — post-processing edge bundling (not a layout engine).
-8. **ortho** — full port of `lib/ortho/*` (~3000 lines) to replace the
-   naïve Z-router (D1).
+1. **ortho** — full port of `lib/ortho/*` to replace the naïve Z-router
+   (D1).  **Next scheduled work** — see §5a below for the kickoff brief.
+2. **neato** — stress majorization / Kamada-Kawai.  Widely used,
+   well-documented.
+3. **fdp** — Fruchterman-Reingold with cluster support.
+4. **twopi** — radial BFS; straightforward; good for trees / DAGs.
+5. **sfdp** — multiscale force-directed, Barnes-Hut for 10K+ nodes.
+6. **osage** — cluster packing.
+7. **patchwork** — squarified treemap.
+8. **mingle** — post-processing edge bundling (not a layout engine).
 
 Live today: **dot** (836 tests) and **circo** (25 tests).
+
+---
+
+## 5a. Ortho port kickoff brief
+
+**Goal:** replace the naïve Z-router with a proper orthogonal channel
+router that respects non-member cluster bboxes.  Target graph: **2620.dot
+(66 crossings)** — the remaining outlier in the audit corpus.
+
+**C source:** `C:\Users\pmora\OneDrive\Documents\Git\GitHub\graphviz\lib\ortho\`
+(~3000 lines).  Entry point is `orthoEdges()` in `ortho.c`.  Supporting
+modules: `maze.c` (obstacle grid), `partition.c` (rectangle decomposition),
+`sgraph.c` (sparse-graph shortest path), `trapezoid.c`, `rawgraph.c`.
+
+**Current Python ortho code (all placeholder):**
+- `gvpy/engines/layout/dot/dotsplines.py::ortho_route(layout, le, tail, head)` —
+  naïve Z with `_ortho_safe_midy` cluster-avoidance clamp (commit `0b7c251`,
+  B2).  Compass-aware, but doesn't do channel routing.  Returns 4-point
+  polyline.
+- `_ortho_safe_midy`, `_ortho_member_clusters`, `_ortho_any_obstacle_at` —
+  supporting helpers in `dotsplines.py`, called only from `ortho_route`.
+- Dispatch sites: `dotsplines.phase4_routing_body` at the two
+  `elif layout.splines == "ortho": le.points = layout._ortho_route(…)`
+  branches — once in the real-edge loop, once in the chain-edge loop.
+
+**Architecture options (pick one at kickoff):**
+
+1. **Top-down port of `lib/ortho/`.**  Mirror the C tree — new
+   `gvpy/engines/layout/ortho/` with `maze.py`, `ortho.py`, `partition.py`,
+   `sgraph.py`, `trapezoid.py`, `rawgraph.py`.  High fidelity, ~3000
+   lines, ~1-2 weeks.  Best if we want to match dot.exe byte-for-byte on
+   ortho output.
+2. **Incremental extension of the Z-router.**  Grow `dotsplines.ortho_route`
+   into a proper channel router without cloning C's structure.  Shorter,
+   Python-idiomatic, may diverge from dot.exe output.  Iterate against
+   `tools/count_cluster_crossings.py test_data/2620.dot`.
+3. **Separate engine shell.**  New `gvpy/engines/layout/ortho/` subpackage
+   with its own entry point, but implement incrementally rather than
+   top-down.  Splits the difference — clean separation without
+   committing to a faithful port.
+
+**Available building blocks in `common/` (shipped 2026-04-19):**
+- `common/geom.py` — `Ppoint`, `Pvector`, `Ppoly`, `Ppolyline`, `Pedge`,
+  `approx_eq`, `interval_overlap`, `MILLIPOINT`.
+- `common/shapes.py` — `Box`, `InsideFn`, `ellipse_inside`, `box_inside`,
+  `make_inside_fn`, `self_loop_points`.
+- `common/clip.py` — `bezier_clip`, `shape_clip`, `clip_and_install`,
+  `conc_slope`.
+- `common/splines.py` — `to_bezier`, `make_polyline`, `bezier_point`,
+  `polyline_midpoint_raw`.
+- `common/text.py` — label sizing and collision-aware placement.
+- `common/postproc.py` — normalize / rotate / center / component packing.
+- `pathplan/` (moved to layout root 2026-04-19) — shortest-path,
+  triangulation, visibility graph, Schneider spline fit.  Usable
+  directly by ortho for channel routing.
+
+**Known dispatch integration:**
+- Phase 4 runs inside a TB-frame wrapper (`_phase4_to_tb` /
+  `_phase4_from_tb`) — if the ortho router produces output in TB frame,
+  the wrapper will rotate it to the output rankdir automatically.  This
+  is why the current B2 compass-port fix works for LR graphs.
+
+**Success criterion:**
+- `tools/count_cluster_crossings.py test_data/2620.dot` goes from 66 to
+  a small single-digit count (or zero).
+- Full suite 836 tests still pass.
+- Consider rerunning `tools/visual_audit.py` for a corpus-wide check
+  afterwards; other 17 ortho graphs in the corpus currently show 0
+  crossings but may have shifted.
+
+**Starting command for the next session:** read `DONE.md`'s 2026-04-19
+entry for the B2 fix + audit tool context, then `grep -n "ortho_route\|
+_ortho_safe_midy" gvpy/engines/layout/dot/dotsplines.py` to see the
+existing code, then pick one of the three architecture options.
 
 ---
 
