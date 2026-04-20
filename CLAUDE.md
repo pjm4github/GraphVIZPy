@@ -26,15 +26,17 @@ This project is an adjacent module planned to merge with:
 
 ## Active TODO File
 
-- **`TODO.md`** — consolidated roadmap. Python ↔ C divergence table (§1),
-  dot-engine priority work (§2), splines port completion status (§3), core
+- **`TODO.md`** — pending work only.  Python ↔ C divergence table (§1),
+  dot-engine priority work (§2), splines port deferred items (§3), core
   refactor (§4), other layout engines (§5), MainGraphvisPy GUI (§6),
-  pictosync merge (§7), diagnostics + tooling (§8). Always check this
+  pictosync merge (§7), diagnostics + tooling (§8).  Always check this
   before starting new work.
+- **`DONE.md`** — archive of shipped work.  Chronological; newest first.
+  Read when you need context on how something got to its current state.
 
 Legacy per-topic TODO files (`TODO_dot_layout.md`, `TODO_dot_splines_port.md`,
-etc.) were removed once their content was consolidated into `TODO.md` — see
-git history for the archival record.
+etc.) were removed once their content was consolidated — see git history
+for the archival record.
 
 ## Reference C Implementation
 The authoritative Graphviz C source used for behavioral matching is located at:
