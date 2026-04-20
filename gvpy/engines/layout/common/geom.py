@@ -65,3 +65,37 @@ class Pedge:
 
     a: Ppoint = field(default_factory=Ppoint)
     b: Ppoint = field(default_factory=Ppoint)
+
+
+# ── 1D / 2D primitives ───────────────────────────────────────────────
+
+MILLIPOINT = 0.001
+
+
+def approx_eq(a: Ppoint, b: Ppoint, eps: float = MILLIPOINT) -> bool:
+    """True iff two points coincide to within ``eps`` on both axes.
+
+    See: /lib/common/geom.h @ 71
+    """
+    return abs(a.x - b.x) < eps and abs(a.y - b.y) < eps
+
+
+def interval_overlap(i0: float, i1: float, j0: float, j1: float) -> float:
+    """Length of overlap between two 1D half-open intervals.
+
+    See: /lib/common/routespl.c @ 606
+
+    Returns ``0.0`` if the intervals are disjoint; otherwise the length
+    of the intersection.
+    """
+    if i1 <= j0:
+        return 0.0
+    if i0 >= j1:
+        return 0.0
+    if i0 <= j0 and i1 >= j1:
+        return i1 - i0
+    if j0 <= i0 and j1 >= i1:
+        return j1 - j0
+    if j0 <= i0 <= j1:
+        return j1 - i0
+    return i1 - j0

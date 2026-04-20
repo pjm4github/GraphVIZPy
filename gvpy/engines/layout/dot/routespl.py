@@ -45,23 +45,9 @@ LOOP_TRIES = 15
 
 
 # ── overlap ────────────────────────────────────────────────────────
-
-def overlap(i0: float, i1: float, j0: float, j1: float) -> float:
-    """Return the overlap length between intervals [i0,i1) and [j0,j1).
-
-    See: /lib/common/routespl.c @ 606
-    """
-    if i1 <= j0:
-        return 0.0
-    if i0 >= j1:
-        return 0.0
-    if i0 <= j0 and i1 >= j1:
-        return i1 - i0
-    if j0 <= i0 and j1 >= i1:
-        return j1 - j0
-    if j0 <= i0 <= j1:
-        return j1 - i0
-    return i1 - j0
+# Canonical definition in :mod:`common.geom` as ``interval_overlap``;
+# re-exported under the legacy short name ``overlap`` for back-compat.
+from gvpy.engines.layout.common.geom import interval_overlap as overlap  # noqa: F401
 
 
 # ── checkpath ──────────────────────────────────────────────────────

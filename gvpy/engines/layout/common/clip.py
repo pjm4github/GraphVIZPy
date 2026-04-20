@@ -28,19 +28,16 @@ from __future__ import annotations
 
 import math
 
-from gvpy.engines.layout.common.geom import Ppoint
+from gvpy.engines.layout.common.geom import (
+    MILLIPOINT,
+    Ppoint,
+    approx_eq as _approx_eq,  # legacy underscore alias for back-compat
+)
 from gvpy.engines.layout.common.shapes import (
     InsideFn,
     make_inside_fn,
 )
 from gvpy.engines.layout.common.splines import bezier_point
-
-MILLIPOINT = 0.001
-
-
-def _approx_eq(a: Ppoint, b: Ppoint) -> bool:
-    """See: /lib/common/geom.h @ 71"""
-    return abs(a.x - b.x) < MILLIPOINT and abs(a.y - b.y) < MILLIPOINT
 
 
 def bezier_clip(inside: InsideFn, sp: list[Ppoint],
