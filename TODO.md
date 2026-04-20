@@ -334,6 +334,23 @@ diagram UI; 6–9 add simulation.
   Reruns in ~5–8 min.  `audit_report.md` is the baseline snapshot.
 - `tools/count_cluster_crossings.py` — per-graph Python counter.
   `use_channel` kwarg is a no-op (kept for back-compat).
-- **14 Python timeouts + 1 RecursionError** known in the audit corpus —
-  see the failure table in `audit_report.md`.  Separate problem class
-  from crossings; worth a dedicated triage session.
+- ~~**14 Python timeouts + 1 RecursionError** known in the audit
+  corpus~~ — triage pass 2026-04-20 turned up three O(V·E²)-class hot
+  spots already fixed in commits `324455c`, `7dd6c1b`:
+
+  1. ``ortho/fpq._pq_check`` running on every heap op (should be
+     debug-only; now gated behind ``GVPY_PQCHECK=1``).  80 % speedup
+     on 2620.dot (76 s → 15 s); recovered 2 of the 17 audit timeouts.
+  2. ``core/_graph_edges.add_edge`` + ``_graph_nodes.add_node``
+     recomputing betweenness centrality per addition (dead write —
+     no reader anywhere).  Parse of 2343.dot 180 s+ → 0.34 s.
+  3. ``dot/mincross.transpose_rank`` scanning ``layout.ledges``
+     inside its pair-count inner loop.  Pre-compute rank-local
+     adjacency cache once per call.  Phase 2 on 172-node 2343
+     subset 55 s → 4 s (14 ×).
+
+  Remaining timeouts fall into two groups: very large graphs (≥ 20 k
+  lines, bounded by algorithmic complexity not overhead) and
+  medium graphs (~500 nodes like 2343.dot whose phase-3/4 still
+  takes >60 s — next triage target).  Re-run the visual audit to
+  refresh the failure list after these speedups propagate.
