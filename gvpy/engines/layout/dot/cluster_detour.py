@@ -38,8 +38,6 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from gvpy.engines.layout.common.geom import Ppolyline
-from gvpy.engines.layout.common.splines import make_polyline, to_bezier
 from gvpy.engines.layout.pathplan import Ppoint
 
 if TYPE_CHECKING:
@@ -52,7 +50,29 @@ if TYPE_CHECKING:
 # single edge).
 _MAX_ITERATIONS = 8
 _SAMPLES_PER_SEG = 16
-_DETOUR_MARGIN = 6.0  # points; roughly 1.5 × typical splinesep
+
+# Minimum corner-arc radius for detour polylines.  Graphviz's default
+# rounded-rectangle node outline uses ``1/8 × min(width, height)`` —
+# for 54×36 default box nodes that's 4.5 pt.  We pick 8 so detour
+# corners are visibly more rounded than the node outline.  Per-corner
+# radius is clamped to half the shorter adjacent segment in
+# :func:`_compute_corner_arc` so adjacent arcs can never overlap.
+_CORNER_RADIUS = 8.0
+
+# Detour offset from the cluster wall.  Must be > 2×:data:`_CORNER_RADIUS`
+# so the rounded arc stays outside the cluster: for a 90° corner with
+# tangent distance ``t = _CORNER_RADIUS``, the arc's closest approach
+# to the cluster is at ``margin - 2·_CORNER_RADIUS`` — we want that
+# positive with headroom so floating-point wobble doesn't trip the
+# sampler.  20 pt gives 4 pt clearance after rounding.
+_DETOUR_MARGIN = 20.0
+
+# Standard cubic-Bezier approximation of a quarter-circle arc.  The
+# control points sit at ``k × r`` along the tangent direction from
+# each endpoint; for a 90° arc ``k = 4·(√2 − 1)/3 ≈ 0.5523``.  The
+# approximation stays within ~0.027 % of a true circle at radius r,
+# which is imperceptible for typical graph rendering.
+_ARC_K = 4.0 * (2.0 ** 0.5 - 1.0) / 3.0  # ≈ 0.5523
 
 
 def reshape_around_clusters(
@@ -105,17 +125,15 @@ def reshape_around_clusters(
         # Never inserted a via-point — return original spline.
         return ps
 
-    # Convert the detoured polyline to the bezier control-point format
-    # using :func:`make_polyline` (zero-tangent controls → straight
-    # segments between anchors).  ``to_bezier``'s Schneider fit
-    # smooths the corners, which re-introduces cluster bulges on the
-    # very crossings we just steered around; the sharp polyline form
-    # keeps the detour guarantee.  Visual trade-off: detoured edges
-    # render as right-angle polylines rather than smooth curves.
-    poly_pts = [Ppoint(x, y) for (x, y) in poly]
-    poly_obj = Ppolyline(ps=poly_pts)
-    ispline = make_polyline(poly_obj)
-    return list(ispline.ps)
+    # Convert the detoured polyline to a bezier control-point list
+    # using rounded corners (see :func:`_make_rounded_bezier`).  The
+    # alternative :func:`make_polyline` produces sharp right-angles
+    # that look inconsistent with rounded-rect node outlines — pick
+    # the arc radius so each corner reads as "more rounded than the
+    # node".  :func:`to_bezier`'s Schneider fit is ruled out because
+    # it re-smooths the corners and re-bulges into the very cluster
+    # we just steered around.
+    return _make_rounded_bezier(poly, _CORNER_RADIUS)
 
 
 # --- member clusters ---------------------------------------------------
@@ -306,6 +324,138 @@ def _pick_detour_waypoints(p_prev, p_next, cl_bb, offenders):
 def _dist(a, b) -> float:
     import math as _m
     return _m.hypot(b[0] - a[0], b[1] - a[1])
+
+
+# --- rounded-corner bezier ---------------------------------------------
+
+
+def _make_rounded_bezier(poly, radius: float) -> list[Ppoint]:
+    """Convert a polyline to a cubic-bezier control-point list with
+    rounded corners of the requested ``radius``.
+
+    Each interior vertex is replaced by a cubic-bezier approximation
+    of a circular arc tangent to both adjacent segments.  Straight
+    segments connect the arc endpoints.  The effective radius at
+    each corner is clamped to half the shorter adjacent segment so
+    neighbouring arcs cannot overlap (otherwise the renderer would
+    draw a malformed self-intersecting curve).
+
+    The approximation uses :data:`_ARC_K` — the standard 4·(√2−1)/3
+    cubic-bezier quarter-arc constant — which stays within ~0.03 %
+    of a true circle for arcs up to 90°.  Detour corners are almost
+    always right angles by construction, so the approximation is
+    visually exact.
+    """
+    n = len(poly)
+    if n == 0:
+        return []
+    if n == 1:
+        p = poly[0]
+        return [Ppoint(p[0], p[1])]
+    if n == 2:
+        return _straight_cubic(poly[0], poly[1])
+
+    # Arc geometry for each interior vertex (may be None if degenerate).
+    corner_data = [_compute_corner_arc(poly[i - 1], poly[i], poly[i + 1],
+                                       radius)
+                   for i in range(1, n - 1)]
+
+    # Assemble the bezier control-point list.  We emit 1 starting
+    # anchor plus 3 points per cubic segment; each corner contributes
+    # 2 cubic segments (straight-to-arc + arc) and the very last
+    # segment goes straight to ``poly[-1]``.
+    result: list[tuple[float, float]] = [tuple(poly[0])]
+    prev_end = poly[0]
+
+    for i, cd in enumerate(corner_data):
+        if cd is None:
+            # Degenerate corner — skip the arc, go straight through.
+            target = poly[i + 1]
+            result.extend(_cubic_between(prev_end, target))
+            prev_end = target
+            continue
+        a1, c1, c2, a2 = cd
+        result.extend(_cubic_between(prev_end, a1))
+        result.extend([c1, c2, a2])
+        prev_end = a2
+
+    # Final straight segment from the last arc end to the polyline's
+    # terminal point.
+    result.extend(_cubic_between(prev_end, poly[-1]))
+    return [Ppoint(x, y) for (x, y) in result]
+
+
+def _straight_cubic(a, b) -> list[Ppoint]:
+    """Full bezier ``[a, C1, C2, b]`` for a straight cubic from
+    ``a`` to ``b``."""
+    out = [Ppoint(a[0], a[1])]
+    out.extend(Ppoint(x, y) for (x, y) in _cubic_between(a, b))
+    return out
+
+
+def _cubic_between(a, b) -> list[tuple[float, float]]:
+    """Return ``[C1, C2, b]`` — the non-starting control points for a
+    straight cubic from ``a`` to ``b``.  Appended to a result list
+    that already contains ``a``."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    return [
+        (a[0] + dx / 3.0, a[1] + dy / 3.0),
+        (a[0] + 2.0 * dx / 3.0, a[1] + 2.0 * dy / 3.0),
+        (b[0], b[1]),
+    ]
+
+
+def _compute_corner_arc(prev, corner, nxt, radius: float):
+    """Return ``(a1, c1, c2, a2)`` — arc endpoints and cubic-bezier
+    controls for rounding ``corner`` with the requested ``radius``.
+
+    Returns ``None`` when the corner is degenerate: zero-length
+    adjacent segment, colinear points (no turn), or a turn so sharp
+    that the arc would collapse to a point.
+    """
+    import math as _m
+
+    in_dx = corner[0] - prev[0]
+    in_dy = corner[1] - prev[1]
+    in_len = _m.hypot(in_dx, in_dy)
+    if in_len < 1e-9:
+        return None
+    u_in = (in_dx / in_len, in_dy / in_len)
+
+    out_dx = nxt[0] - corner[0]
+    out_dy = nxt[1] - corner[1]
+    out_len = _m.hypot(out_dx, out_dy)
+    if out_len < 1e-9:
+        return None
+    u_out = (out_dx / out_len, out_dy / out_len)
+
+    # Turn angle: 0 = straight, π = full reverse.
+    cos_psi = u_in[0] * u_out[0] + u_in[1] * u_out[1]
+    cos_psi = max(-1.0, min(1.0, cos_psi))
+    psi = _m.acos(cos_psi)
+    if psi < 1e-6:
+        return None  # essentially colinear
+
+    tan_half = _m.tan(psi / 2.0)
+    if tan_half < 1e-6:
+        return None
+
+    # Tangent distance t: arc tangent meets the leg at this distance
+    # from the corner.  Clamp so adjacent arcs don't overlap.
+    max_t = 0.5 * min(in_len, out_len)
+    t = min(radius * tan_half, max_t)
+    if t < 1e-6:
+        return None
+
+    a1 = (corner[0] - t * u_in[0], corner[1] - t * u_in[1])
+    a2 = (corner[0] + t * u_out[0], corner[1] + t * u_out[1])
+    # Cubic bezier approximation of the arc: control points offset
+    # ``_ARC_K × t`` along the in/out tangents from each arc endpoint.
+    c1 = (a1[0] + _ARC_K * t * u_in[0],
+          a1[1] + _ARC_K * t * u_in[1])
+    c2 = (a2[0] - _ARC_K * t * u_out[0],
+          a2[1] - _ARC_K * t * u_out[1])
+    return (a1, c1, c2, a2)
 
 
 def _segment_clears_all(a, b, primary_bb, offenders) -> bool:

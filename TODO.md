@@ -19,7 +19,7 @@ C dotgen.  Reference table — not a priority list (see §2 for priority).
 | D1 | ~~`splines=ortho` uses a naïve Z-router, not `lib/ortho/*`~~ | ✅ resolved 2026-04-20 — full `lib/ortho/` port lives at `gvpy/engines/layout/ortho/` with cluster-avoidance layer.  Legacy Z-router reachable via `GVPY_ORTHO_LEGACY=1` for two release cycles | 2620.dot: **3** crossings (was 66) |
 | D2 | `make_flat_adj_edges` lacks subgraph clone + re-layout | `flat_edge.make_flat_adj_edges` partial (E+.2-B); record-field ports warn | narrow (record-port same-rank only) |
 | D3 | No `smode` straight-segment dispatch inside `make_regular_edge` | helpers ported, not yet wired | cosmetic on long chains |
-| D4 | Cluster-clipping gives sub-pixel corner-grazing on bezier interior; also control-point-deep-inside cases where tail/head straddle a non-member cluster on adjacent ranks | `make_regular_edge` + `cluster_detour.reshape_around_clusters` (ships 2026-04-20: post-hoc detour reshape via ``make_polyline`` sharp-corner bezier).  Partial cover — residuals are D5/D6 positioning symptoms | was 86, now 46: aa1332=2, 1332=5, 1472=13, 2796=20, 1213-1=3, 1213-2=2, 2239=1, 2521_1=0 |
+| D4 | Cluster-clipping gives sub-pixel corner-grazing on bezier interior; also control-point-deep-inside cases where tail/head straddle a non-member cluster on adjacent ranks | `make_regular_edge` + `cluster_detour.reshape_around_clusters` (ships 2026-04-20: post-hoc detour reshape with 8-pt rounded corners — arc radius > typical 4.5-pt node rounded-rect radius).  Partial cover — residuals are D5/D6 positioning symptoms | was 86, now 40: aa1332=1, 1332=3, 1472=12, 2796=18, 1213-1=3, 1213-2=2, 2239=1, 2521_1=0 |
 | D5 | Mincross places multi-rank edges on opposite sides of a cluster where C keeps them same-side | `mincross.py` — needs instrumentation pass | contributes to D4 on aa1332 / 1332 |
 | D6 | Phase 3 position lacks hard keep-out constraints for virtuals vs. non-member cluster y-bands | `position.py` — ~80-120 lines | compounds D4 |
 | D7 | Font metrics are Times-Roman AFM, not the rendering font | `font_metrics.py` — gives wrong `port.order` widths on records (C=42 vs Python=99 on 1332) | record-node mincross divergence only |
@@ -41,15 +41,18 @@ C dotgen.  Reference table — not a priority list (see §2 for priority).
 
 Ordered by payoff.  Each item is independently shippable.
 
-1. **Cluster corner-grazing** (D4).  Was 86, now 46 after post-hoc
-   detour reshape shipped 2026-04-20 (`cluster_detour.py`).  Residuals
-   split between (a) anchor-inside-non-member-cluster cases — the
-   endpoint node is visually inside a cluster it doesn't belong to
-   (pure D5/D6 positioning issue; not fixable at the splines layer)
-   and (b) nested-overlap cases where no detour side clears all
-   other non-member clusters near the edge.  The reshape handles the
-   straight-cubic-through-interior case (2521_1 style) cleanly;
-   closing the rest means tackling D5/D6 directly.
+1. **Cluster corner-grazing** (D4).  Was 86, now 40 after post-hoc
+   detour reshape shipped 2026-04-20 (`cluster_detour.py`).  Detour
+   polylines render with 8-pt rounded corners (arc radius >
+   typical 4.5-pt rounded-rect node radius), detour margin 20 pt to
+   guarantee ≥ 4-pt clearance between the arc and the cluster wall.
+   Residuals split between (a) anchor-inside-non-member-cluster
+   cases — the endpoint node is visually inside a cluster it doesn't
+   belong to (pure D5/D6 positioning issue; not fixable at the
+   splines layer) and (b) nested-overlap cases where no detour side
+   clears all other non-member clusters near the edge.  The reshape
+   handles the straight-cubic-through-interior case (2521_1 style)
+   cleanly; closing the rest means tackling D5/D6 directly.
 2. **`smode` dispatch** (D+.2b).  Wire the ported `straight_len` /
    `straight_path` / `recover_slack` helpers into `make_regular_edge`'s
    virtual-chain loop.  Requires restructuring to emit multiple path
