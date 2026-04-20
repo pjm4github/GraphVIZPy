@@ -1,6 +1,6 @@
 """Polygon triangulation via ear-clipping.
 
-C analogue: ``lib/pathplan/triang.c`` + ``lib/pathplan/tri.h``.
+See: /lib/pathplan/triang.c @ 22
 
 Provides:
 
@@ -28,13 +28,7 @@ from typing import Any, Callable, Optional
 from gvpy.engines.layout.dot.pathplan.pathgeom import Ppoint, Ppoly
 
 # ── ccw return values ──────────────────────────────────────────────
-# C analogue: ``tri.h:40-44`` enum::
-#
-#     enum {
-#       ISCCW = 1,  ///< counter-clockwise
-#       ISCW = 2,   ///< clockwise
-#       ISON = 3,   ///< co-linear
-#     };
+# See: /lib/pathplan/tri.h @ 41
 
 ISCCW = 1
 ISCW = 2
@@ -44,13 +38,7 @@ ISON = 3
 def ccw(p1: Ppoint, p2: Ppoint, p3: Ppoint) -> int:
     """Return orientation of the triple ``(p1, p2, p3)``.
 
-    C analogue: ``triang.c:25-28``::
-
-        int ccw(Ppoint_t p1, Ppoint_t p2, Ppoint_t p3) {
-            double d = (p1.y - p2.y) * (p3.x - p2.x) -
-                       (p3.y - p2.y) * (p1.x - p2.x);
-            return d > 0 ? ISCW : (d < 0 ? ISCCW : ISON);
-        }
+    See: /lib/pathplan/triang.c @ 25
 
     Notable quirks preserved from C:
 
@@ -73,13 +61,7 @@ def ccw(p1: Ppoint, p2: Ppoint, p3: Ppoint) -> int:
 
 
 # ── Default indexer ────────────────────────────────────────────────
-# C analogue: ``triang.c:30-33``::
-#
-#     static Ppoint_t point_indexer(void *base, size_t index) {
-#       Ppoint_t **b = base;
-#       return *b[index];
-#     }
-#
+# See: /lib/pathplan/triang.c @ 30
 # Python default: plain list subscription.  Callers that need a
 # different lookup (e.g. ``shortest.py`` which stores pointnlink_t
 # structs) pass their own indexer.
@@ -96,15 +78,7 @@ def _default_indexer(base: Any, index: int) -> Ppoint:
 def _between(pa: Ppoint, pb: Ppoint, pc: Ppoint) -> bool:
     """Return True if ``pb`` is between ``pa`` and ``pc`` on their line.
 
-    C analogue: ``triang.c:94-101``::
-
-        static bool between(Ppoint_t pa, Ppoint_t pb, Ppoint_t pc) {
-          const Ppoint_t pba = {.x = pb.x - pa.x, .y = pb.y - pa.y};
-          const Ppoint_t pca = {.x = pc.x - pa.x, .y = pc.y - pa.y};
-          if (ccw(pa, pb, pc) != ISON) return false;
-          return pca.x * pba.x + pca.y * pba.y >= 0 &&
-                 pca.x * pca.x + pca.y * pca.y <= pba.x * pba.x + pba.y * pba.y;
-        }
+    See: /lib/pathplan/triang.c @ 94
 
     Requires collinearity (``ccw == ISON``) and then does a
     dot-product range check against the ``pa→pb`` segment.
@@ -122,24 +96,7 @@ def _between(pa: Ppoint, pb: Ppoint, pc: Ppoint) -> bool:
 def _intersects(pa: Ppoint, pb: Ppoint, pc: Ppoint, pd: Ppoint) -> bool:
     """Return True if segments ``(pa, pb)`` and ``(pc, pd)`` intersect.
 
-    C analogue: ``triang.c:104-120``::
-
-        static bool intersects(Ppoint_t pa, Ppoint_t pb, Ppoint_t pc, Ppoint_t pd) {
-          int ccw1, ccw2, ccw3, ccw4;
-          if (ccw(pa,pb,pc) == ISON || ccw(pa,pb,pd) == ISON ||
-              ccw(pc,pd,pa) == ISON || ccw(pc,pd,pb) == ISON) {
-            if (between(pa,pb,pc) || between(pa,pb,pd) ||
-                between(pc,pd,pa) || between(pc,pd,pb))
-              return true;
-          } else {
-            ccw1 = ccw(pa,pb,pc) == ISCCW ? 1 : 0;
-            ccw2 = ccw(pa,pb,pd) == ISCCW ? 1 : 0;
-            ccw3 = ccw(pc,pd,pa) == ISCCW ? 1 : 0;
-            ccw4 = ccw(pc,pd,pb) == ISCCW ? 1 : 0;
-            return (ccw1 ^ ccw2) && (ccw3 ^ ccw4);
-          }
-          return false;
-        }
+    See: /lib/pathplan/triang.c @ 104
 
     Two cases:
 
@@ -169,7 +126,9 @@ def isdiagonal(i: int, ip2: int, pointp: Any, pointn: int,
                indexer: Optional[Indexer] = None) -> bool:
     """Return True if ``(points[i], points[ip2])`` is a polygon diagonal.
 
-    C analogue: ``triang.c:122-150``.  Two-part test:
+    See: /lib/pathplan/triang.c @ 122
+
+    Two-part test:
 
     1. **Neighbourhood test** — check that the proposed diagonal lies
        *inside* the polygon at vertex ``i``.  C uses a convex/reflex
@@ -235,12 +194,7 @@ def isdiagonal(i: int, ip2: int, pointp: Any, pointn: int,
 def _point_indexer_triang(base: Any, index: int) -> Ppoint:
     """Indexer for :func:`Ptriangulate`'s working array.
 
-    C analogue: ``triang.c:point_indexer`` lines 30-33::
-
-        static Ppoint_t point_indexer(void *base, size_t index) {
-          Ppoint_t **b = base;
-          return *b[index];
-        }
+    See: /lib/pathplan/triang.c @ 30
 
     In C, ``base`` is an array of pointers to Ppoint_t.  In Python
     we store Ppoint objects directly so the indexer is trivial.
@@ -253,8 +207,10 @@ def _triangulate_recursive(pointp: list, pointn: int,
                             vc: Any) -> int:
     """Recursive ear-clipping helper.
 
-    C analogue: ``triang.c:63-91``.  Returns 0 on success, -1 if no
-    diagonal exists (malformed polygon).
+    See: /lib/pathplan/triang.c @ 63
+
+    Returns 0 on success, -1 if no diagonal exists (malformed
+    polygon).
     """
     assert pointn >= 3
     if pointn > 3:
@@ -282,22 +238,7 @@ def Ptriangulate(polygon: Ppoly,
                  vc: Any = None) -> int:
     """Triangulate ``polygon`` by ear-clipping.
 
-    C analogue: ``triang.c:Ptriangulate`` lines 38-57::
-
-        int Ptriangulate(Ppoly_t *polygon,
-                         void (*fn)(void *, const Ppoint_t[]),
-                         void *vc) {
-          const size_t pointn = polygon->pn;
-          Ppoint_t **pointp = gv_calloc(pointn, sizeof(Ppoint_t*));
-          for (size_t i = 0; i < pointn; i++)
-            pointp[i] = &(polygon->ps[i]);
-          assert(pointn >= 3);
-          if (triangulate(pointp, pointn, fn, vc) != 0) {
-            free(pointp); return 1;
-          }
-          free(pointp);
-          return 0;
-        }
+    See: /lib/pathplan/triang.c @ 38
 
     ``fn(vc, triangle)`` is called for each ear triangle found,
     where ``triangle`` is a 3-element list of :class:`Ppoint`.

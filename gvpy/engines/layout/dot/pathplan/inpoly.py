@@ -1,6 +1,6 @@
 """Point-in-polygon test.
 
-C analogue: ``lib/pathplan/inpoly.c``.
+See: /lib/pathplan/inpoly.c @ 26
 """
 from __future__ import annotations
 
@@ -11,18 +11,7 @@ from gvpy.engines.layout.dot.pathplan.visibility import wind
 def in_poly(poly: Ppoly, q: Ppoint) -> bool:
     """Test if point ``q`` is inside convex polygon ``poly``.
 
-    C analogue: ``inpoly.c:in_poly`` lines 26–35::
-
-        bool in_poly(const Ppoly_t poly, Ppoint_t q) {
-          const Ppoint_t *P = poly.ps;
-          const size_t n = poly.pn;
-          for (size_t i = 0; i < n; i++) {
-            const size_t i1 = (i + n - 1) % n;  // i1 = i-1 mod n
-            if (wind(P[i1], P[i], q) == 1)
-              return false;
-          }
-          return true;
-        }
+    See: /lib/pathplan/inpoly.c @ 26
 
     **Precondition:** ``poly`` must be convex with vertices in
     clockwise order.  The test walks each edge and checks that ``q``

@@ -1,6 +1,6 @@
 """Recursive spline fit through polygonal barriers.
 
-C analogue: ``lib/pathplan/route.c``.
+See: /lib/pathplan/route.c @ 70
 
 This module lands in **three sub-passes** (Phase B steps B5a, B5b, B5d):
 
@@ -32,22 +32,13 @@ from gvpy.engines.layout.dot.pathplan.solvers import solve3
 
 
 # ── Constants ──────────────────────────────────────────────────────
-# C analogue: ``route.c:21-22``::
-#
-#     #define EPSILON1 1E-3
-#     #define EPSILON2 1E-6
+# See: /lib/pathplan/route.c @ 21
 EPSILON1 = 1e-3
 EPSILON2 = 1e-6
 
 
 # ── Tna type ───────────────────────────────────────────────────────
-# C analogue: ``route.c:24-27``::
-#
-#     typedef struct tna_t {
-#         double t;
-#         Ppoint_t a[2];
-#     } tna_t;
-#
+# See: /lib/pathplan/route.c @ 24
 # Used by mkspline to carry per-sample parameter ``t`` and the two
 # basis-weighted tangent vectors ``a[0]``, ``a[1]``.
 
@@ -64,12 +55,7 @@ class Tna:
 def add(p1: Ppoint, p2: Ppoint) -> Ppoint:
     """Vector addition.
 
-    C analogue: ``route.c:add`` lines 431-435::
-
-        static Ppoint_t add(Ppoint_t p1, Ppoint_t p2) {
-            p1.x += p2.x, p1.y += p2.y;
-            return p1;
-        }
+    See: /lib/pathplan/route.c @ 431
 
     Python returns a fresh :class:`Ppoint` to avoid accidental
     mutation of the caller's copy (C's value-semantics give the
@@ -81,7 +67,7 @@ def add(p1: Ppoint, p2: Ppoint) -> Ppoint:
 def sub(p1: Ppoint, p2: Ppoint) -> Ppoint:
     """Vector subtraction ``p1 - p2``.
 
-    C analogue: ``route.c:sub`` lines 437-441.
+    See: /lib/pathplan/route.c @ 437
     """
     return Ppoint(p1.x - p2.x, p1.y - p2.y)
 
@@ -89,12 +75,7 @@ def sub(p1: Ppoint, p2: Ppoint) -> Ppoint:
 def dist(p1: Ppoint, p2: Ppoint) -> float:
     """Euclidean distance via ``math.hypot``.
 
-    C analogue: ``route.c:dist`` lines 443-449::
-
-        static double dist(Ppoint_t p1, Ppoint_t p2) {
-            double dx = p2.x - p1.x, dy = p2.y - p1.y;
-            return hypot(dx, dy);
-        }
+    See: /lib/pathplan/route.c @ 443
 
     This is a separate function from ``visibility.dist`` in the
     Python port — the C source has ``static`` copies in each of
@@ -109,7 +90,7 @@ def dist(p1: Ppoint, p2: Ppoint) -> float:
 def scale(p: Ppoint, c: float) -> Ppoint:
     """Scalar multiplication ``p * c``.
 
-    C analogue: ``route.c:scale`` lines 451-455.
+    See: /lib/pathplan/route.c @ 451
     """
     return Ppoint(p.x * c, p.y * c)
 
@@ -117,7 +98,7 @@ def scale(p: Ppoint, c: float) -> Ppoint:
 def dot(p1: Ppoint, p2: Ppoint) -> float:
     """2D dot product.
 
-    C analogue: ``route.c:dot`` lines 457-460.
+    See: /lib/pathplan/route.c @ 457
     """
     return p1.x * p2.x + p1.y * p2.y
 
@@ -125,16 +106,7 @@ def dot(p1: Ppoint, p2: Ppoint) -> float:
 def normv(v: Pvector) -> Pvector:
     """Normalise a vector to unit length, or return it unchanged if tiny.
 
-    C analogue: ``route.c:normv`` lines 409-419::
-
-        static Pvector_t normv(Pvector_t v) {
-            double d = v.x * v.x + v.y * v.y;
-            if (d > 1e-6) {
-                d = sqrt(d);
-                v.x /= d, v.y /= d;
-            }
-            return v;
-        }
+    See: /lib/pathplan/route.c @ 409
 
     The ``d > 1e-6`` guard preserves zero (and near-zero) vectors
     without dividing by zero.  Python returns a fresh :class:`Ppoint`
@@ -148,7 +120,7 @@ def normv(v: Pvector) -> Pvector:
 
 
 # ── Bernstein basis polynomials (B5a) ──────────────────────────────
-# C analogue: ``route.c:462-495``.
+# See: /lib/pathplan/route.c @ 462
 #
 # Standard cubic Bernstein basis::
 #
@@ -164,37 +136,32 @@ def normv(v: Pvector) -> Pvector:
 
 
 def B0(t: float) -> float:
-    """``(1-t)^3``.  C analogue: ``route.c:462-466``."""
+    """``(1-t)^3``.  See: /lib/pathplan/route.c @ 462"""
     tmp = 1.0 - t
     return tmp * tmp * tmp
 
 
 def B1(t: float) -> float:
-    """``3t(1-t)^2``.  C analogue: ``route.c:468-472``."""
+    """``3t(1-t)^2``.  See: /lib/pathplan/route.c @ 468"""
     tmp = 1.0 - t
     return 3 * t * tmp * tmp
 
 
 def B2(t: float) -> float:
-    """``3t^2(1-t)``.  C analogue: ``route.c:474-478``."""
+    """``3t^2(1-t)``.  See: /lib/pathplan/route.c @ 474"""
     tmp = 1.0 - t
     return 3 * t * t * tmp
 
 
 def B3(t: float) -> float:
-    """``t^3``.  C analogue: ``route.c:480-483``."""
+    """``t^3``.  See: /lib/pathplan/route.c @ 480"""
     return t * t * t
 
 
 def B01(t: float) -> float:
     """``(1-t)^2 ((1-t) + 3t)`` — combined ``B0 + B1`` weight.
 
-    C analogue: ``route.c:485-489``::
-
-        static double B01(double t) {
-            double tmp = 1.0 - t;
-            return tmp * tmp * (tmp + 3 * t);
-        }
+    See: /lib/pathplan/route.c @ 485
 
     Algebraically equivalent to ``B0(t) + B1(t) * (v1/v0)`` for
     ``v1 = (2/3) * v0`` — the combination used by ``mkspline`` to
@@ -207,7 +174,7 @@ def B01(t: float) -> float:
 def B23(t: float) -> float:
     """``t^2 (3(1-t) + t)`` — combined ``B2 + B3`` weight.
 
-    C analogue: ``route.c:491-495``.  Mirror image of :func:`B01`.
+    See: /lib/pathplan/route.c @ 491
     """
     tmp = 1.0 - t
     return t * t * (3 * tmp + t)
@@ -218,15 +185,7 @@ def B23(t: float) -> float:
 def points2coeff(v0: float, v1: float, v2: float, v3: float) -> list[float]:
     """Convert cubic Bezier control-point values to polynomial coefficients.
 
-    C analogue: ``route.c:points2coeff`` lines 394-401::
-
-        static void points2coeff(double v0, double v1, double v2,
-                                 double v3, double *coeff) {
-            coeff[3] = v3 + 3 * v1 - (v0 + 3 * v2);
-            coeff[2] = 3 * v0 + 3 * v2 - 6 * v1;
-            coeff[1] = 3 * (v1 - v0);
-            coeff[0] = v0;
-        }
+    See: /lib/pathplan/route.c @ 394
 
     Python deviation: returns a fresh ``list[float]`` of length 4
     in the same ``[c0, c1, c2, c3]`` order C writes to its out-
@@ -245,12 +204,7 @@ def points2coeff(v0: float, v1: float, v2: float, v3: float) -> list[float]:
 def addroot(root: float, roots: list[float]) -> None:
     """Append ``root`` to ``roots`` if it lies in the closed interval ``[0, 1]``.
 
-    C analogue: ``route.c:addroot`` lines 403-407::
-
-        static void addroot(double root, double *roots, int *rootnp) {
-            if (root >= 0 && root <= 1)
-                roots[*rootnp] = root, (*rootnp)++;
-        }
+    See: /lib/pathplan/route.c @ 403
 
     Python deviation: C uses ``rootnp`` as an out-parameter for the
     count; Python mutates the ``roots`` list directly via ``append``.
@@ -265,14 +219,7 @@ def addroot(root: float, roots: list[float]) -> None:
 def dist_n(p: list, n: int) -> float:
     """Piecewise polyline length — sum of segment distances ``p[0]..p[n-1]``.
 
-    C analogue: ``route.c:dist_n`` lines 200-210::
-
-        static double dist_n(Ppoint_t *p, int n) {
-            double rv = 0.0;
-            for (int i = 1; i < n; i++)
-                rv += hypot(p[i].x - p[i - 1].x, p[i].y - p[i - 1].y);
-            return rv;
-        }
+    See: /lib/pathplan/route.c @ 200
     """
     rv = 0.0
     for i in range(1, n):
@@ -286,12 +233,7 @@ def mkspline(inps: list, inpn: int, tnas: list,
              ev0: Pvector, ev1: Pvector) -> tuple:
     """Least-squares cubic Bezier fit through ``inps[0..inpn-1]``.
 
-    C analogue: ``route.c:mkspline`` lines 159-198.  C signature::
-
-        static int mkspline(Ppoint_t *inps, int inpn, const tna_t *tnas,
-                            Ppoint_t ev0, Ppoint_t ev1,
-                            Ppoint_t *sp0, Ppoint_t *sv0,
-                            Ppoint_t *sp1, Ppoint_t *sv1);
+    See: /lib/pathplan/route.c @ 159
 
     Python returns the four output points as a tuple
     ``(sp0, sv0, sp1, sv1)`` instead of C's four out-parameters.
@@ -366,11 +308,7 @@ def mkspline(inps: list, inpn: int, tnas: list,
 def splineintersectsline(sps: list, lps: list) -> tuple[int, list]:
     """Find cubic-Bezier × line-segment intersection parameters.
 
-    C analogue: ``route.c:splineintersectsline`` lines 314-392.
-    C signature::
-
-        static int splineintersectsline(Ppoint_t *sps, Ppoint_t *lps,
-                                        double *roots);
+    See: /lib/pathplan/route.c @ 314
 
     Python deviation: C uses an out-parameter ``roots[4]`` and
     returns the count; Python returns a tuple ``(count, roots)``.
@@ -504,11 +442,7 @@ def splineintersectsline(sps: list, lps: list) -> tuple[int, list]:
 
 
 # ── Module-level output buffer (B5d) ───────────────────────────────
-# C analogue: ``route.c:35-36``::
-#
-#     static Ppoint_t *ops;
-#     static size_t opn, opl;
-#
+# See: /lib/pathplan/route.c @ 35
 # C uses a growable array accessed via ``growops``.  Python uses a
 # module-level list that :func:`Proutespline` resets before each
 # top-level call and :func:`splinefits` appends to on a successful
@@ -526,10 +460,7 @@ _ops: list[Ppoint] = []
 def splineisinside(edges: list[Pedge], sps: list[Ppoint]) -> bool:
     """Return ``True`` if the cubic ``sps`` avoids every barrier segment.
 
-    C analogue: ``route.c:splineisinside`` lines 283-312::
-
-        static int splineisinside(Pedge_t *edges, size_t edgen,
-                                  Ppoint_t *sps) { ... }
+    See: /lib/pathplan/route.c @ 283
 
     Python deviation: returns ``bool`` instead of ``int`` (0 / 1).
 
@@ -583,12 +514,7 @@ def splinefits(edges: list[Pedge], pa: Ppoint, va: Pvector,
                pb: Ppoint, vb: Pvector, inps: list[Ppoint], inpn: int) -> int:
     """Try cubic fits at decreasing tangent scale; append on success.
 
-    C analogue: ``route.c:splinefits`` lines 212-281.  C signature::
-
-        static int splinefits(Pedge_t *edges, size_t edgen,
-                              Ppoint_t pa, Pvector_t va,
-                              Ppoint_t pb, Pvector_t vb,
-                              Ppoint_t *inps, int inpn);
+    See: /lib/pathplan/route.c @ 212
 
     Return values (match C):
 
@@ -663,7 +589,7 @@ def reallyroutespline(edges: list[Pedge], inps: list[Ppoint], inpn: int,
                       ev0: Pvector, ev1: Pvector) -> int:
     """Recursive cubic-Bezier fit kernel.
 
-    C analogue: ``route.c:reallyroutespline`` lines 97-157.
+    See: /lib/pathplan/route.c @ 97
 
     Algorithm:
 
@@ -742,12 +668,7 @@ def Proutespline(barriers: list[Pedge], input_route: Ppolyline,
                  endpoint_slopes: list[Pvector]) -> Ppolyline | None:
     """Public entry point: fit a cubic Bezier through a polyline avoiding barriers.
 
-    C analogue: ``route.c:Proutespline`` lines 65-95::
-
-        int Proutespline(Pedge_t *barriers, size_t n_barriers,
-                         Ppolyline_t input_route,
-                         Ppoint_t endpoint_slopes[2],
-                         Ppolyline_t *output_route);
+    See: /lib/pathplan/route.c @ 70
 
     Python deviation: C returns 0/-1 and fills an out-parameter
     ``output_route``; Python returns the :class:`Ppolyline` on

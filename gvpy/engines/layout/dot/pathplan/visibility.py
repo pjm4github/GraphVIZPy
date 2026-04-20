@@ -1,6 +1,6 @@
 """Visibility graph utilities.
 
-C analogue: ``lib/pathplan/visibility.c``.
+See: /lib/pathplan/visibility.c @ 213
 
 This is the Phase B step B2 port of the full visibility graph
 builder.  It contains:
@@ -36,11 +36,7 @@ from gvpy.engines.layout.dot.pathplan.vispath import POLYID_NONE, POLYID_UNKNOWN
 def area2(a: Ppoint, b: Ppoint, c: Ppoint) -> float:
     """Return twice the signed area of triangle ``abc``.
 
-    C analogue: ``visibility.c:area2`` lines 46–49::
-
-        COORD area2(Ppoint_t a, Ppoint_t b, Ppoint_t c) {
-            return (a.y - b.y) * (c.x - b.x) - (c.y - b.y) * (a.x - b.x);
-        }
+    See: /lib/pathplan/visibility.c @ 46
     """
     return (a.y - b.y) * (c.x - b.x) - (c.y - b.y) * (a.x - b.x)
 
@@ -48,8 +44,9 @@ def area2(a: Ppoint, b: Ppoint, c: Ppoint) -> float:
 def wind(a: Ppoint, b: Ppoint, c: Ppoint) -> int:
     """Return ``1`` / ``0`` / ``-1`` for CCW / collinear / CW triangle ``abc``.
 
-    C analogue: ``visibility.c:wind`` lines 55–62.  Collinearity
-    tolerance is ``0.0001``, matching C's allowance for
+    See: /lib/pathplan/visibility.c @ 55
+
+    Collinearity tolerance is ``0.0001``, matching C's allowance for
     ``gcc -O2 -ffast-math`` rounding.
     """
     w = (a.y - b.y) * (c.x - b.x) - (c.y - b.y) * (a.x - b.x)
@@ -63,18 +60,11 @@ def wind(a: Ppoint, b: Ppoint, c: Ppoint) -> int:
 def inBetween(a: Ppoint, b: Ppoint, c: Ppoint) -> bool:
     """Return True if ``c`` is strictly between ``a`` and ``b`` on their line.
 
-    C analogue: ``visibility.c:inBetween`` lines 67–73.  Assumes
-    ``a``, ``b``, ``c`` are collinear; uses x coords when the segment
-    is non-vertical, y coords otherwise::
+    See: /lib/pathplan/visibility.c @ 67
 
-        static bool inBetween(Ppoint_t a, Ppoint_t b, Ppoint_t c) {
-          if (a.x != b.x)
-            return (a.x < c.x && c.x < b.x) || (b.x < c.x && c.x < a.x);
-          else
-            return (a.y < c.y && c.y < b.y) || (b.y < c.y && c.y < a.y);
-        }
-
-    The comparisons are strict, so endpoint coincidences return False.
+    Assumes ``a``, ``b``, ``c`` are collinear; uses x coords when the
+    segment is non-vertical, y coords otherwise.  The comparisons are
+    strict, so endpoint coincidences return False.
     """
     if a.x != b.x:
         return (a.x < c.x < b.x) or (b.x < c.x < a.x)
@@ -84,19 +74,7 @@ def inBetween(a: Ppoint, b: Ppoint, c: Ppoint) -> bool:
 def intersect(a: Ppoint, b: Ppoint, c: Ppoint, d: Ppoint) -> bool:
     """Return True if segment ``[c,d]`` blocks ``a`` and ``b`` seeing each other.
 
-    C analogue: ``visibility.c:intersect`` lines 80–102.  Returns True
-    if any endpoint of ``[c,d]`` lies on ``(a,b)`` or the two segments
-    cross as open sets::
-
-        static bool intersect(Ppoint_t a, Ppoint_t b, Ppoint_t c, Ppoint_t d) {
-          int a_abc = wind(a, b, c);
-          if (a_abc == 0 && inBetween(a, b, c)) return true;
-          int a_abd = wind(a, b, d);
-          if (a_abd == 0 && inBetween(a, b, d)) return true;
-          int a_cda = wind(c, d, a);
-          int a_cdb = wind(c, d, b);
-          return a_abc * a_abd < 0 && a_cda * a_cdb < 0;
-        }
+    See: /lib/pathplan/visibility.c @ 80
     """
     a_abc = wind(a, b, c)
     if a_abc == 0 and inBetween(a, b, c):
@@ -112,18 +90,7 @@ def intersect(a: Ppoint, b: Ppoint, c: Ppoint, d: Ppoint) -> bool:
 def in_cone(a0: Ppoint, a1: Ppoint, a2: Ppoint, b: Ppoint) -> bool:
     """Return True iff point ``b`` is in the closed cone ``a0,a1,a2``.
 
-    C analogue: ``visibility.c:in_cone`` lines 108–117.  Picks between
-    two predicates based on whether the cone vertex ``a1`` is convex
-    or reflex::
-
-        static bool in_cone(Ppoint_t a0, Ppoint_t a1, Ppoint_t a2, Ppoint_t b) {
-          int m = wind(b, a0, a1);
-          int p = wind(b, a1, a2);
-          if (wind(a0, a1, a2) > 0)
-            return m >= 0 && p >= 0;   /* convex at a1 */
-          else
-            return m >= 0 || p >= 0;   /* reflex at a1 */
-        }
+    See: /lib/pathplan/visibility.c @ 108
     """
     m = wind(b, a0, a1)
     p = wind(b, a1, a2)
@@ -135,7 +102,7 @@ def in_cone(a0: Ppoint, a1: Ppoint, a2: Ppoint, b: Ppoint) -> bool:
 def dist2(a: Ppoint, b: Ppoint) -> float:
     """Return the squared Euclidean distance between ``a`` and ``b``.
 
-    C analogue: ``visibility.c:dist2`` lines 122–128.
+    See: /lib/pathplan/visibility.c @ 122
     """
     delx = a.x - b.x
     dely = a.y - b.y
@@ -145,8 +112,10 @@ def dist2(a: Ppoint, b: Ppoint) -> float:
 def dist(a: Ppoint, b: Ppoint) -> float:
     """Return the Euclidean distance between ``a`` and ``b``.
 
-    C analogue: ``visibility.c:dist`` lines 133–136.  Static in C;
-    public here because Python has no file-scope access control.
+    See: /lib/pathplan/visibility.c @ 133
+
+    Static in C; public here because Python has no file-scope access
+    control.
     """
     return math.sqrt(dist2(a, b))
 
@@ -154,14 +123,7 @@ def dist(a: Ppoint, b: Ppoint) -> float:
 def inCone(i: int, j: int, pts: list, nextPt: list, prevPt: list) -> bool:
     """Index-based :func:`in_cone` for polygon vertices.
 
-    C analogue: ``visibility.c:inCone`` lines 138–141.  Looks up the
-    prev/next neighbours of vertex ``i`` and tests whether vertex
-    ``j`` is in the cone they define::
-
-        static bool inCone(int i, int j, Ppoint_t pts[],
-                           int nextPt[], int prevPt[]) {
-          return in_cone(pts[prevPt[i]], pts[i], pts[nextPt[i]], pts[j]);
-        }
+    See: /lib/pathplan/visibility.c @ 138
     """
     return in_cone(pts[prevPt[i]], pts[i], pts[nextPt[i]], pts[j])
 
@@ -170,10 +132,11 @@ def clear(pti: Ppoint, ptj: Ppoint, start: int, end: int,
           V: int, pts: list, nextPt: list) -> bool:
     """Return True iff no polygon segment non-trivially blocks ``[pti, ptj]``.
 
-    C analogue: ``visibility.c:clear`` lines 147–162.  Walks every
-    polygon edge in ``[0, start) ∪ [end, V)``, testing each against
-    ``intersect``; segments in ``[start, end)`` (the polygon the
-    caller is hiding) are skipped.
+    See: /lib/pathplan/visibility.c @ 147
+
+    Walks every polygon edge in ``[0, start) ∪ [end, V)``, testing
+    each against ``intersect``; segments in ``[start, end)`` (the
+    polygon the caller is hiding) are skipped.
     """
     for k in range(0, start):
         if intersect(pti, ptj, pts[k], pts[nextPt[k]]):
@@ -189,11 +152,13 @@ def clear(pti: Ppoint, ptj: Ppoint, start: int, end: int,
 def allocArray(V: int, extra: int) -> list:
     """Allocate a ``V × V`` matrix with ``extra`` trailing ``None`` rows.
 
-    C analogue: ``visibility.c:allocArray`` lines 26–41.  C uses a
-    flat ``V * V`` block of ``COORD`` with row pointers; Python uses
-    nested lists.  The extra rows at positions ``V..V+extra-1`` are
-    ``None`` placeholders — :func:`Pobspath` later fills them with
-    visibility vectors for the two query points ``p`` and ``q``.
+    See: /lib/pathplan/visibility.c @ 26
+
+    C uses a flat ``V * V`` block of ``COORD`` with row pointers;
+    Python uses nested lists.  The extra rows at positions
+    ``V..V+extra-1`` are ``None`` placeholders — :func:`Pobspath`
+    later fills them with visibility vectors for the two query points
+    ``p`` and ``q``.
 
     ``extra`` is typically ``2`` (one row each for ``p`` and ``q``).
     """
@@ -208,10 +173,11 @@ def allocArray(V: int, extra: int) -> list:
 def compVis(conf: Vconfig) -> None:
     """Populate ``conf.vis`` with pairwise vertex-visibility distances.
 
-    C analogue: ``visibility.c:compVis`` lines 171–206.  For each
-    vertex ``i``, add an edge of length ``dist(pts[i], pts[prev[i]])``
-    to the polygon-edge neighbour, then scan all earlier vertices
-    ``j < i`` and add an edge if:
+    See: /lib/pathplan/visibility.c @ 171
+
+    For each vertex ``i``, add an edge of length
+    ``dist(pts[i], pts[prev[i]])`` to the polygon-edge neighbour, then
+    scan all earlier vertices ``j < i`` and add an edge if:
 
     1. ``j`` is in ``i``'s cone (``inCone(i, j, ...)``)
     2. ``i`` is in ``j``'s cone (``inCone(j, i, ...)``)
@@ -259,10 +225,12 @@ def compVis(conf: Vconfig) -> None:
 def visibility(conf: Vconfig) -> None:
     """Build the visibility graph for ``conf``.
 
-    C analogue: ``visibility.c:visibility`` lines 213–217.  Allocates
-    ``conf.vis`` with ``N + 2`` rows (the 2 extras are placeholders
-    for the two query points ``Pobspath`` will add dynamically), then
-    calls :func:`compVis` to populate the first ``N`` rows.
+    See: /lib/pathplan/visibility.c @ 213
+
+    Allocates ``conf.vis`` with ``N + 2`` rows (the 2 extras are
+    placeholders for the two query points ``Pobspath`` will add
+    dynamically), then calls :func:`compVis` to populate the first
+    ``N`` rows.
     """
     conf.vis = allocArray(conf.N, 2)
     compVis(conf)
@@ -271,18 +239,7 @@ def visibility(conf: Vconfig) -> None:
 def polyhit(conf: Vconfig, p: Ppoint) -> int:
     """Return the index of the polygon containing ``p``, or ``POLYID_NONE``.
 
-    C analogue: ``visibility.c:polyhit`` lines 224–236.  Walks every
-    polygon in ``conf`` and tests with :func:`~...inpoly.in_poly`::
-
-        static int polyhit(vconfig_t *conf, Ppoint_t p) {
-          Ppoly_t poly;
-          for (int i = 0; i < conf->Npoly; i++) {
-            poly.ps = &(conf->P[conf->start[i]]);
-            poly.pn = conf->start[i+1] - conf->start[i];
-            if (in_poly(poly, p)) return i;
-          }
-          return POLYID_NONE;
-        }
+    See: /lib/pathplan/visibility.c @ 224
     """
     # Lazy import: inpoly.py → visibility.py → inpoly.py cycle.
     from gvpy.engines.layout.dot.pathplan.inpoly import in_poly
@@ -298,8 +255,10 @@ def polyhit(conf: Vconfig, p: Ppoint) -> int:
 def ptVis(conf: Vconfig, pp: int, p: Ppoint) -> list:
     """Compute a visibility vector from point ``p`` to every barrier vertex.
 
-    C analogue: ``visibility.c:ptVis`` lines 247–299.  Returns a list
-    of length ``N + 2`` where entry ``k`` (for ``k < N``) is:
+    See: /lib/pathplan/visibility.c @ 247
+
+    Returns a list of length ``N + 2`` where entry ``k``
+    (for ``k < N``) is:
 
     - ``dist(p, pts[k])`` if ``p`` and ``pts[k]`` can see each other
     - ``0`` otherwise (including any vertex inside ``p``'s own polygon)
@@ -359,9 +318,10 @@ def ptVis(conf: Vconfig, pp: int, p: Ppoint) -> list:
 def directVis(p: Ppoint, pp: int, q: Ppoint, qp: int, conf: Vconfig) -> bool:
     """Return True if ``p`` and ``q`` have unobstructed line-of-sight.
 
-    C analogue: ``visibility.c:directVis`` lines 306–355.  Walks every
-    polygon edge except those belonging to the polygons of ``p`` and
-    ``q``, testing each against :func:`intersect`.
+    See: /lib/pathplan/visibility.c @ 306
+
+    Walks every polygon edge except those belonging to the polygons
+    of ``p`` and ``q``, testing each against :func:`intersect`.
 
     Both endpoint polygon indices (``pp``, ``qp``) work the same way:
     - ``>= 0`` — skip that polygon's edges

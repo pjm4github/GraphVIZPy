@@ -1,6 +1,6 @@
 """Visibility-graph configuration + obstacle-avoidance path finder.
 
-C analogue: ``lib/pathplan/cvt.c``.
+See: /lib/pathplan/cvt.c @ 28
 
 Three public entry points:
 
@@ -27,7 +27,7 @@ from gvpy.engines.layout.dot.pathplan.vispath import Vconfig
 def Pobsopen(obs: list[Ppoly]) -> Vconfig:
     """Build a :class:`Vconfig` from a list of polygonal obstacles.
 
-    C analogue: ``cvt.c:Pobsopen`` lines 28–87.
+    See: /lib/pathplan/cvt.c @ 28
 
     Takes a list of obstacle polygons (each in CW vertex order per
     the pathplan convention), flattens them into the Vconfig's
@@ -84,12 +84,13 @@ def Pobsopen(obs: list[Ppoly]) -> Vconfig:
 def Pobsclose(config: Vconfig) -> None:
     """Free a Vconfig.  No-op in Python — Python's GC handles cleanup.
 
-    C analogue: ``cvt.c:Pobsclose`` lines 89–100.  C frees ``P``,
-    ``start``, ``next``, ``prev``, the visibility matrix rows, and
-    the vconfig itself.  Python's reference counter does all of
-    this automatically when the last reference drops.  Kept as a
-    symmetric API entry so call sites that mirror C's manual-free
-    pattern compile unchanged.
+    See: /lib/pathplan/cvt.c @ 89
+
+    C frees ``P``, ``start``, ``next``, ``prev``, the visibility
+    matrix rows, and the vconfig itself.  Python's reference counter
+    does all of this automatically when the last reference drops.
+    Kept as a symmetric API entry so call sites that mirror C's
+    manual-free pattern compile unchanged.
     """
     # Intentionally empty.
     _ = config
@@ -99,9 +100,10 @@ def Pobspath(config: Vconfig, p0: Ppoint, poly0: int,
              p1: Ppoint, poly1: int) -> Ppolyline:
     """Shortest polyline from ``p0`` to ``p1`` avoiding all obstacles.
 
-    C analogue: ``cvt.c:Pobspath`` lines 102–140.  Python deviation:
-    C takes an ``output_route`` out-parameter; Python returns the
-    :class:`Ppolyline` directly.
+    See: /lib/pathplan/cvt.c @ 102
+
+    Python deviation: C takes an ``output_route`` out-parameter;
+    Python returns the :class:`Ppolyline` directly.
 
     Pipeline:
 

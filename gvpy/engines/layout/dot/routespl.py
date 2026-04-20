@@ -1,6 +1,6 @@
 """Box-corridor spline router.
 
-C analogue: ``lib/common/routespl.c``.
+See: /lib/common/routespl.c @ 294
 
 Converts a sequence of contiguous axis-aligned boxes (the "box corridor"
 built by ``beginpath``/``rank_box``/``endpath`` in ``dotsplines.c``) into
@@ -49,7 +49,7 @@ LOOP_TRIES = 15
 def overlap(i0: float, i1: float, j0: float, j1: float) -> float:
     """Return the overlap length between intervals [i0,i1) and [j0,j1).
 
-    C analogue: ``routespl.c:overlap`` lines 606-623.
+    See: /lib/common/routespl.c @ 606
     """
     if i1 <= j0:
         return 0.0
@@ -69,7 +69,7 @@ def overlap(i0: float, i1: float, j0: float, j1: float) -> float:
 def checkpath(boxes: list[Box], pp: Path) -> tuple[int, list[Box]]:
     """Validate and repair the box corridor.
 
-    C analogue: ``routespl.c:checkpath`` lines 635-756.
+    See: /lib/common/routespl.c @ 635
 
     Returns ``(status, repaired_boxes)`` where status is 0 on success,
     1 on failure.  The returned list may be shorter than the input
@@ -198,7 +198,7 @@ def checkpath(boxes: list[Box], pp: Path) -> tuple[int, list[Box]]:
 def limit_boxes(boxes: list[Box], pps: list[Ppoint], delta: float) -> None:
     """Tighten each box's x-extent to the spline's footprint.
 
-    C analogue: ``routespl.c:limitBoxes`` lines 238-274.
+    See: /lib/common/routespl.c @ 238
 
     Uses de Casteljau subdivision to sample the spline and shrink
     each box's ``ll_x`` / ``ur_x`` to the minimum enclosing range.
@@ -251,7 +251,7 @@ _INITIAL_URX = float("-inf")
 def routesplines_(pp: Path, polyline: bool = False) -> list[Ppoint] | None:
     """Route a spline through the box corridor in *pp*.
 
-    C analogue: ``routespl.c:routesplines_`` lines 294-596.
+    See: /lib/common/routespl.c @ 294
 
     Returns a list of :class:`Ppoint` control points on success, or
     ``None`` on failure.  The boxes in ``pp.boxes`` are mutated:
@@ -420,7 +420,7 @@ def routesplines_(pp: Path, polyline: bool = False) -> list[Ppoint] | None:
 def routesplines(pp: Path) -> list[Ppoint] | None:
     """Route a curved spline through the box corridor.
 
-    C analogue: ``routespl.c:routesplines`` line 598.
+    See: /lib/common/routespl.c @ 598
     """
     return routesplines_(pp, polyline=False)
 
@@ -428,7 +428,7 @@ def routesplines(pp: Path) -> list[Ppoint] | None:
 def routepolylines(pp: Path) -> list[Ppoint] | None:
     """Route a polyline through the box corridor.
 
-    C analogue: ``routespl.c:routepolylines`` line 602.
+    See: /lib/common/routespl.c @ 602
     """
     return routesplines_(pp, polyline=True)
 
@@ -441,7 +441,7 @@ def simple_spline_route(tp: tuple[float, float],
                         polyline: bool = False) -> list[Ppoint] | None:
     """Route an edge from *tp* to *hp* through a simple CCW polygon.
 
-    C analogue: ``routespl.c:simpleSplineRoute`` lines 173-212.
+    See: /lib/common/routespl.c @ 174
 
     A simpler interface than :func:`routesplines` — no box corridor,
     just a single containing polygon.  Used for compound (inter-cluster)

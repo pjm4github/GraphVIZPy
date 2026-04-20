@@ -1,8 +1,6 @@
 """Straight and curved edge routing (splines=line, splines=curved).
 
-C analogue: ``lib/common/routespl.c`` — ``makeStraightEdge``,
-``makeStraightEdges``, ``bend``, ``get_centroid``,
-``get_cycle_centroid``, ``find_all_cycles``, etc.
+See: /lib/common/routespl.c @ 975
 
 Phase G of the splines port.
 """
@@ -28,7 +26,7 @@ EDGETYPE_PLINE = 3 << 1
 def get_centroid(layout) -> tuple[float, float]:
     """Centroid of the graph bounding box.
 
-    C analogue: ``routespl.c:get_centroid`` lines 773-780.
+    See: /lib/common/routespl.c @ 773
     """
     if not layout.lnodes:
         return (0.0, 0.0)
@@ -42,7 +40,7 @@ def get_centroid(layout) -> tuple[float, float]:
 def _find_all_cycles(layout) -> list[list[str]]:
     """Find all simple directed cycles in the graph.
 
-    C analogue: ``routespl.c:find_all_cycles`` lines 865-882.
+    See: /lib/common/routespl.c @ 865
     Uses DFS from each node to find cycles back to itself.
     """
     adj: dict[str, list[str]] = {}
@@ -77,7 +75,7 @@ def _find_all_cycles(layout) -> list[list[str]]:
 def _cycle_contains_edge(cycle: list[str], tail: str, head: str) -> bool:
     """Check if the directed edge tail→head is in the cycle.
 
-    C analogue: ``routespl.c:cycle_contains_edge`` lines 793-809.
+    See: /lib/common/routespl.c @ 793
     """
     n = len(cycle)
     for i in range(n):
@@ -93,7 +91,7 @@ def _find_shortest_cycle_with_edge(cycles: list[list[str]],
                                    min_size: int = 3) -> list[str] | None:
     """Find the shortest cycle containing the edge tail→head.
 
-    C analogue: ``routespl.c:find_shortest_cycle_with_edge`` lines 884-902.
+    See: /lib/common/routespl.c @ 884
     """
     shortest = None
     for cycle in cycles:
@@ -109,7 +107,7 @@ def _find_shortest_cycle_with_edge(cycles: list[list[str]],
 def get_cycle_centroid(layout, le) -> tuple[float, float]:
     """Centroid of the shortest cycle containing edge *le*.
 
-    C analogue: ``routespl.c:get_cycle_centroid`` lines 904-931.
+    See: /lib/common/routespl.c @ 904
     Falls back to graph centroid if no cycle found.
     """
     cycles = _find_all_cycles(layout)
@@ -135,7 +133,7 @@ def get_cycle_centroid(layout, le) -> tuple[float, float]:
 def bend(spl: list[Ppoint], centroid: tuple[float, float]) -> None:
     """Bend interior control points away from *centroid*.
 
-    C analogue: ``routespl.c:bend`` lines 933-952.
+    See: /lib/common/routespl.c @ 933
 
     Computes the midpoint of the straight edge ``spl[0]→spl[3]``,
     moves a distance ``dist/5`` AWAY from the centroid, and sets
@@ -164,7 +162,7 @@ def bend(spl: list[Ppoint], centroid: tuple[float, float]) -> None:
 def make_straight_edges(layout, edges: list, et: int) -> None:
     """Route edges as straight or gently curved lines.
 
-    C analogue: ``routespl.c:makeStraightEdges`` lines 975-1042.
+    See: /lib/common/routespl.c @ 975
 
     For ``EDGETYPE_CURVED`` (``splines=curved``), the interior
     control points are bent away from the cycle centroid via

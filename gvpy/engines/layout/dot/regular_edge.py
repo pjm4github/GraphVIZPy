@@ -1,8 +1,6 @@
 """Regular-edge routing via box corridors.
 
-C analogue: ``lib/dotgen/dotsplines.c`` — ``make_regular_edge`` and
-its helpers ``makeregularend``, ``adjustregularpath``,
-``completeregularpath``.
+See: /lib/dotgen/dotsplines.c @ 1736
 
 Phase D of the splines port.  Replaces the heuristic
 ``route_regular_edge`` with a C-matching implementation:
@@ -40,7 +38,7 @@ EDGETYPE_PLINE = 3 << 1
 def makeregularend(b: Box, side: int, y: float) -> Box:
     """Create a box between a node box and interrank space.
 
-    C analogue: ``dotsplines.c:makeregularend`` lines 1988-1994.
+    See: /lib/dotgen/dotsplines.c @ 1988
     """
     if side == BOTTOM:
         return Box(ll_x=b.ll_x, ll_y=y, ur_x=b.ur_x, ur_y=b.ll_y)
@@ -52,7 +50,7 @@ def makeregularend(b: Box, side: int, y: float) -> Box:
 def adjustregularpath(P: Path, fb: int, lb: int) -> None:
     """Widen narrow boxes to MINW and ensure minimum overlap.
 
-    C analogue: ``dotsplines.c:adjustregularpath`` lines 2010-2043.
+    See: /lib/dotgen/dotsplines.c @ 2010
     """
     for i in range(max(0, fb - 1), min(lb + 1, P.nbox)):
         bp = P.boxes[i]
@@ -90,7 +88,7 @@ _ALIGN_EPS = 0.01   # points; tolerance for "same x" comparison
 def straight_len(layout, start_ln) -> int:
     """Count vertically aligned virtual nodes following ``start_ln``.
 
-    C analogue: ``lib/dotgen/dotsplines.c:straight_len`` lines 2059-2076.
+    See: /lib/dotgen/dotsplines.c @ 2060
 
     Walks the first outgoing edge of each virtual, counting virtuals
     whose x-coordinate matches ``start_ln``'s within :data:`_ALIGN_EPS`
@@ -125,7 +123,7 @@ def straight_len(layout, start_ln) -> int:
 def straight_path(layout, start_le, cnt: int, plist: list):
     """Advance ``cnt`` steps along the virtual chain, doubling the tail anchor.
 
-    C analogue: ``lib/dotgen/dotsplines.c:straight_path`` lines 2078-2088.
+    See: /lib/dotgen/dotsplines.c @ 2078
 
     Walks ``cnt`` successive out-edges starting from ``start_le`` and
     returns the final :class:`LayoutEdge`.  Mirrors C's point-list
@@ -153,7 +151,7 @@ def straight_path(layout, start_le, cnt: int, plist: list):
 def resize_vn(vn, lx: float, cx: float, rx: float) -> None:
     """Set a virtual node's x-coord and half-widths.
 
-    C analogue: ``lib/dotgen/dotsplines.c:resize_vn`` lines 2111-2114.
+    See: /lib/dotgen/dotsplines.c @ 2111
 
     C stores left/right widths separately (``ND_lw`` / ``ND_rw``) so
     asymmetric expansion is possible.  Python's :class:`LayoutNode`
@@ -171,7 +169,7 @@ def resize_vn(vn, lx: float, cx: float, rx: float) -> None:
 def recover_slack(layout, vchain_names: list, P) -> None:
     """Snap virtual-chain nodes onto the routed corridor.
 
-    C analogue: ``lib/dotgen/dotsplines.c:recover_slack`` lines 2090-2108.
+    See: /lib/dotgen/dotsplines.c @ 2090
 
     After the box-corridor router has laid down the path, walk the
     virtual chain tail→head and for each virtual find the path box
@@ -224,7 +222,7 @@ def recover_slack(layout, vchain_names: list, P) -> None:
 def top_bound(layout, tail_ln, ref_head_order: int, side: int):
     """Find a sibling out-edge of ``tail_ln`` routed farther in ``side``.
 
-    C analogue: ``lib/dotgen/dotsplines.c:top_bound`` lines 2117-2131.
+    See: /lib/dotgen/dotsplines.c @ 2117
 
     Scans every out-edge ``f`` of ``tail_ln``; keeps only those whose
     head's order lies strictly on ``side`` (``+1`` = right, ``-1`` =
@@ -262,7 +260,7 @@ def top_bound(layout, tail_ln, ref_head_order: int, side: int):
 def bot_bound(layout, head_ln, ref_tail_order: int, side: int):
     """Mirror of :func:`top_bound` for the head side.
 
-    C analogue: ``lib/dotgen/dotsplines.c:bot_bound`` lines 2133-2147.
+    See: /lib/dotgen/dotsplines.c @ 2133
     """
     from gvpy.engines.layout.dot.splines import _node_in_edges
     from gvpy.engines.layout.dot.label_place import getsplinepoints
@@ -294,7 +292,7 @@ def completeregularpath(P: Path, tendp: PathEnd, hendp: PathEnd,
                         head_ln=None, last_hop_order: int = 0) -> bool:
     """Assemble the full box corridor from tail end + path + head end.
 
-    C analogue: ``dotsplines.c:completeregularpath`` lines 1950-1982.
+    See: /lib/dotgen/dotsplines.c @ 1950
 
     When ``layout`` / ``tail_ln`` / ``head_ln`` are supplied, runs the
     C-matching ``top_bound``/``bot_bound`` neighbor checks: if any
@@ -361,7 +359,7 @@ def make_regular_edge(layout, sp: SplineInfo, P: Path,
                       edges: list, et: int) -> None:
     """Route regular edges through the box corridor and install on the edge.
 
-    C analogue: ``dotsplines.c:make_regular_edge`` lines 1736-1946.
+    See: /lib/dotgen/dotsplines.c @ 1736
 
     Takes a list of parallel ``LayoutEdge`` objects sharing the same
     tail→head path through ranks.  For each edge, builds the box

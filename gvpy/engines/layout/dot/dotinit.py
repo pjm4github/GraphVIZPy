@@ -1,10 +1,6 @@
 """Top-level layout initialization for the dot engine.
 
-C analogue: ``lib/dotgen/dotinit.c`` and the ``class1.c`` /
-``class2.c`` initialization paths.  In C this is the
-``dot_init_node`` / ``dot_init_edge`` / ``dot_init_graph`` family
-of functions that walk the cgraph tree and populate the per-node /
-per-edge / per-graph engine info structs.
+See: /lib/dotgen/dotinit.c @ 89
 
 In Python the equivalent work is reading the parsed
 :class:`gvpy.core.graph.Graph` (which the ANTLR4 reader produced)
@@ -58,11 +54,11 @@ if TYPE_CHECKING:
 def init_from_graph(layout):
     """Top-level layout init.
 
-    C analogue: ``lib/dotgen/dotinit.c:dot_init_node()`` and the
-    associated ``dot_init_*`` family.  Reads graph attributes,
-    builds LayoutNode entries from each parsed graph node (sizing
-    record fields, capturing pin/pos), collects edges, and reads
-    cluster + rank constraint metadata.
+    See: /lib/dotgen/dotinit.c @ 45
+
+    Reads graph attributes, builds LayoutNode entries from each parsed
+    graph node (sizing record fields, capturing pin/pos), collects
+    edges, and reads cluster + rank constraint metadata.
     """
     # Lazy imports — both classes live in dot_layout.py.
     from gvpy.engines.layout.dot.dot_layout import LayoutNode
@@ -215,11 +211,11 @@ def init_from_graph(layout):
 def collect_rank_constraints(layout):
     """Read ``rank=same|min|max|source|sink`` constraints from subgraphs.
 
-    C analogue: ``lib/dotgen/rank.c:collapse_sets()`` (and the
-    ``rank=...`` handling in ``class1.c``/``class2.c``).  C walks the
-    subgraph tree looking for ``GD_set_type(sg)`` and records the
-    node-set so the rank assignment phase can collapse them onto one
-    rank (or pin them to source/sink).
+    See: /lib/dotgen/rank.c @ 349
+
+    C walks the subgraph tree looking for ``GD_set_type(sg)`` and
+    records the node-set so the rank assignment phase can collapse
+    them onto one rank (or pin them to source/sink).
     """
     layout._rank_constraints = []
     layout._scan_subgraphs(layout.graph)
@@ -228,10 +224,7 @@ def collect_rank_constraints(layout):
 def scan_subgraphs(layout, g: Graph):
     """Recursive helper for :func:`collect_rank_constraints`.
 
-    C analogue: the recursive subgraph walk inside
-    ``lib/dotgen/rank.c:collapse_sets()`` that descends through
-    ``GD_clust(g)`` / nested subgraphs gathering each subgraph's
-    ``rank=...`` attribute.
+    See: /lib/dotgen/rank.c @ 349
     """
     for sub_name, sub in g.subgraphs.items():
         rank_attr = sub.get_graph_attr("rank")
@@ -245,12 +238,11 @@ def scan_subgraphs(layout, g: Graph):
 def collect_edges(layout, g: Graph):
     """Recursively collect edges from graph and all subgraphs.
 
-    C analogue: ``lib/dotgen/dotinit.c:dot_init_edge()`` and the
-    cgraph walk in ``class2.c`` that visits every edge in the root
-    graph plus all subgraphs.  In C, edges are visited via
-    ``agfstedge``/``agnxtedge``; here we use ``g.edges`` plus a
-    recursive descent into ``g.subgraphs`` with an ``id()``-based
-    seen-set to avoid double-counting shared edges.
+    See: /lib/dotgen/dotinit.c @ 59
+
+    In C, edges are visited via ``agfstedge``/``agnxtedge``; here we
+    use ``g.edges`` plus a recursive descent into ``g.subgraphs`` with
+    an ``id()``-based seen-set to avoid double-counting shared edges.
     """
     seen = set()  # avoid duplicates from shared edges
     layout._collect_edges_recursive(g, seen)

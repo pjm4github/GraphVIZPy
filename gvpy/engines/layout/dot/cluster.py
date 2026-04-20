@@ -1,9 +1,6 @@
 """Cluster discovery, deduplication, and post-layout cluster geometry.
 
-C analogue: ``lib/dotgen/cluster.c`` (cluster scaffolding) plus the
-post-position cluster bbox / sibling separation routines that in C
-are spread across ``cluster.c``, ``position.c``, and the cluster
-finalization in ``dotsplines.c``.
+See: /lib/dotgen/cluster.c @ 332
 
 Responsibilities
 ----------------
@@ -74,10 +71,11 @@ def collect_clusters(layout):
 def collect_nodes_into(layout, sub, seen: set[str]):
     """Recursively gather node names from a subgraph and its children.
 
-    C analogue: ``lib/dotgen/cluster.c`` cluster-membership walk
-    used by ``mark_clusters()``.  Recurses into nested subgraphs and
-    accumulates the union of node names that the cluster owns
-    (directly or transitively through child subgraphs).
+    See: /lib/dotgen/cluster.c @ 332
+
+    Recurses into nested subgraphs and accumulates the union of node
+    names that the cluster owns (directly or transitively through
+    child subgraphs).
     """
     for n in sub.nodes:
         if n in layout.lnodes:
@@ -89,9 +87,7 @@ def collect_nodes_into(layout, sub, seen: set[str]):
 def scan_clusters(layout, g: Graph):
     """Recursively walk subgraphs and create LayoutCluster entries.
 
-    C analogue: ``lib/dotgen/cluster.c`` cluster discovery and
-    ``mark_clusters()`` (which is the C path that walks
-    ``GD_clust(g)`` and marks each node's cluster ownership).
+    See: /lib/dotgen/cluster.c @ 332
     """
     # Lazy import — LayoutCluster lives in dot_layout.py.
     from gvpy.engines.layout.dot.dot_layout import LayoutCluster

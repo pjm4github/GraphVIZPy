@@ -1,9 +1,6 @@
 """Clip-and-install pipeline for edge splines.
 
-C analogue: ``lib/common/splines.c`` lines 58–336 (``arrow_clip``,
-``bezier_clip``, ``shape_clip0``, ``shape_clip``, ``new_spline``,
-``clip_and_install``, ``conc_slope``) plus ``lib/common/utils.c``
-``Bezier()`` (de Casteljau split).
+See: /lib/common/splines.c @ 65
 
 The pipeline takes raw spline control points from
 :func:`routespl.routesplines`, clips the first and last cubic
@@ -30,7 +27,7 @@ def bezier_point(V: list, t: float,
                  right: list | None = None) -> Ppoint:
     """Evaluate a cubic Bezier at parameter *t* via de Casteljau.
 
-    C analogue: ``utils.c:Bezier`` lines 175-203.
+    See: /lib/common/utils.c @ 175
 
     Optionally fills *left* (4 elements) with the left sub-curve
     ``[V[0], ..., point]`` and *right* (4 elements) with the right
@@ -113,7 +110,7 @@ def bezier_clip(inside: InsideFn, sp: list[Ppoint],
                 left_inside: bool) -> None:
     """Clip a cubic Bezier to a node boundary using binary search.
 
-    C analogue: ``splines.c:bezier_clip`` lines 109-153.
+    See: /lib/common/splines.c @ 109
 
     **Mutates** *sp* in place (4 elements).  The ``inside`` callable
     tests whether a point (in **node-local** coordinates) is inside
@@ -172,7 +169,7 @@ def shape_clip0(inside: InsideFn, node_x: float, node_y: float,
                 curve: list[Ppoint], left_inside: bool) -> None:
     """Clip Bezier to node boundary in graph coordinates.
 
-    C analogue: ``splines.c:shape_clip0`` lines 161-182.
+    See: /lib/common/splines.c @ 162
 
     Converts *curve* (4 control points in graph coords) to
     node-local coords, calls :func:`bezier_clip`, then converts
@@ -189,7 +186,7 @@ def shape_clip(node_x: float, node_y: float,
                curve: list[Ppoint]) -> None:
     """Clip Bezier to node shape, auto-detecting which side is inside.
 
-    C analogue: ``splines.c:shape_clip`` lines 195-211.
+    See: /lib/common/splines.c @ 195
 
     Tests ``curve[0]`` in node-local coords to decide
     ``left_inside``, then delegates to :func:`shape_clip0`.
@@ -216,7 +213,7 @@ def clip_and_install(
 ) -> list[Ppoint]:
     """Clip raw spline points to tail/head node boundaries.
 
-    C analogue: ``splines.c:clip_and_install`` lines 236-315.
+    See: /lib/common/splines.c @ 236
 
     Takes the raw control points from :func:`routespl.routesplines`
     and clips the first cubic segment to the tail node boundary and
@@ -285,7 +282,7 @@ def clip_and_install(
 
 
 def _approx_eq(a: Ppoint, b: Ppoint) -> bool:
-    """C analogue: ``APPROXEQPT(a, b, MILLIPOINT)``."""
+    """See: /lib/common/geom.h @ 71"""
     return abs(a.x - b.x) < MILLIPOINT and abs(a.y - b.y) < MILLIPOINT
 
 
@@ -296,7 +293,7 @@ def conc_slope(node_x: float, node_y: float,
                out_xs: list[float], out_ys: list[float]) -> float:
     """Compute the mean slope at a concentrator node.
 
-    C analogue: ``splines.c:conc_slope`` lines 318-336.
+    See: /lib/common/splines.c @ 318
 
     *in_xs*/*in_ys* are the x/y coordinates of tail nodes of
     incoming edges.  *out_xs*/*out_ys* are the x/y coords of head

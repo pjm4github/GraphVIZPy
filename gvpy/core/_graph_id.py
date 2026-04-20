@@ -280,12 +280,7 @@ class IdMixin:
 def agnextseq(g: "Graph", objtype: ObjectType) -> int:
     """Increment and return the next sequence number for ``objtype``.
 
-    C analogue: ``lib/cgraph/graph.c:agnextseq()``::
-
-        int agnextseq(Agraph_t *g, int objtype)
-        {
-            return ++(g->clos->seq[objtype]);
-        }
+    See: /lib/cgraph/graph.c @ 152
 
     In gvpy the closure's per-object-type sequence counter lives in
     ``g.clos`` and is bumped via ``g.get_next_sequence(objtype)``.

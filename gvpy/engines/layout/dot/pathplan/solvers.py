@@ -1,8 +1,9 @@
 """Real-root finders for polynomials of degree 1, 2, and 3.
 
-C analogue: ``lib/pathplan/solvers.c`` lines 26–105.  Used by
-``splineintersectsline`` in ``route.c`` to detect cubic-vs-line
-intersections during spline fitting through barriers.
+See: /lib/pathplan/solvers.c @ 26
+
+Used by ``splineintersectsline`` in ``route.c`` to detect
+cubic-vs-line intersections during spline fitting through barriers.
 
 Python API deviation
 --------------------
@@ -40,14 +41,16 @@ _EPS = 1e-7
 
 
 def _aeq0(x: float) -> bool:
-    """Approximate zero test.  C analogue: ``AEQ0`` macro."""
+    """Approximate zero test.  See: /lib/pathplan/solvers.c @ 24"""
     return -_EPS < x < _EPS
 
 
 def solve1(coeff: list[float]) -> tuple[int, list[float]]:
     """Solve ``coeff[1]*x + coeff[0] == 0`` for real ``x``.
 
-    C analogue: ``solvers.c:solve1`` lines 92–105.  Returns:
+    See: /lib/pathplan/solvers.c @ 92
+
+    Returns:
     - ``(1, [root])`` for a single real root
     - ``(0, [])`` when the leading coefficient is ~0 and the constant
       is nonzero (``c == 0`` for nonzero ``c``)
@@ -65,8 +68,9 @@ def solve1(coeff: list[float]) -> tuple[int, list[float]]:
 def solve2(coeff: list[float]) -> tuple[int, list[float]]:
     """Solve ``coeff[2]*x^2 + coeff[1]*x + coeff[0] == 0``.
 
-    C analogue: ``solvers.c:solve2`` lines 69–90.  Falls back to
-    :func:`solve1` when the leading coefficient is ~0.
+    See: /lib/pathplan/solvers.c @ 69
+
+    Falls back to :func:`solve1` when the leading coefficient is ~0.
     """
     a = coeff[2]
     b = coeff[1]
@@ -88,10 +92,11 @@ def solve2(coeff: list[float]) -> tuple[int, list[float]]:
 def solve3(coeff: list[float]) -> tuple[int, list[float]]:
     """Solve ``coeff[3]*x^3 + coeff[2]*x^2 + coeff[1]*x + coeff[0] == 0``.
 
-    C analogue: ``solvers.c:solve3`` lines 26–67.  Uses the
-    depressed-cubic + trigonometric method (casus irreducibilis
-    handled via ``atan2`` / ``cbrt``).  Falls back to :func:`solve2`
-    when the leading coefficient is ~0.
+    See: /lib/pathplan/solvers.c @ 26
+
+    Uses the depressed-cubic + trigonometric method (casus
+    irreducibilis handled via ``atan2`` / ``cbrt``).  Falls back to
+    :func:`solve2` when the leading coefficient is ~0.
     """
     a = coeff[3]
     b = coeff[2]

@@ -4,9 +4,11 @@ Standalone implementation of the network simplex algorithm used by
 both Phase 1 (rank assignment) and Phase 3 (X-coordinate position
 solving) in the dot engine.
 
-C analogue: lib/dotgen/ns.c (in Graphviz).  Same vectorised hot
-loops, same feasible-tree construction, same enter/leave edge
-selection.  Internally all node names are mapped to integer indices
+See: /lib/common/ns.c @ 623
+
+Same vectorised hot loops, same feasible-tree construction, same
+enter/leave edge selection.  Internally all node names are mapped to
+integer indices
 0..N-1 and edge data is stored in four parallel NumPy int64 arrays
 (_e_tail, _e_head, _e_minlen, _e_weight).  Ranks, DFS ranges
 (_low / _lim), cut values, and tree membership are also NumPy

@@ -1,6 +1,6 @@
 """Pathplan geometry primitives.
 
-C analogue: ``lib/pathplan/pathgeom.h`` lines 33–54.
+See: /lib/pathplan/pathgeom.h @ 34
 
 Defines the fundamental point, vector, polygon, polyline, and edge
 types used throughout the pathplan port.  These mirror the C structs
@@ -24,14 +24,9 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Ppoint:
-    """2D point.  C analogue: ``Ppoint_t`` / ``Pxy_t`` in
-    ``pathgeom.h:37-41``::
+    """2D point.
 
-        typedef struct Pxy_t {
-            double x, y;
-        } Pxy_t;
-
-        typedef struct Pxy_t Ppoint_t;
+    See: /lib/pathplan/pathgeom.h @ 37
     """
 
     x: float = 0.0
@@ -48,12 +43,7 @@ Pvector = Ppoint
 class Ppoly:
     """Polygon as an ordered list of vertices.
 
-    C analogue: ``Ppoly_t`` in ``pathgeom.h:45-48``::
-
-        typedef struct Ppoly_t {
-            Ppoint_t *ps;
-            size_t pn;
-        } Ppoly_t;
+    See: /lib/pathplan/pathgeom.h @ 45
 
     In C, ``pn`` is an explicit ``size_t`` because ``ps`` is a raw
     pointer.  Python's ``list`` carries its length, so ``pn`` is a
@@ -78,11 +68,7 @@ Ppolyline = Ppoly
 class Pedge:
     """Directed line segment from ``a`` to ``b``.
 
-    C analogue: ``Pedge_t`` in ``pathgeom.h:52-54``::
-
-        typedef struct Pedge_t {
-            Ppoint_t a, b;
-        } Pedge_t;
+    See: /lib/pathplan/pathgeom.h @ 52
     """
 
     a: Ppoint = field(default_factory=Ppoint)

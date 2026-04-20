@@ -1,6 +1,6 @@
 """Pathplan utility helpers.
 
-C analogue: ``lib/pathplan/util.c``.
+See: /lib/pathplan/util.c @ 19
 """
 from __future__ import annotations
 
@@ -10,22 +10,7 @@ from gvpy.engines.layout.dot.pathplan.pathgeom import Pedge, Ppoly, Ppolyline
 def Ppolybarriers(polys: list[Ppoly]) -> list[Pedge]:
     """Flatten a list of polygons into a single list of edge barriers.
 
-    C analogue: ``util.c:Ppolybarriers`` lines 24–42::
-
-        int Ppolybarriers(Ppoly_t **polys, int npolys, Pedge_t **barriers,
-                          int *n_barriers) {
-          LIST(Pedge_t) bar = {0};
-          for (int i = 0; i < npolys; i++) {
-            const Ppoly_t pp = *polys[i];
-            for (size_t j = 0; j < pp.pn; j++) {
-              size_t k = j + 1;
-              if (k >= pp.pn) k = 0;
-              LIST_APPEND(&bar, ((Pedge_t){.a = pp.ps[j], .b = pp.ps[k]}));
-            }
-          }
-          ...
-          return 1;
-        }
+    See: /lib/pathplan/util.c @ 24
 
     Python deviation: C uses a double-pointer output parameter for
     the barrier list and a separate int for the count.  Python just
@@ -47,11 +32,13 @@ def Ppolybarriers(polys: list[Ppoly]) -> list[Pedge]:
 def make_polyline(line: Ppolyline) -> Ppolyline:
     """Expand a polyline into a bezier-ready control-point sequence.
 
-    C analogue: ``util.c:make_polyline`` lines 44–62.  Each interior
-    point of the input line is duplicated three times and the
-    endpoints twice, producing the ``[P0, P0, P1, P1, P1, ..., Pn, Pn]``
-    layout that Graphviz's cubic-Bezier format expects (first anchor
-    + triples of subsequent anchors).
+    See: /lib/pathplan/util.c @ 44
+
+    Each interior point of the input line is duplicated three times
+    and the endpoints twice, producing the
+    ``[P0, P0, P1, P1, P1, ..., Pn, Pn]`` layout that Graphviz's
+    cubic-Bezier format expects (first anchor + triples of subsequent
+    anchors).
 
     Python deviation: C uses a ``static LIST(Ppoint_t) ispline`` which
     is cleared between calls — a thread-unsafe optimisation.  Python
@@ -79,12 +66,7 @@ def make_polyline(line: Ppolyline) -> Ppolyline:
 def freePath(p: Ppolyline) -> None:
     """No-op: C frees the heap-allocated ``ps`` array and the wrapper.
 
-    C analogue: ``util.c:freePath`` lines 19–22::
-
-        void freePath(Ppolyline_t *p) {
-          free(p->ps);
-          free(p);
-        }
+    See: /lib/pathplan/util.c @ 19
 
     Python's garbage collector handles this automatically.  The
     function exists as a no-op for callers that mirror C's manual

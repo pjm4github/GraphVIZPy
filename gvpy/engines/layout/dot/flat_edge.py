@@ -1,9 +1,6 @@
 """Flat (same-rank) edge routing via box corridors.
 
-C analogue: ``lib/dotgen/dotsplines.c`` — ``make_flat_edge`` and
-its helpers ``makeFlatEnd``, ``makeBottomFlatEnd``,
-``makeSimpleFlat``, ``make_flat_labeled_edge``,
-``make_flat_bottom_edges``.
+See: /lib/dotgen/dotsplines.c @ 1538
 
 Phase E of the splines port.
 """
@@ -98,8 +95,7 @@ def _make_flat_end(layout, sp: SplineInfo, P: Path, ln, le,
                    endp: PathEnd, is_begin: bool, side: int) -> None:
     """Set up path endpoint for a flat edge.
 
-    C analogue: ``makeFlatEnd`` (lines 1319-1332) when side=TOP,
-    ``makeBottomFlatEnd`` (lines 1334-1348) when side=BOTTOM.
+    See: /lib/dotgen/dotsplines.c @ 1319
     """
     from gvpy.engines.layout.dot.splines import maximal_bbox
 
@@ -195,8 +191,7 @@ def make_flat_adj_edges(layout, sp: SplineInfo, P: Path,
                          edges: list, tn, hn, et: int) -> None:
     """Route a bundle of flat edges between two adjacent same-rank nodes.
 
-    C analogue: ``lib/dotgen/dotsplines.c:make_flat_adj_edges`` lines
-    1158-1317.
+    See: /lib/dotgen/dotsplines.c @ 1158
 
     The C version has two regimes:
 
@@ -317,7 +312,7 @@ def edge_label_key(layout, le) -> tuple:
 def make_simple_flat_labels(layout, edges: list, tail, head, et: int) -> None:
     """Route adjacent flat edges with labels using alternating up/down detours.
 
-    C analogue: ``lib/dotgen/dotsplines.c:makeSimpleFlatLabels`` lines 980-1108.
+    See: /lib/dotgen/dotsplines.c @ 980
 
     Called from :func:`make_flat_edge` when two nodes on the same rank
     have multiple parallel edges and at least one carries a label.  The
@@ -491,7 +486,7 @@ def make_simple_flat_labels(layout, edges: list, tail, head, et: int) -> None:
 def make_simple_flat(layout, edges: list, tail, head, et: int) -> None:
     """Route flat edges between adjacent nodes as straight beziers.
 
-    C analogue: ``makeSimpleFlat`` lines 1111-1146.
+    See: /lib/dotgen/dotsplines.c @ 1111
     """
     if not edges:
         return
@@ -543,7 +538,7 @@ def make_flat_labeled_edge(layout, sp: SplineInfo, P: Path,
                            le, et: int) -> None:
     """Route a single flat edge with a label via a 3-box corridor above.
 
-    C analogue: ``make_flat_labeled_edge`` lines 1350-1452.
+    See: /lib/dotgen/dotsplines.c @ 1350
     """
     tail = layout.lnodes.get(le.tail_name)
     head = layout.lnodes.get(le.head_name)
@@ -652,7 +647,7 @@ def make_flat_bottom_edges(layout, sp: SplineInfo, P: Path,
                            edges: list, et: int) -> None:
     """Route flat edges with south-side ports via a corridor below.
 
-    C analogue: ``make_flat_bottom_edges`` lines 1454-1526.
+    See: /lib/dotgen/dotsplines.c @ 1454
     """
     if not edges:
         return
@@ -743,7 +738,7 @@ def make_flat_edge(layout, sp: SplineInfo, P: Path,
                    edges: list, et: int) -> None:
     """Route flat (same-rank) edges.
 
-    C analogue: ``make_flat_edge`` lines 1538-1651.
+    See: /lib/dotgen/dotsplines.c @ 1538
 
     Dispatches to one of:
     - ``make_simple_flat`` — adjacent nodes, no labels (C ``makeSimpleFlat``)

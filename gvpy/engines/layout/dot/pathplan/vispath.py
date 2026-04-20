@@ -1,6 +1,6 @@
 """Visibility-graph path routing — public API surface.
 
-C analogue: ``lib/pathplan/vispath.h`` + ``lib/pathplan/vis.h``.
+See: /lib/pathplan/vispath.h @ 50
 
 Phase B step B2 lands the :class:`Vconfig` dataclass plus the
 ``POLYID_*`` sentinel constants.  The ``Pobsopen`` / ``Pobsclose`` /
@@ -14,7 +14,7 @@ from typing import Final
 
 
 # ── POLYID sentinel values ─────────────────────────────────────────
-# C analogue: ``vispath.h:50-51``.
+# See: /lib/pathplan/vispath.h @ 50
 #
 # Passed to ``Pobspath`` / ``ptVis`` / ``directVis`` as the "which
 # polygon does this endpoint belong to" hint:
@@ -30,17 +30,7 @@ POLYID_UNKNOWN: Final[int] = -2222
 class Vconfig:
     """Opaque visibility-graph state handle.
 
-    C analogue: ``struct vconfig_s`` in ``lib/pathplan/vis.h:29-39``::
-
-        struct vconfig_s {
-            int Npoly;
-            int N;           /* number of points in walk of barriers */
-            Ppoint_t *P;     /* barrier points */
-            int *start;
-            int *next;
-            int *prev;
-            array2 vis;      /* computed visibility matrix */
-        };
+    See: /lib/pathplan/vis.h @ 29
 
     All fields preserve C's spelling and semantics:
 

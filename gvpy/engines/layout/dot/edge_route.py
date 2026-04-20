@@ -1,7 +1,8 @@
 """Edge routing result container.
 
-C analogue: the ``bezier`` struct in ``lib/common/types.h`` plus the
-``splines`` container referenced by ``ED_spl(e)`` in Graphviz.  An
+See: /lib/common/types.h @ 89
+
+An
 :class:`EdgeRoute` holds the geometric result of phase-4 spline
 routing for a single edge: control points, spline type, and label
 anchor.  It is deliberately the stable boundary between the headless

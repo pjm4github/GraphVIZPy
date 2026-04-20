@@ -1,6 +1,7 @@
 """Phase 4: spline routing / edge routing.
 
-C analogue: ``lib/dotgen/dotsplines.c`` + ``lib/common/splines.c``.
+See: /lib/dotgen/dotsplines.c @ 229
+
 Implements the edge-routing step that follows Phase 3 (position
 assignment).  Given node coordinates and rank structure, compute
 spline (or orthogonal, polyline, straight-line) routes for each
@@ -217,7 +218,7 @@ def _phase4_from_tb(layout, state):
 def phase4_routing(layout):
     """phase4_routing — top-level edge routing driver.
 
-    C analogue: ``lib/dotgen/dotsplines.c:dot_splines_()`` lines 228–475.
+    See: /lib/dotgen/dotsplines.c @ 229
 
     Driver shape mirrors C's ``dot_splines_``:
 
@@ -229,9 +230,9 @@ def phase4_routing(layout):
     4. Classify every real edge with :func:`setflags` tagging
        REGULAR / FLAT / SELFWP / SELFNP + FWD / BWD + MAINGRAPH, and
        sort with :func:`edgecmp` to group parallel edges into
-       equivalence classes.  C analogue: the per-rank per-node loop
-       at ``dotsplines.c:273-321`` plus ``LIST_SORT(&edges, edgecmp)``
-       at ``dotsplines.c:331``.  Python does one pass over
+       equivalence classes.  See: /lib/dotgen/dotsplines.c @ 273
+
+       Python does one pass over
        ``layout.ledges`` instead of the per-rank walk — the AGSEQ tie-
        break in ``edgecmp`` ensures the final sorted order is
        deterministic regardless of pre-sort iteration order.
@@ -256,7 +257,8 @@ def phase4_routing(layout):
     branches still call the existing Python routers.
     """
     # Emit the ``phase4 begin`` line in C's format: ``et=<int> normalize=<int>``.
-    # C analogue: dotsplines.c:236.  ``et`` is the EDGE_TYPE enum value;
+    # See: /lib/dotgen/dotsplines.c @ 236
+    # ``et`` is the EDGE_TYPE enum value;
     # ``normalize`` is 1 unless we're being called recursively from
     # ``make_flat_adj_edges`` (which passes 0 to suppress the final
     # edge_normalize step).  Python has no recursive case today so it's
@@ -289,8 +291,8 @@ def _phase4_routing_body(layout):
         layout._rank_ht2[r] = max(layout._rank_ht2.get(r, 0), hh)
 
     # Compute graph-wide left/right bounds with padding.
-    # C analogue: the outer for loop in ``dot_splines_`` at
-    # ``dotsplines.c:273-305``.  The ``-= MINW`` / ``+= MINW`` is
+    # See: /lib/dotgen/dotsplines.c @ 273
+    # The ``-= MINW`` / ``+= MINW`` is
     # *inside* the rank loop in C, so it runs once per rank — a
     # graph with N ranks subtracts MINW from LeftBound N times.  The
     # per-rank ``MIN(sd.LeftBound, rank_min_x)`` ratchets the value
@@ -315,8 +317,8 @@ def _phase4_routing_body(layout):
     layout._left_bound = left_bound
     layout._right_bound = right_bound
 
-    # Allocate the phase-4 routing context.  C analogue: the ``sd``
-    # local in dot_splines_ at dotsplines.c:268-270.
+    # Allocate the phase-4 routing context.
+    # See: /lib/dotgen/dotsplines.c @ 268
     #
     # Match C integer truncation: ``GD_nodesep`` in
     # ``lib/common/types.h:334`` is declared ``int nodesep``, so
@@ -332,15 +334,13 @@ def _phase4_routing_body(layout):
     )
 
     # Phase A step 5: restore pre-inflation rw on self-loop nodes.
-    # C analogue: resetRW(g) call at dot_splines_() start.
+    # See: /lib/dotgen/dotsplines.c @ 188
     # No-op today (guarded on mval > 0); activates when Phase F lands.
     resetRW(layout)
 
     # Phase A step 6: classify all real edges with setflags + sort with
-    # edgecmp to build the routing batch order.  C analogue: the per-
-    # rank per-node loop at dotsplines.c:273-321 that gathers edges into
-    # ``LIST(edge_t *) edges`` with setflags tagging, followed by
-    # ``LIST_SORT(&edges, edgecmp)`` at dotsplines.c:331.
+    # edgecmp to build the routing batch order.
+    # See: /lib/dotgen/dotsplines.c @ 273
     #
     # Python iterates ``layout.ledges`` in insertion order instead of
     # the per-rank walk — AGSEQ (via _edge_seq_map) already preserves
@@ -409,10 +409,7 @@ def _phase4_routing_body(layout):
                   f"ur=({box.ur_x:.1f},{box.ur_y:.1f})")
 
     # Route real edges in edgecmp-sorted order (Phase A step 6).
-    # C analogue: the main routing loop at dotsplines.c:344-421 that
-    # walks ``edges`` in sorted order and dispatches to
-    # make_regular_edge / make_flat_edge / makeSelfEdge based on
-    # tail/head rank + port status.
+    # See: /lib/dotgen/dotsplines.c @ 344
     from gvpy.engines.layout.dot.regular_edge import make_regular_edge
     from gvpy.engines.layout.dot.flat_edge import make_flat_edge
     from gvpy.engines.layout.dot.self_edge import make_self_edge
@@ -474,9 +471,7 @@ def _phase4_routing_body(layout):
         layout._compute_label_pos(le)
 
     # Route chain edges through virtual nodes.
-    # C analogue: multi-rank edges are dispatched via make_regular_edge
-    # with the original edge; the function walks the virtual chain
-    # internally.
+    # See: /lib/dotgen/dotsplines.c @ 1736
     for le in layout._chain_edges:
         tail = layout.lnodes.get(le.tail_name)
         head = layout.lnodes.get(le.head_name)
@@ -512,8 +507,9 @@ def _phase4_routing_body(layout):
     _apply_parallel_offsets(layout)
 
     # Phase A step 5: reverse back-edge spline control points so that
-    # every emitted edge goes tail-to-head.  C analogue: edge_normalize
-    # call at dot_splines_ line 434.  No-op under Python's current data
+    # every emitted edge goes tail-to-head.
+    # See: /lib/dotgen/dotsplines.c @ 174
+    # No-op under Python's current data
     # flow (break_cycles pre-reverses back-edges in phase 1); activates
     # when the driver stops pre-reversing.
     edge_normalize(layout)
@@ -648,9 +644,11 @@ def _apply_parallel_offsets(layout):
 
 def clip_compound_edges(layout):
     """Clip edges with lhead/ltail to their target cluster bounding box.
-    C analogue: lib/dotgen/dotsplines.c compound edge handling. For each
-    edge with lhead or ltail set, clip the route to the target cluster
-    bounding box so the visible endpoint sits at the cluster boundary.
+    See: /lib/dotgen/compound.c @ 434
+
+    For each edge with lhead or ltail set, clip the route to the
+    target cluster bounding box so the visible endpoint sits at the
+    cluster boundary.
     """
     cluster_map = {cl.name: cl for cl in layout._clusters}
     all_edges = [le for le in layout.ledges if not le.virtual] + layout._chain_edges
@@ -677,8 +675,8 @@ def clip_to_bb(inside: tuple, outside: tuple, bb: tuple) -> tuple | None:
     bb = (min_x, min_y, max_x, max_y). Returns the intersection point,
     or None if no intersection found.
     
-    C analogue: utility — line-segment to axis-aligned box clip. Used by
-    :func: for cluster boundary intersection.
+    Line-segment to axis-aligned box clip used for cluster boundary
+    intersection.  (No direct C analogue — generic utility.)
     """
     x1, y1 = outside
     x2, y2 = inside
@@ -878,10 +876,11 @@ def to_bezier(pts: list[tuple]) -> list[tuple]:
 def edge_start_point(layout, le: LayoutEdge, tail: LayoutNode,
                       head: LayoutNode) -> tuple[float, float]:
     """Get edge start point — uses tailport if set, else boundary intersection.
-    C analogue: lib/common/splines.c:place_portbox() and shapes.c port
-    resolution.  Returns the tail-side endpoint of an edge — either the
-    explicit port position from the record fields or the boundary
-    intersection if no port.
+    See: /lib/common/shapes.c @ 2699
+
+    Returns the tail-side endpoint of an edge — either the explicit
+    port position from the record fields or the boundary intersection
+    if no port.
     """
     if le.tailport:
         # Check record port first, then compass
@@ -901,8 +900,7 @@ def edge_start_point(layout, le: LayoutEdge, tail: LayoutNode,
 def edge_end_point(layout, le: LayoutEdge, head: LayoutNode,
                     tail: LayoutNode) -> tuple[float, float]:
     """Get edge end point — uses headport if set, else boundary intersection.
-    C analogue: lib/common/splines.c:place_portbox() and shapes.c port
-    resolution — head-side counterpart of :func:.
+    See: /lib/common/shapes.c @ 2699
     """
     if le.headport:
         pt = layout._record_port_point(le.head_name, le.headport, head,
@@ -931,7 +929,8 @@ def record_port_point(layout, node_name: str, port: str,
     ``is_tail`` determines which boundary: tails attach at the
     bottom/right edge (toward the next rank), heads at the top/left.
     
-    C analogue: lib/common/shapes.c:record_port() and compassPort().
+    See: /lib/common/shapes.c @ 3810
+
     Looks up a record-shape port by name in the parsed
     Node.record_fields tree, returns the port center in node-local
     coordinates.
@@ -991,9 +990,10 @@ def record_port_point(layout, node_name: str, port: str,
 
 def port_point(ln: "LayoutNode", compass: str):
     """Return point on node boundary for a compass direction, or None.
-    C analogue: lib/common/shapes.c:compassPort() for the compass-
-    direction case.  Returns the boundary point at the requested compass
-    direction (n/ne/e/se/s/sw/w/nw/c) on a rectangular node.
+    See: /lib/common/shapes.c @ 2699
+
+    Returns the boundary point at the requested compass direction
+    (n/ne/e/se/s/sw/w/nw/c) on a rectangular node.
     """
     # Lazy import — module-level constant in dot_layout.py.
     from gvpy.engines.layout.dot.dot_layout import _COMPASS
@@ -1019,9 +1019,10 @@ def compute_label_pos(le: LayoutEdge):
 
 def apply_sameport(layout):
     """Merge endpoints for edges with samehead or sametail attributes.
-    C analogue: lib/dotgen/sameport.c:dot_sameports().  Merges edges
-    that share a samehead or sametail group so they all attach at a
-    single port location on the shared node.
+    See: /lib/dotgen/sameport.c @ 41
+
+    Merges edges that share a samehead or sametail group so they all
+    attach at a single port location on the shared node.
     """
     all_edges = [le for le in layout.ledges if not le.virtual] + layout._chain_edges
 
@@ -1050,10 +1051,10 @@ def ortho_route(layout, le: LayoutEdge, tail: LayoutNode,
                  head: LayoutNode) -> list[tuple[float, float]]:
     """Route with right-angle bends only (Z-shaped or L-shaped path).
 
-    C analogue: ``lib/ortho/ortho.c`` — full orthogonal channel router
-    with obstacle-avoidance.  Python implements a simplified Z-shape
-    placeholder: vertical → horizontal → vertical polyline with one
-    adjustable mid-y.
+    See: /lib/ortho/ortho.c @ 1162
+
+    Python implements a simplified Z-shape placeholder: vertical →
+    horizontal → vertical polyline with one adjustable mid-y.
 
     Cluster avoidance (pragmatic, non-faithful-to-C): if the candidate
     horizontal leg would cross a non-member cluster's bbox, shift
@@ -1191,9 +1192,10 @@ def _ortho_any_obstacle_at(layout, members, y: float,
 def boundary_point(ln: LayoutNode, tx: float, ty: float) -> tuple[float, float]:
     """boundary_point.
 
-    C analogue: lib/common/splines.c boundary clip helper. Returns the
-    intersection of the line from the node center toward (tx, ty) with
-    the node's bounding rectangle.
+    See: /lib/common/splines.c @ 236
+
+    Returns the intersection of the line from the node center toward
+    (tx, ty) with the node's bounding rectangle.
     """
     cx, cy = ln.x, ln.y
     dx, dy = tx - cx, ty - cy
@@ -1211,9 +1213,10 @@ def boundary_point(ln: LayoutNode, tx: float, ty: float) -> tuple[float, float]:
 def self_loop_points(ln: LayoutNode) -> list[tuple[float, float]]:
     """self_loop_points.
 
-    C analogue: lib/dotgen/dotsplines.c self-loop handling. Returns a
-    small arc of control points that loops back to the same node,
-    anchored just above the node.
+    See: /lib/common/splines.c @ 1164
+
+    Returns a small arc of control points that loops back to the
+    same node, anchored just above the node.
     """
     hw = ln.width / 2.0
     loop = 20.0
@@ -1226,8 +1229,7 @@ def self_loop_points(ln: LayoutNode) -> list[tuple[float, float]]:
 
 
 # ── Cluster-aware obstacle bbox family ──────────────────────────────────
-# C analogues in lib/dotgen/dotsplines.c lines 2120–2294:
-#   cl_vninside, cl_bound, maximal_bbox, neighbor, pathscross.
+# See: /lib/dotgen/dotsplines.c @ 2151
 #
 # These five static helpers form the obstacle-avoidance bbox set used
 # by make_regular_edge to decide how much horizontal space an edge can
@@ -1245,7 +1247,9 @@ def self_loop_points(ln: LayoutNode) -> list[tuple[float, float]]:
 def _node_out_edges(layout, ln: "LayoutNode") -> list["LayoutEdge"]:
     """Outgoing LayoutEdges of ``ln``.
 
-    C analogue: ``ND_out(n).list``.  Walks ``layout.ledges`` +
+    See: /lib/common/types.h @ 515
+
+    Walks ``layout.ledges`` +
     ``layout._chain_edges`` and filters by ``le.tail_name == ln.name``.
     Preserves Python iteration order, which is insertion order and
     therefore stable across calls.
@@ -1259,7 +1263,7 @@ def _node_out_edges(layout, ln: "LayoutNode") -> list["LayoutEdge"]:
 def _node_in_edges(layout, ln: "LayoutNode") -> list["LayoutEdge"]:
     """Incoming LayoutEdges of ``ln``.
 
-    C analogue: ``ND_in(n).list``.
+    See: /lib/common/types.h @ 501
     """
     name = ln.name
     out = [le for le in layout.ledges if le.head_name == name]
@@ -1270,8 +1274,8 @@ def _node_in_edges(layout, ln: "LayoutNode") -> list["LayoutEdge"]:
 def _clust(layout, ln: "LayoutNode"):
     """Return the innermost cluster containing ``ln``, or None.
 
-    C analogue: ``ND_clust(n)`` followed by the ``REAL_CLUSTER(n)``
-    macro which returns NULL when the cluster *is* the root graph.
+    See: /lib/common/types.h @ 489
+
     Python's :func:`_innermost_cluster` already returns None for
     root-level nodes, so this wrapper is just a rename for clarity
     at port call sites.
@@ -1282,12 +1286,12 @@ def _clust(layout, ln: "LayoutNode"):
 def _virtual_orig_endpoints(layout, ln: "LayoutNode") -> "tuple[str, str] | None":
     """For a virtual node, return the original edge's ``(tail, head)``.
 
-    C analogue: ``ED_to_orig(ND_out(n).list[0])`` followed by
-    ``agtail(orig)`` / ``aghead(orig)`` at :func:`cl_bound` lines
-    2142–2144.  Python chain virtuals carry ``orig_tail`` /
-    ``orig_head`` on their LayoutEdge, so we pick the first outgoing
-    edge and read those fields.  Returns None if ``ln`` has no
-    outgoing edge or isn't part of a chain (e.g. skeleton virtual).
+    See: /lib/common/types.h @ 598
+
+    Python chain virtuals carry ``orig_tail`` / ``orig_head`` on their
+    LayoutEdge, so we pick the first outgoing edge and read those
+    fields.  Returns None if ``ln`` has no outgoing edge or isn't
+    part of a chain (e.g. skeleton virtual).
     """
     out = _node_out_edges(layout, ln)
     if not out:
@@ -1301,12 +1305,7 @@ def _virtual_orig_endpoints(layout, ln: "LayoutNode") -> "tuple[str, str] | None
 def cl_vninside(cl, ln: "LayoutNode") -> bool:
     """Return True if ``ln``'s center is inside ``cl``'s bounding box.
 
-    C analogue: ``lib/dotgen/dotsplines.c:cl_vninside()`` lines 2120–2123::
-
-        static bool cl_vninside(graph_t *cl, node_t *n) {
-          return BETWEEN(GD_bb(cl).LL.x, ND_coord(n).x, GD_bb(cl).UR.x) &&
-                 BETWEEN(GD_bb(cl).LL.y, ND_coord(n).y, GD_bb(cl).UR.y);
-        }
+    See: /lib/dotgen/dotsplines.c @ 2151
 
     Pure containment test (closed interval).  Used by :func:`cl_bound`
     to verify that a virtual adjacent node is actually inside the
@@ -1319,7 +1318,8 @@ def cl_vninside(cl, ln: "LayoutNode") -> bool:
 def cl_bound(layout, n_ln: "LayoutNode", adj_ln: "LayoutNode"):
     """Return the cluster of ``adj`` that interferes with ``n``'s routing.
 
-    C analogue: ``lib/dotgen/dotsplines.c:cl_bound()`` lines 2134–2162.
+    See: /lib/dotgen/dotsplines.c @ 2165
+
     Walks ``n``'s tail/head-cluster context and returns the first
     cluster on ``adj`` that is not ``n``'s tail or head cluster,
     subject to a virtual-containment check via :func:`cl_vninside`.
@@ -1368,7 +1368,8 @@ def pathscross(layout, n0_ln: "LayoutNode", n1_ln: "LayoutNode",
                 ie1: "LayoutEdge | None", oe1: "LayoutEdge | None") -> bool:
     """Return True if ``n0``'s chain crosses ``n1``'s chain.
 
-    C analogue: ``lib/dotgen/dotsplines.c:pathscross()`` lines 2256–2294.
+    See: /lib/dotgen/dotsplines.c @ 2292
+
     Walks the forward and backward single-edge chains of ``n0`` (up to
     two hops each) and checks whether the relative order of ``n0`` and
     ``n1`` ever flips.  A flip means the chains would cross in
@@ -1441,7 +1442,8 @@ def neighbor(layout, vn_ln: "LayoutNode",
               direction: int) -> "LayoutNode | None":
     """Find the nearest rank neighbour that bounds ``vn``'s bbox.
 
-    C analogue: ``lib/dotgen/dotsplines.c:neighbor()`` lines 2232–2254.
+    See: /lib/dotgen/dotsplines.c @ 2268
+
     Walks the rank outward from ``vn`` in ``direction`` (+1 right,
     -1 left) and returns the first node that (a) is NORMAL, (b) is a
     virtual with a label, or (c) is a virtual whose chain does not
@@ -1478,37 +1480,7 @@ def maximal_bbox(layout, sp: SplineInfo, vn_ln: "LayoutNode",
                   ie: "LayoutEdge | None", oe: "LayoutEdge | None") -> Box:
     """Compute the maximum bbox ``vn`` can claim on its rank for routing.
 
-    C analogue: ``lib/dotgen/dotsplines.c:maximal_bbox()`` lines 2173–2230.
-    C literal::
-
-        static boxf maximal_bbox(graph_t *g, const spline_info_t sp,
-                                 node_t *vn, edge_t *ie, edge_t *oe) {
-          double b, nb;
-          graph_t *left_cl, *right_cl;
-          node_t *left, *right;
-          boxf rv;
-
-          left_cl = right_cl = NULL;
-          b = (double)(ND_coord(vn).x - ND_lw(vn) - FUDGE);
-          if ((left = neighbor(g, vn, ie, oe, -1))) {
-            if ((left_cl = cl_bound(g, vn, left)))
-              nb = GD_bb(left_cl).UR.x + sp.Splinesep;
-            else {
-              nb = (double)(ND_coord(left).x + ND_mval(left));
-              if (ND_node_type(left) == NORMAL)
-                nb += GD_nodesep(g) / 2.;
-              else
-                nb += sp.Splinesep;
-            }
-            if (nb < b) b = nb;
-            rv.LL.x = round(b);
-          } else
-            rv.LL.x = fmin(round(b), sp.LeftBound);
-          ...
-          rv.LL.y = ND_coord(vn).y - GD_rank(g)[ND_rank(vn)].ht1;
-          rv.UR.y = ND_coord(vn).y + GD_rank(g)[ND_rank(vn)].ht2;
-          return rv;
-        }
+    See: /lib/dotgen/dotsplines.c @ 2204
 
     Y-axis: C y-up has ``LL.y = vn.y - ht1`` (visual bottom) and
     ``UR.y = vn.y + ht2`` (visual top).  Python y-down flips both
@@ -1573,14 +1545,7 @@ def maximal_bbox(layout, sp: SplineInfo, vn_ln: "LayoutNode",
 
 
 # ── Edge classification and driver sort (Phase A step 4) ────────────────
-# C analogues in lib/dotgen/dotsplines.c:
-#   makefwdedge       lines 48–63
-#   getmainedge       lines 100–107
-#   spline_merge      lines 109–112
-#   swap_ends_p       lines 114–124
-#   portcmp           lines 129–143
-#   setflags          lines 507–533
-#   edgecmp           lines 545–636
+# See: /lib/dotgen/dotsplines.c @ 49
 #
 # Together these seven helpers form the equivalence-class grouping
 # infrastructure used by ``dot_splines_`` to batch parallel edges
@@ -1618,18 +1583,7 @@ def _get_edge_port(le: "LayoutEdge", side: str) -> Port:
 def portcmp(p0: Port, p1: Port) -> int:
     """Lexicographic comparison of two :class:`Port` structs.
 
-    C analogue: ``lib/dotgen/dotsplines.c:portcmp()`` lines 129–143.
-    C literal::
-
-        int portcmp(port p0, port p1) {
-          if (!p1.defined) return p0.defined ? 1 : 0;
-          if (!p0.defined) return -1;
-          if (p0.p.x < p1.p.x) return -1;
-          if (p0.p.x > p1.p.x) return 1;
-          if (p0.p.y < p1.p.y) return -1;
-          if (p0.p.y > p1.p.y) return 1;
-          return 0;
-        }
+    See: /lib/dotgen/dotsplines.c @ 129
 
     Order: undefined < defined; within defined, by aiming-point x, then y.
     """
@@ -1651,15 +1605,7 @@ def portcmp(p0: Port, p1: Port) -> int:
 def getmainedge(layout, le: "LayoutEdge") -> "LayoutEdge":
     """Walk to the canonical edge backing ``le``.
 
-    C analogue: ``lib/dotgen/dotsplines.c:getmainedge()`` lines 100–107.
-    C literal::
-
-        static edge_t *getmainedge(edge_t *e) {
-          edge_t *le = e;
-          while (ED_to_virt(le)) le = ED_to_virt(le);
-          while (ED_to_orig(le)) le = ED_to_orig(le);
-          return le;
-        }
+    See: /lib/dotgen/dotsplines.c @ 100
 
     C walks forward through the virtual chain (``ED_to_virt``), then
     backward to the original real edge (``ED_to_orig``).  Python
@@ -1680,12 +1626,7 @@ def getmainedge(layout, le: "LayoutEdge") -> "LayoutEdge":
 def spline_merge(layout, ln: "LayoutNode") -> bool:
     """Return True iff ``ln`` is a virtual node that merges multiple edges.
 
-    C analogue: ``lib/dotgen/dotsplines.c:spline_merge()`` lines 109–112::
-
-        static bool spline_merge(node_t *n) {
-          return ND_node_type(n) == VIRTUAL &&
-                 (ND_in(n).size > 1 || ND_out(n).size > 1);
-        }
+    See: /lib/dotgen/dotsplines.c @ 109
 
     Used by the driver to detect merged virtuals that need special
     spline handling (they carry more than one edge and therefore
@@ -1699,15 +1640,7 @@ def spline_merge(layout, ln: "LayoutNode") -> bool:
 def swap_ends_p(layout, le: "LayoutEdge") -> bool:
     """Return True iff ``le``'s control points should be reversed.
 
-    C analogue: ``lib/dotgen/dotsplines.c:swap_ends_p()`` lines 114–124::
-
-        static bool swap_ends_p(edge_t *e) {
-          while (ED_to_orig(e)) e = ED_to_orig(e);
-          if (ND_rank(aghead(e)) > ND_rank(agtail(e))) return false;
-          if (ND_rank(aghead(e)) < ND_rank(agtail(e))) return true;
-          if (ND_order(aghead(e)) >= ND_order(agtail(e))) return false;
-          return true;
-        }
+    See: /lib/dotgen/dotsplines.c @ 114
 
     Walks back to the canonical edge, then decides: normally emitted
     tail-to-head, unless the edge is a back-edge that was reversed
@@ -1731,13 +1664,11 @@ def swap_ends_p(layout, le: "LayoutEdge") -> bool:
 def makefwdedge(old: "LayoutEdge") -> "LayoutEdge":
     """Return a forward-direction shallow copy of a back-edge.
 
-    C analogue: ``lib/dotgen/dotsplines.c:makefwdedge()`` lines 48–63.
-    C constructs a temporary ``edge_t`` on the caller's stack whose
-    tail/head and tail_port/head_port are swapped relative to ``old``,
-    ``edge_type`` is set to ``VIRTUAL``, and ``to_orig`` points back
-    at ``old``.  Python returns a fresh :class:`LayoutEdge`; the
-    caller is responsible for discarding it after use (the new edge
-    is **not** appended to any list).
+    See: /lib/dotgen/dotsplines.c @ 49
+
+    Python returns a fresh :class:`LayoutEdge`; the caller is
+    responsible for discarding it after use (the new edge is **not**
+    appended to any list).
 
     Used by ``edgecmp`` and ``make_regular_edge`` whenever the driver
     needs to treat a back-edge as if it ran forward for purposes of
@@ -1776,34 +1707,7 @@ def setflags(layout, le: "LayoutEdge",
              hint1: int, hint2: int, f3: int) -> None:
     """Populate ``le.tree_index`` with edge-type + direction + graph bits.
 
-    C analogue: ``lib/dotgen/dotsplines.c:setflags()`` lines 507–533.
-    C literal::
-
-        static void setflags(edge_t *e, int hint1, int hint2, int f3) {
-          int f1, f2;
-          if (hint1 != 0) f1 = hint1;
-          else {
-            if (agtail(e) == aghead(e))
-              if (ED_tail_port(e).defined || ED_head_port(e).defined)
-                f1 = SELFWPEDGE;
-              else
-                f1 = SELFNPEDGE;
-            else if (ND_rank(agtail(e)) == ND_rank(aghead(e)))
-              f1 = FLATEDGE;
-            else
-              f1 = REGULAREDGE;
-          }
-          if (hint2 != 0) f2 = hint2;
-          else {
-            if (f1 == REGULAREDGE)
-              f2 = ND_rank(agtail(e)) < ND_rank(aghead(e)) ? FWDEDGE : BWDEDGE;
-            else if (f1 == FLATEDGE)
-              f2 = ND_order(agtail(e)) < ND_order(aghead(e)) ? FWDEDGE : BWDEDGE;
-            else  /* f1 == SELF*EDGE */
-              f2 = FWDEDGE;
-          }
-          ED_tree_index(e) = f1 | f2 | f3;
-        }
+    See: /lib/dotgen/dotsplines.c @ 521
 
     Pass ``0`` for ``hint1`` / ``hint2`` to auto-detect edge type and
     direction from the tail/head rank and order.
@@ -1850,8 +1754,10 @@ def setflags(layout, le: "LayoutEdge",
 def _edge_seq_map(layout) -> dict:
     """Return a cached ``id(le) -> int`` map giving each edge a stable seq.
 
-    C analogue: ``AGSEQ(e)`` — the cgraph sequence number assigned at
-    edge creation time.  Python doesn't have a built-in edge sequence,
+    See: /lib/cgraph/cgraph.h @ 223
+
+    The cgraph sequence number assigned at edge creation time.
+    Python doesn't have a built-in edge sequence,
     so we cache the index of each edge in ``layout.ledges`` +
     ``layout._chain_edges`` on first access within a phase 4 pass.
     The cache is cleared by :func:`phase4_routing` at the start of
@@ -1875,7 +1781,8 @@ def _edge_seq_map(layout) -> dict:
 def edgecmp(layout, e0: "LayoutEdge", e1: "LayoutEdge") -> int:
     """Lexicographic comparator used to group equivalent edges.
 
-    C analogue: ``lib/dotgen/dotsplines.c:edgecmp()`` lines 545–636.
+    See: /lib/dotgen/dotsplines.c @ 571
+
     Lex order documented in C:
       1. edge type        — NOTE: C returns inverted (``et0 < et1`` → 1)
                             so higher-numbered edge types sort first.
@@ -1983,11 +1890,7 @@ def edgecmp(layout, e0: "LayoutEdge", e1: "LayoutEdge") -> int:
 
 
 # ── Back-edge control-point normalisation (Phase A step 5) ──────────────
-# C analogues in lib/dotgen/dotsplines.c:
-#   swap_bezier      lines 145-153
-#   swap_spline      lines 155-167
-#   edge_normalize   lines 174-181
-#   resetRW          lines 188-194
+# See: /lib/dotgen/dotsplines.c @ 145
 #
 # These four functions cooperate to (a) reverse the control points of
 # back-edges so that the emitted spline always runs tail-to-head, and
@@ -2006,15 +1909,7 @@ def edgecmp(layout, e0: "LayoutEdge", e1: "LayoutEdge") -> int:
 def swap_bezier(route: "EdgeRoute") -> None:
     """Reverse a bezier's points and swap its start/end metadata in place.
 
-    C analogue: ``lib/dotgen/dotsplines.c:swap_bezier()`` lines 145-153::
-
-        static void swap_bezier(bezier *b) {
-          const size_t sz = b->size;
-          for (size_t i = 0; i < sz / 2; ++i)
-            SWAP(&b->list[i], &b->list[sz - 1 - i]);
-          SWAP(&b->sflag, &b->eflag);
-          SWAP(&b->sp, &b->ep);
-        }
+    See: /lib/dotgen/dotsplines.c @ 145
 
     Operates on an :class:`EdgeRoute` since Python currently has one
     bezier per edge.  Mutates ``points``, swaps ``sflag`` ↔ ``eflag``,
@@ -2028,15 +1923,7 @@ def swap_bezier(route: "EdgeRoute") -> None:
 def swap_spline(route: "EdgeRoute") -> None:
     """Reverse a splines container and each bezier inside it.
 
-    C analogue: ``lib/dotgen/dotsplines.c:swap_spline()`` lines 155-167::
-
-        static void swap_spline(splines *s) {
-          const size_t sz = s->size;
-          for (size_t i = 0; i < sz / 2; ++i)
-            SWAP(&s->list[i], &s->list[sz - 1 - i]);
-          for (size_t i = 0; i < sz; ++i)
-            swap_bezier(&s->list[i]);
-        }
+    See: /lib/dotgen/dotsplines.c @ 155
 
     For Python's one-bezier-per-edge model this collapses into a
     single :func:`swap_bezier` call — the outer list has exactly one
@@ -2050,16 +1937,7 @@ def swap_spline(route: "EdgeRoute") -> None:
 def edge_normalize(layout) -> None:
     """Reverse control points of back-edges so output goes tail-to-head.
 
-    C analogue: ``lib/dotgen/dotsplines.c:edge_normalize()`` lines 174-181::
-
-        static void edge_normalize(graph_t *g) {
-          for (node_t *n = agfstnode(g); n; n = agnxtnode(g, n)) {
-            for (edge_t *e = agfstout(g, n); e; e = agnxtout(g, e)) {
-              if (sinfo.swapEnds(e) && ED_spl(e))
-                swap_spline(ED_spl(e));
-            }
-          }
-        }
+    See: /lib/dotgen/dotsplines.c @ 174
 
     Called once at the end of ``dot_splines_`` as the final output
     normalisation pass.  Iterates every edge, checks
@@ -2088,15 +1966,7 @@ def edge_normalize(layout) -> None:
 def resetRW(layout) -> None:
     """Restore each node's pre-inflation right half-width.
 
-    C analogue: ``lib/dotgen/dotsplines.c:resetRW()`` lines 188-194::
-
-        static void resetRW(graph_t *g) {
-          for (node_t *n = agfstnode(g); n; n = agnxtnode(g, n)) {
-            if (ND_other(n).list) {
-              SWAP(&ND_rw(n), &ND_mval(n));
-            }
-          }
-        }
+    See: /lib/dotgen/dotsplines.c @ 188
 
     C uses ``ND_other(n).list`` as the "has at least one self-loop or
     multi-edge" predicate: if present, the position phase inflated
@@ -2155,27 +2025,11 @@ def _innermost_cluster(layout, node_name: str):
 def rank_box(layout, sp: SplineInfo, r: int) -> Box:
     """Inter-rank corridor between rank ``r`` and rank ``r+1``.
 
-    C analogue: ``rank_box`` in ``lib/dotgen/dotsplines.c`` lines
-    2014–2026 (static, 13 lines).  Full graph width, from the bottom
-    of rank r's nodes to the top of rank r+1's nodes, cached in
-    ``sp.rank_box[r]`` so repeated calls during a routing pass skip
-    the recompute.
+    See: /lib/dotgen/dotsplines.c @ 2045
 
-    C literal::
-
-        static boxf rank_box(spline_info_t *sp, graph_t *g, int r) {
-          boxf b = sp->Rank_box[r];
-          if (b.LL.x == b.UR.x) {
-            node_t *const left0 = GD_rank(g)[r].v[0];
-            node_t *const left1 = GD_rank(g)[r + 1].v[0];
-            b.LL.x = sp->LeftBound;
-            b.LL.y = ND_coord(left1).y + GD_rank(g)[r + 1].ht2;
-            b.UR.x = sp->RightBound;
-            b.UR.y = ND_coord(left0).y - GD_rank(g)[r].ht1;
-            sp->Rank_box[r] = b;
-          }
-          return b;
-        }
+    Full graph width, from the bottom of rank r's nodes to the top of
+    rank r+1's nodes, cached in ``sp.rank_box[r]`` so repeated calls
+    during a routing pass skip the recompute.
 
     C uses an uninitialised-sentinel check (``b.LL.x == b.UR.x``);
     we use dict membership which expresses the same intent cleanly.
@@ -2258,10 +2112,11 @@ def classify_flat_edge(layout, le: LayoutEdge, tail: LayoutNode,
 
 def count_flat_edge_index(layout, le: LayoutEdge) -> int:
     """Count how many flat edges between the same pair come before this one.
-    C analogue: lib/dotgen/dotsplines.c flat edge ordering. Returns the
-    per-tail-node index of this flat edge among all flat edges from the
-    same tail, used to compute a vertical offset so multiple flat edges
-    from one node don't overlap.
+    See: /lib/dotgen/dotsplines.c @ 1538
+
+    Returns the per-tail-node index of this flat edge among all flat
+    edges from the same tail, used to compute a vertical offset so
+    multiple flat edges from one node don't overlap.
     """
     idx = 0
     for other in layout.ledges:
@@ -2342,9 +2197,10 @@ def flat_labeled(layout, le: LayoutEdge, p1, p2,
     ``_insert_flat_label_nodes``.  The edge routes up to the label
     node's Y, across, and back down.
     
-    C analogue: lib/dotgen/dotsplines.c flat edge with label. Routes a
-    same-rank edge that has a label by computing a polyline that loops
-    above (or below) the rank to give the label clearance.
+    See: /lib/dotgen/dotsplines.c @ 1350
+
+    Routes a same-rank edge that has a label by computing a polyline
+    that loops above (or below) the rank to give the label clearance.
     """
     vn_name = getattr(le, '_flat_label_vnode', None)
     if not vn_name or vn_name not in layout.lnodes:

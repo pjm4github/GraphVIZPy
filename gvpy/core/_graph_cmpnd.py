@@ -1,15 +1,12 @@
 """Compound-node helper data and lookup.
 
-C analogue: ``lib/cgraph/cmpnd.c``.  In Graphviz C, a "compound
-node" is a node that has been associated with a subgraph (so the
-subgraph can be collapsed/expanded behind a single node icon).  The
-machinery is split into three records: ``Agcmpnode_t`` (per-node),
-``Agcmpgraph_t`` (per-graph) and ``Agcmpedge_t`` (per-edge stack of
-splice records).
-
-This module exposes the **graph-side** half: the
-:class:`Agcmpgraph` record (attached to every ``Graph`` instance as
-``graph.cmp_graph_data``) and the :func:`agfindhidden` lookup that
+No direct C analogue in the current reference Graphviz repo — earlier
+Graphviz versions shipped ``lib/cgraph/cmpnd.c`` with the compound-
+node machinery (``Agcmpnode_t`` / ``Agcmpgraph_t`` / ``Agcmpedge_t``
+records + ``agfindhidden`` lookup), but that file has since been
+removed.  This module preserves the gvpy-side semantics: a
+:class:`Agcmpgraph` record attached to every ``Graph`` instance as
+``graph.cmp_graph_data`` plus the :func:`agfindhidden` lookup that
 fetches a hidden node by name from a graph's hidden-node set.
 
 Extracted from ``graph.py`` as part of the core refactor (TODO
@@ -28,9 +25,11 @@ if TYPE_CHECKING:
 class Agcmpgraph:
     """Per-graph compound-node record.
 
-    C analogue: ``Agcmpgraph_t`` from ``lib/cgraph/cmpnd.c`` plus the
-    centrality / position fields that gvpy attaches to the same
-    record for layout-engine convenience.
+    No direct C analogue — earlier Graphviz defined ``Agcmpgraph_t``
+    in ``lib/cgraph/cmpnd.c``; that file is gone from the current
+    reference.  gvpy keeps an equivalent record shape plus additional
+    centrality / position fields that layout engines write onto the
+    same object.
 
     Tracks the associated compound node (if any), the dictionaries of
     hidden nodes/edges that belong to a collapsed compound subgraph,
@@ -72,13 +71,9 @@ class Agcmpgraph:
 def agfindhidden(g, name):
     """Look up a hidden node by name in ``g``'s compound-node record.
 
-    C analogue: ``lib/cgraph/cmpnd.c:agfindhidden()``::
-
-        Agnode_t *agfindhidden(Agraph_t *g, char *name)
-        {
-            Agcmpgraph_t *graphrec = ...;
-            return dtsearch(graphrec->hidden_node_set, &key);
-        }
+    No direct C analogue — earlier Graphviz exposed ``agfindhidden``
+    from ``lib/cgraph/cmpnd.c``; removed from the current reference
+    repo.  Equivalent: dict lookup on the graph's ``hidden_node_set``.
     """
     graphrec = g.cmp_graph_data
     return graphrec.hidden_node_set.get(name)

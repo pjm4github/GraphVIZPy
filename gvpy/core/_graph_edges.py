@@ -295,9 +295,10 @@ class EdgeMixin:
 def agsubrep(g: "Graph", n: "Node") -> Optional["Node"]:
     """Return ``n`` if it belongs to graph ``g``, else None.
 
-    C analogue: ``lib/cgraph/edge.c:agsubrep()``.  In C this looks up
-    the ``Agsubnode_t`` adjacency record for ``n`` in ``g``.  Here we
-    just check that ``g.nodes[n.name] is n``.
+    See: /lib/cgraph/edge.c @ 146
+
+    In C this looks up the ``Agsubnode_t`` adjacency record for ``n``
+    in ``g``.  Here we just check that ``g.nodes[n.name] is n``.
     """
     if n.name in g.nodes and g.nodes[n.name] is n:
         return n
@@ -307,7 +308,7 @@ def agsubrep(g: "Graph", n: "Node") -> Optional["Node"]:
 def agfstout(g: "Graph", n: "Node") -> Optional["Edge"]:
     """First out-edge of ``n`` in ``g``.
 
-    C analogue: ``lib/cgraph/edge.c:agfstout()``.
+    See: /lib/cgraph/edge.c @ 28
     """
     if agsubrep(g, n) is None:
         return None
@@ -317,7 +318,7 @@ def agfstout(g: "Graph", n: "Node") -> Optional["Edge"]:
 def agnxtout(g: "Graph", e: "Edge") -> Optional["Edge"]:
     """Next out-edge after ``e`` in ``g``.
 
-    C analogue: ``lib/cgraph/edge.c:agnxtout()``.
+    See: /lib/cgraph/edge.c @ 43
     """
     t = e.tail
     if agsubrep(g, t) is None:
@@ -332,7 +333,7 @@ def agnxtout(g: "Graph", e: "Edge") -> Optional["Edge"]:
 def agfstin(g: "Graph", n: "Node") -> Optional["Edge"]:
     """First in-edge of ``n`` in ``g``.
 
-    C analogue: ``lib/cgraph/edge.c:agfstin()``.
+    See: /lib/cgraph/edge.c @ 59
     """
     if agsubrep(g, n) is None:
         return None
@@ -342,7 +343,7 @@ def agfstin(g: "Graph", n: "Node") -> Optional["Edge"]:
 def agnxtin(g: "Graph", e: "Edge") -> Optional["Edge"]:
     """Next in-edge after ``e`` in ``g``.
 
-    C analogue: ``lib/cgraph/edge.c:agnxtin()``.
+    See: /lib/cgraph/edge.c @ 73
     """
     h = e.head
     if agsubrep(g, h) is None:
@@ -357,7 +358,7 @@ def agnxtin(g: "Graph", e: "Edge") -> Optional["Edge"]:
 def agfstedge(g: "Graph", n: "Node") -> Optional["Edge"]:
     """First edge (out then in) of ``n`` in ``g``.
 
-    C analogue: ``lib/cgraph/edge.c:agfstedge()``.
+    See: /lib/cgraph/edge.c @ 89
     """
     e = agfstout(g, n)
     if e:
@@ -368,9 +369,11 @@ def agfstedge(g: "Graph", n: "Node") -> Optional["Edge"]:
 def agnxtedge(g: "Graph", e: "Edge", n: "Node") -> Optional["Edge"]:
     """Next edge for ``n`` after ``e``, walking out-edges then in-edges.
 
-    C analogue: ``lib/cgraph/edge.c:agnxtedge()``.  Self-loops appear
-    only on the out-edge side, so when switching from out- to in-edge
-    iteration we skip any edge that is a loop on ``n``.
+    See: /lib/cgraph/edge.c @ 98
+
+    Self-loops appear only on the out-edge side, so when switching
+    from out- to in-edge iteration we skip any edge that is a loop on
+    ``n``.
     """
     if e.etype == EdgeType.AGOUTEDGE:
         rv = agnxtout(g, e)
@@ -390,9 +393,10 @@ def agnxtedge(g: "Graph", e: "Edge", n: "Node") -> Optional["Edge"]:
 def ok_to_make_edge(g: "Graph", t: "Node", h: "Node") -> bool:
     """Validate that an edge ``t -> h`` may be created in ``g``.
 
-    C analogue: ``lib/cgraph/edge.c:ok_to_make_edge()``.  Rejects a
-    duplicate parallel edge if ``g.strict`` is set, and rejects a
-    self-loop if ``g.no_loop`` is set.
+    See: /lib/cgraph/edge.c @ 223
+
+    Rejects a duplicate parallel edge if ``g.strict`` is set, and
+    rejects a self-loop if ``g.no_loop`` is set.
     """
     if g.strict:
         for e in t.outedges:
@@ -407,11 +411,12 @@ def agedge(g: "Graph", tail_name: str, head_name: str,
            name: Optional[str], cflag: bool) -> Optional["Edge"]:
     """Find or create the edge ``tail_name -> head_name`` in ``g``.
 
-    C analogue: ``lib/cgraph/edge.c:agedge()``.  If an edge with the
-    given ``(tail, head, name)`` key already exists, return it.
-    Otherwise, when ``cflag`` is true and ``ok_to_make_edge`` allows
-    it, create a new ``AGOUTEDGE`` and wire it into the adjacency
-    lists.
+    See: /lib/cgraph/edge.c @ 255
+
+    If an edge with the given ``(tail, head, name)`` key already
+    exists, return it.  Otherwise, when ``cflag`` is true and
+    ``ok_to_make_edge`` allows it, create a new ``AGOUTEDGE`` and wire
+    it into the adjacency lists.
     """
     tail = g.add_node(tail_name)
     head = g.add_node(head_name)
@@ -438,10 +443,12 @@ def agidedge(g: "Graph", tail_name, head_name, eid: int,
              cflag: Optional[bool] = False) -> Optional["Edge"]:
     """Find-or-create variant keyed by numeric ID.
 
-    C analogue: ``lib/cgraph/edge.c:agidedge()``.  Looks up an
-    existing edge by id (forward, plus reversed for undirected
-    graphs).  If none exists and ``cflag`` is true, allocates a new
-    edge with the given ID via :meth:`EdgeMixin.create_edge`.
+    See: /lib/cgraph/edge.c @ 237
+
+    Looks up an existing edge by id (forward, plus reversed for
+    undirected graphs).  If none exists and ``cflag`` is true,
+    allocates a new edge with the given ID via
+    :meth:`EdgeMixin.create_edge`.
     """
     tail = tail_name if isinstance(tail_name, Node) else g.add_node(tail_name)
     head = head_name if isinstance(head_name, Node) else g.add_node(head_name)
@@ -459,9 +466,10 @@ def agidedge(g: "Graph", tail_name, head_name, eid: int,
 def agdeledge(g: "Graph", e: "Edge") -> bool:
     """Delete an edge from ``g``'s edge dict and adjacency lists.
 
-    C analogue: ``lib/cgraph/edge.c:agdeledge()``.  Removes ``e`` from
-    ``tail.outedges``, ``head.inedges`` and the graph's edge
-    dictionary.  Returns False if ``e`` is not in ``g``.
+    See: /lib/cgraph/edge.c @ 329
+
+    Removes ``e`` from ``tail.outedges``, ``head.inedges`` and the
+    graph's edge dictionary.  Returns False if ``e`` is not in ``g``.
     """
     tail, head = e.tail, e.head
     found_key = None

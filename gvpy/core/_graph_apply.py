@@ -1,9 +1,10 @@
 """Object lookup helpers used by ``Graph.agapply``.
 
-C analogue: ``lib/cgraph/apply.c``.  These three functions implement
-the ``objsearch`` callback table that ``agapply`` uses to walk a
-graph hierarchy and find the per-subgraph image of a given node /
-edge / subgraph.
+See: /lib/cgraph/apply.c @ 23
+
+These three functions implement the ``objsearch`` callback table that
+``agapply`` uses to walk a graph hierarchy and find the per-subgraph
+image of a given node / edge / subgraph.
 
 In Graphviz C, ``agapply`` selects one of three search functions
 based on the object type and uses it to find the corresponding
@@ -29,9 +30,10 @@ if TYPE_CHECKING:
 def subnode_search(sub: "Graph", node_obj: "Node") -> Optional["Node"]:
     """Find ``node_obj``'s image in subgraph ``sub``.
 
-    C analogue: ``lib/cgraph/apply.c:subnode_search()``.  If
-    ``node_obj`` was created in ``sub`` directly, return it; otherwise
-    look it up by name in ``sub.nodes``.
+    See: /lib/cgraph/apply.c @ 23
+
+    If ``node_obj`` was created in ``sub`` directly, return it;
+    otherwise look it up by name in ``sub.nodes``.
     """
     if node_obj.parent is sub:
         return node_obj
@@ -41,8 +43,9 @@ def subnode_search(sub: "Graph", node_obj: "Node") -> Optional["Node"]:
 def subedge_search(sub: "Graph", edge_obj: "Edge") -> Optional["Edge"]:
     """Find ``edge_obj``'s image in subgraph ``sub``.
 
-    C analogue: ``lib/cgraph/apply.c:subedge_search()``.  If
-    ``edge_obj`` belongs to ``sub`` directly, return it; otherwise
+    See: /lib/cgraph/apply.c @ 30
+
+    If ``edge_obj`` belongs to ``sub`` directly, return it; otherwise
     look up the matching ``(tail, head, name)`` key in ``sub.edges``.
     """
     if edge_obj.graph is sub:
@@ -54,8 +57,9 @@ def subedge_search(sub: "Graph", edge_obj: "Edge") -> Optional["Edge"]:
 def subgraph_search(sub: "Graph", graph_obj: "Graph") -> Optional["Graph"]:
     """Identity check used by ``agapply`` for subgraph traversal.
 
-    C analogue: ``lib/cgraph/apply.c:subgraph_search()``.  A subgraph
-    is its own image, so return ``sub`` iff it is the same object as
-    ``graph_obj``.
+    See: /lib/cgraph/apply.c @ 37
+
+    A subgraph is its own image, so return ``sub`` iff it is the same
+    object as ``graph_obj``.
     """
     return sub if sub is graph_obj else None

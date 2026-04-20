@@ -1,6 +1,6 @@
 """Funnel-algorithm shortest path inside a simple polygon.
 
-C analogue: ``lib/pathplan/shortest.c``.
+See: /lib/pathplan/shortest.c @ 83
 
 Given a simple polygon and two points inside it, :func:`Pshortestpath`
 finds the shortest polyline from ``eps[0]`` to ``eps[1]`` that stays
@@ -40,7 +40,7 @@ from gvpy.engines.layout.dot.pathplan.triang import (
 
 
 # ── Deque-walk direction flags ─────────────────────────────────────
-# C analogue: ``shortest.c:23-24``.
+# See: /lib/pathplan/shortest.c @ 23
 
 DQ_FRONT = 1
 DQ_BACK = 2
@@ -52,12 +52,7 @@ DQ_BACK = 2
 class _PointNLink:
     """Point + back-link node used by the funnel algorithm.
 
-    C analogue: ``pointnlink_t`` in ``shortest.c:31-34``::
-
-        typedef struct pointnlink_t {
-            Ppoint_t *pp;
-            struct pointnlink_t *link;
-        } pointnlink_t;
+    See: /lib/pathplan/shortest.c @ 31
 
     ``pp`` is the underlying point.  ``link`` is a back-pointer in
     the shortest-path linked list — walking ``link`` from the
@@ -71,13 +66,7 @@ class _PointNLink:
 class _TriEdge:
     """One edge of a triangle + the index of the adjacent triangle.
 
-    C analogue: ``tedge_t`` in ``shortest.c:39-43``::
-
-        typedef struct {
-            pointnlink_t *pnl0p;
-            pointnlink_t *pnl1p;
-            size_t right_index;  /* index of triangle to the right */
-        } tedge_t;
+    See: /lib/pathplan/shortest.c @ 39
     """
     pnl0p: "_PointNLink | None" = None
     pnl1p: "_PointNLink | None" = None
@@ -88,12 +77,7 @@ class _TriEdge:
 class _Triangle:
     """A triangle + its three edges + DFS mark.
 
-    C analogue: ``triangle_t`` in ``shortest.c:45-48``::
-
-        typedef struct triangle_t {
-            int mark;
-            tedge_t e[3];
-        } triangle_t;
+    See: /lib/pathplan/shortest.c @ 45
     """
     mark: int = 0
     e: list = field(default_factory=lambda: [_TriEdge(), _TriEdge(), _TriEdge()])
@@ -103,12 +87,7 @@ class _Triangle:
 class _Deque:
     """Funnel-algorithm deque with front/back indices and apex pointer.
 
-    C analogue: ``deque_t`` in ``shortest.c:50-53``::
-
-        typedef struct deque_t {
-            pointnlink_t **pnlps;
-            size_t pnlpn, fpnlpi, lpnlpi, apex;
-        } deque_t;
+    See: /lib/pathplan/shortest.c @ 50
 
     The deque is a pre-allocated array of ``pnlpn`` entries with
     front/back indices ``fpnlpi`` / ``lpnlpi`` and a persistent
@@ -132,12 +111,7 @@ _NO_TRI = -1
 def _point_indexer_shortest(base: Any, index: int) -> Ppoint:
     """Indexer: ``base`` is a list of :class:`_PointNLink`; return ``pp``.
 
-    C analogue: ``shortest.c:point_indexer`` lines 73-76::
-
-        static Ppoint_t point_indexer(void *base, size_t index) {
-          pointnlink_t **b = base;
-          return *b[index]->pp;
-        }
+    See: /lib/pathplan/shortest.c @ 73
     """
     return base[index].pp
 
@@ -153,7 +127,7 @@ def _loadtriangle(state: dict,
                    pnlap: _PointNLink, pnlbp: _PointNLink, pnlcp: _PointNLink) -> int:
     """Append a fresh triangle with the three supplied edges.
 
-    C analogue: ``shortest.c:343-357``.
+    See: /lib/pathplan/shortest.c @ 343
     """
     trip = _Triangle()
     trip.e[0] = _TriEdge(pnl0p=pnlap, pnl1p=pnlbp, right_index=_NO_TRI)
@@ -166,10 +140,11 @@ def _loadtriangle(state: dict,
 def _triangulate_pnls(state: dict, points: list, point_count: int) -> int:
     """Ear-clip a polygon into triangles, appending to ``state['tris']``.
 
-    C analogue: ``shortest.c:317-341``.  Same algorithm as
-    :func:`...triang._triangulate_recursive` but operates on
-    :class:`_PointNLink` arrays and emits into the shared triangle
-    list instead of calling a user callback.
+    See: /lib/pathplan/shortest.c @ 317
+
+    Same algorithm as :func:`...triang._triangulate_recursive` but
+    operates on :class:`_PointNLink` arrays and emits into the shared
+    triangle list instead of calling a user callback.
     """
     if point_count > 3:
         for pnli in range(point_count):
@@ -193,7 +168,7 @@ def _triangulate_pnls(state: dict, points: list, point_count: int) -> int:
 def _connecttris(state: dict, tri1: int, tri2: int) -> None:
     """Link two triangles if they share an edge (set ``right_index``).
 
-    C analogue: ``shortest.c:360-375``.
+    See: /lib/pathplan/shortest.c @ 360
     """
     tris = state["tris"]
     for ei in range(3):
@@ -213,9 +188,10 @@ def _connecttris(state: dict, tri1: int, tri2: int) -> None:
 def _marktripath(state: dict, trii: int, trij: int) -> bool:
     """DFS-mark the triangle strip from ``trii`` to ``trij``.
 
-    C analogue: ``shortest.c:378-392``.  Marks visited triangles
-    with ``mark = 1``; resets to 0 on backtrack so unreachable
-    branches are cleaned up.
+    See: /lib/pathplan/shortest.c @ 378
+
+    Marks visited triangles with ``mark = 1``; resets to 0 on
+    backtrack so unreachable branches are cleaned up.
     """
     tris = state["tris"]
     if tris[trii].mark:
@@ -235,9 +211,10 @@ def _marktripath(state: dict, trii: int, trij: int) -> bool:
 def _add2dq(dq: _Deque, side: int, pnlp: _PointNLink) -> None:
     """Push ``pnlp`` to the front (``DQ_FRONT``) or back (``DQ_BACK``).
 
-    C analogue: ``shortest.c:395-407``.  Also wires the shortest-path
-    ``link`` pointer so that the back-chain is built as the deque
-    grows.
+    See: /lib/pathplan/shortest.c @ 395
+
+    Also wires the shortest-path ``link`` pointer so that the
+    back-chain is built as the deque grows.
     """
     if side == DQ_FRONT:
         if dq.lpnlpi >= dq.fpnlpi:
@@ -254,7 +231,7 @@ def _add2dq(dq: _Deque, side: int, pnlp: _PointNLink) -> None:
 def _splitdq(dq: _Deque, side: int, index: int) -> None:
     """Truncate the deque at ``index`` on the given side.
 
-    C analogue: ``shortest.c:409-414``.
+    See: /lib/pathplan/shortest.c @ 409
     """
     if side == DQ_FRONT:
         dq.lpnlpi = index
@@ -265,7 +242,7 @@ def _splitdq(dq: _Deque, side: int, index: int) -> None:
 def _finddqsplit(dq: _Deque, pnlp: _PointNLink) -> int:
     """Find the split index at which ``pnlp`` leaves the current funnel.
 
-    C analogue: ``shortest.c:416-424``.
+    See: /lib/pathplan/shortest.c @ 416
     """
     for index in range(dq.fpnlpi, dq.apex):
         if ccw(dq.pnlps[index + 1].pp,
@@ -285,11 +262,12 @@ def _finddqsplit(dq: _Deque, pnlp: _PointNLink) -> int:
 def _pointintri(state: dict, trii: int, pp: Ppoint) -> bool:
     """Return True iff ``pp`` lies in triangle ``trii``.
 
-    C analogue: ``shortest.c:426-434``.  Uses the sign convention of
-    :func:`...triang.ccw` (not :func:`...visibility.wind`!).  Counts
-    how many edges have the point on the non-CW side — 0 or 3 means
-    all three sides agree, so the point is inside (or on the
-    boundary).
+    See: /lib/pathplan/shortest.c @ 426
+
+    Uses the sign convention of :func:`...triang.ccw` (not
+    :func:`...visibility.wind`!).  Counts how many edges have the
+    point on the non-CW side — 0 or 3 means all three sides agree,
+    so the point is inside (or on the boundary).
     """
     tris = state["tris"]
     sum_ = 0
@@ -306,7 +284,7 @@ def _pointintri(state: dict, trii: int, pp: Ppoint) -> bool:
 def Pshortestpath(polyp: Ppoly, eps: list) -> tuple[int, Ppolyline]:
     """Shortest polyline from ``eps[0]`` to ``eps[1]`` inside ``polyp``.
 
-    C analogue: ``shortest.c:Pshortestpath`` lines 83-314.
+    See: /lib/pathplan/shortest.c @ 83
 
     Python API deviation: C returns an int status and fills an
     ``Ppolyline_t *output`` out-parameter.  Python returns

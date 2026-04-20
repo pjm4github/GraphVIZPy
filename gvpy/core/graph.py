@@ -152,7 +152,8 @@ class Graph(NodeMixin, EdgeMixin, SubgraphMixin, AttrMixin,
         self.edges: Dict[Tuple[str, str, Optional[str]], 'Edge'] = {} # (tail_name, head_name, edge_name) -> 'Edge'
         self.subgraphs: Dict[str, Graph] = {}  # subgraph_name -> Graph
         self.id_to_subgraph: Dict[int, Graph] = {}  # Dictionary to store subgraphs by ID
-        # Attached GraphView instances (C analogue: Agraphinfo_t via AGDATA).
+        # Attached GraphView instances.
+        # See: /lib/cgraph/rec.c @ 172
         # One entry per (graph, view-name) pair.  Layout engines,
         # simulation state, analysis results, render overrides, etc. all
         # live here rather than polluting the core data model.
@@ -244,7 +245,7 @@ class Graph(NodeMixin, EdgeMixin, SubgraphMixin, AttrMixin,
 
     # ── Graph views (attached engine / simulation / analysis state) ──
     # See gvpy/core/graph_view.py for the GraphView base class.
-    # C analogue: aginit()/AGDATA() for Agraphinfo_t extension data.
+    # See: /lib/cgraph/rec.c @ 172
 
     def attach_view(self, view: "GraphView", name: Optional[str] = None) -> "GraphView":
         """Attach a GraphView to this graph under the given name.

@@ -1,7 +1,6 @@
 """Label placement for edges.
 
-C analogue: ``lib/common/splines.c`` lines 1205-1374, plus
-``lib/dotgen/dotsplines.c:place_vnlabel()`` at line 508.
+See: /lib/common/splines.c @ 1205
 
 F+ bucket of the splines port.  Replaces the heuristic
 ``compute_label_pos`` in ``splines.py`` with a C-matching
@@ -44,7 +43,7 @@ def end_points(route: "EdgeRoute") -> tuple[tuple[float, float],
                                               tuple[float, float]]:
     """Extract the actual spline endpoints.
 
-    C analogue: ``lib/common/splines.c:endPoints()`` lines 1223-1241.
+    See: /lib/common/splines.c @ 1223
 
     Returns ``(p, q)`` where ``p`` is the spline's start at the tail
     node and ``q`` is its end at the head node.  Uses the arrow-clip
@@ -62,7 +61,7 @@ def end_points(route: "EdgeRoute") -> tuple[tuple[float, float],
 def getsplinepoints(layout, le: "LayoutEdge") -> "EdgeRoute | None":
     """Return the :class:`EdgeRoute` carrying this edge's spline.
 
-    C analogue: ``lib/common/splines.c:getsplinepoints()`` lines 1363-1374.
+    See: /lib/common/splines.c @ 1363
 
     C walks ``ED_to_orig`` until it finds an edge with ``ED_spl`` set
     or reaches the real edge.  Python stores splines directly on the
@@ -95,7 +94,7 @@ def polyline_midpoint(route: "EdgeRoute") -> tuple[tuple[float, float],
                                                      tuple[float, float]]:
     """Length-parametric midpoint of the spline treated as a polyline.
 
-    C analogue: ``lib/common/splines.c:polylineMidpoint()`` lines 1247-1280.
+    See: /lib/common/splines.c @ 1247
 
     Returns ``(mid, pp, pq)`` where ``mid`` is the midpoint and
     ``pp`` / ``pq`` are the endpoints of the segment containing it.
@@ -136,7 +135,7 @@ def polyline_midpoint(route: "EdgeRoute") -> tuple[tuple[float, float],
 def edge_midpoint(layout, le: "LayoutEdge") -> tuple[float, float]:
     """Midpoint of an edge's spline.
 
-    C analogue: ``lib/common/splines.c:edgeMidpoint()`` lines 1283-1301.
+    See: /lib/common/splines.c @ 1283
 
     For a degenerate spline (start ≈ end) returns the start point.
     Otherwise delegates to :func:`polyline_midpoint`.
@@ -169,7 +168,8 @@ PORT_LABEL_DISTANCE = 10.0   # point scale for labeldistance multiplier
 def _late_double(attr_str: str, default: float, minimum: float) -> float:
     """Read a numeric attribute with default and minimum clamp.
 
-    C analogue: ``lib/common/utils.c:late_double()`` lines 55-69.
+    See: /lib/common/utils.c @ 55
+
     An empty / missing / unparseable string yields *default*; otherwise
     the parsed value, clamped up to *minimum*.
     """
@@ -186,8 +186,9 @@ def _near_endpoint(route: "EdgeRoute", head_p: bool) -> tuple[
         tuple[float, float], tuple[float, float]]:
     """Return ``(pe, pf)``: endpoint at the node and the adjacent sample point.
 
-    C analogue: the inner ``if (!head_p) … else …`` block in
-    ``place_portlabel()`` (lines 1331-1352).  ``pe`` is the point where
+    See: /lib/common/splines.c @ 1331
+
+    ``pe`` is the point where
     the spline meets the node (arrow-clip overridden via sflag/eflag);
     ``pf`` is a short way "inward" along the spline, used to compute
     the tangent.  For cubic beziers without arrow clip, ``pf`` is
@@ -234,7 +235,7 @@ def _near_endpoint(route: "EdgeRoute", head_p: bool) -> tuple[
 def place_portlabel(layout, le: "LayoutEdge", head_p: bool) -> bool:
     """Position a ``headlabel`` or ``taillabel`` by angle + distance.
 
-    C analogue: ``lib/common/splines.c:place_portlabel()`` lines 1316-1361.
+    See: /lib/common/splines.c @ 1316
 
     Fires only if the edge has ``labelangle`` or ``labeldistance``
     explicitly set (matching C's early-return gate); otherwise returns
@@ -286,7 +287,7 @@ def place_portlabel(layout, le: "LayoutEdge", head_p: bool) -> bool:
 def make_port_labels(layout, le: "LayoutEdge") -> None:
     """Place both head and tail port labels.
 
-    C analogue: ``lib/common/splines.c:makePortLabels()`` lines 1205-1220.
+    See: /lib/common/splines.c @ 1205
 
     Thin wrapper that short-circuits on missing labelangle *and*
     labeldistance, then calls :func:`place_portlabel` for the tail and
@@ -304,7 +305,7 @@ def make_port_labels(layout, le: "LayoutEdge") -> None:
 def add_edge_labels(layout, le: "LayoutEdge") -> None:
     """Apply all angle-based edge label placement.
 
-    C analogue: ``lib/common/splines.c:addEdgeLabels()`` lines 1307-1309.
+    See: /lib/common/splines.c @ 1307
 
     Currently just a wrapper around :func:`make_port_labels`; the main
     edge label is placed by :func:`place_vnlabel` instead, called by
@@ -316,7 +317,7 @@ def add_edge_labels(layout, le: "LayoutEdge") -> None:
 def place_vnlabel(layout, le: "LayoutEdge") -> None:
     """Position the main edge label.
 
-    C analogue: ``lib/dotgen/dotsplines.c:place_vnlabel()`` lines 508-519.
+    See: /lib/dotgen/dotsplines.c @ 508
 
     C picks the *one* label-bearing virtual node in the edge's chain
     and anchors the label at its coordinate with an ``x`` offset of

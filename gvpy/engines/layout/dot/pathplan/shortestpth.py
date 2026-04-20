@@ -1,6 +1,6 @@
 """Dijkstra shortest-path on the visibility graph.
 
-C analogue: ``lib/pathplan/shortestpth.c``.
+See: /lib/pathplan/shortestpth.c @ 30
 
 Two functions:
 
@@ -20,8 +20,8 @@ from gvpy.engines.layout.dot.pathplan.vispath import Vconfig
 from gvpy.engines.layout.dot.pathplan.visibility import directVis
 
 
-# C analogue: ``static COORD unseen = INT_MAX;`` — Dijkstra's "not
-# yet settled" sentinel.  C uses INT_MAX; Python uses a plain int
+# See: /lib/pathplan/shortestpth.c @ 30
+# C uses INT_MAX; Python uses a plain int
 # large enough to dominate any real distance.  ``math.inf`` would
 # also work but the sign-flip trick (``val[k] *= -1``) needs a
 # finite value to flip cleanly.
@@ -31,7 +31,7 @@ _UNSEEN = float(2**31 - 1)
 def shortestPath(root: int, target: int, V: int, wadj: list) -> list[int]:
     """Dijkstra from ``root`` to ``target`` on the ``V × V`` matrix ``wadj``.
 
-    C analogue: ``shortestpth.c:shortestPath`` lines 30-81.
+    See: /lib/pathplan/shortestpth.c @ 30
 
     Returns a list ``dad`` of length ``V`` where the shortest path
     from ``target`` back to ``root`` is ``target, dad[target],
@@ -97,23 +97,7 @@ def makePath(p: Ppoint, pp: int, pvis: list,
              conf: Vconfig) -> list[int]:
     """Compute the ``dad`` back-pointer array for the ``p → q`` shortest path.
 
-    C analogue: ``shortestpth.c:makePath`` lines 93-109::
-
-        int *makePath(Ppoint_t p, int pp, COORD *pvis,
-                      Ppoint_t q, int qp, COORD *qvis, vconfig_t *conf) {
-          int V = conf->N;
-          if (directVis(p, pp, q, qp, conf)) {
-            int *dad = gv_calloc(V + 2, sizeof(int));
-            dad[V] = V + 1;
-            dad[V + 1] = -1;
-            return dad;
-          } else {
-            array2 wadj = conf->vis;
-            wadj[V] = qvis;
-            wadj[V + 1] = pvis;
-            return shortestPath(V + 1, V, V + 2, wadj);
-          }
-        }
+    See: /lib/pathplan/shortestpth.c @ 93
 
     Encoding convention (from C comment): ``q`` is indexed at
     ``V``, ``p`` at ``V + 1``.  The returned path in natural

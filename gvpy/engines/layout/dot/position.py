@@ -1,8 +1,6 @@
 """Phase 3: position assignment.
 
-C analogue: ``lib/dotgen/position.c`` — ``set_ycoords()``,
-``set_xcoords()``, ``make_LR_constraints()``, ``make_edge_pairs()``,
-``contain_nodes()``, ``pos_clusters()``, ``contain_subclust()``, etc.
+See: /lib/dotgen/position.c @ 128
 
 Current status of the extraction
 --------------------------------
@@ -43,9 +41,7 @@ if TYPE_CHECKING:
 def phase3_position(layout: "DotGraphInfo") -> None:
     """Top-level Phase 3 driver.
 
-    C analogue: ``dot_position()`` in ``lib/dotgen/position.c`` calls
-    ``set_ycoords()`` then ``set_xcoords()`` then does post-processing
-    for cluster-overlap resolution and rankdir flipping.
+    See: /lib/dotgen/position.c @ 128
     """
     trace(
         "position",
@@ -383,13 +379,7 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
                               max(1, int(margin + par_br)), 0))
 
         # ── 3e. Sibling separation (separate_subclust) ──
-        # C analogue: lib/dotgen/position.c:separate_subclust().  For
-        # every pair of sibling clusters under a common parent, if
-        # their rank ranges overlap, pick which one sits left/right
-        # by comparing ND_order at a *single* rank — specifically
-        # the minimum rank where both clusters are present.  Add a
-        # weight-0 edge ``left._crn → right._cln`` with minlen equal
-        # to the parent's margin.
+        # See: /lib/dotgen/position.c @ 505
         #
         # The earlier Python attempt used an AVERAGE-order comparator
         # which could flip the left/right pick across ranks and create
@@ -1978,10 +1968,11 @@ def center_ranks(layout):
 def apply_rankdir(layout):
     """Rotate / flip coordinates for the requested rankdir.
 
-    C analogue: ``lib/dotgen/position.c`` rankdir handling and
-    ``lib/common/postproc.c:translate()``.  C's layout pipeline
-    runs internally in TB mode and rotates the final coordinates
-    based on ``GD_rankdir`` at the end.  This Python function does
+    See: /lib/common/postproc.c @ 127
+
+    C's layout pipeline runs internally in TB mode and rotates the
+    final coordinates based on ``GD_rankdir`` at the end.  This Python
+    function does
     the same:
       - TB: identity
       - BT: flip Y (``y -> max_y - y``)

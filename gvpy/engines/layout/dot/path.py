@@ -1,6 +1,7 @@
 """Transient routing workspace for phase-4 spline routing.
 
-C analogues in ``lib/common/types.h`` and ``lib/dotgen/dotsplines.c``.
+See: /lib/common/types.h @ 73
+
 These classes mirror the C structs that :mod:`splines` will need for a
 literal port of ``dot_splines_`` and its helpers.  They are strictly
 compute-time workspace — a single :class:`Path` and :class:`SplineInfo`
@@ -32,8 +33,7 @@ from dataclasses import dataclass, field
 
 
 # ── Sidemask bits ───────────────────────────────────────────────────────
-# C analogue: lib/common/const.h:111-120.  Used by pathend_t.sidemask
-# and the edge-side return value of shape functions.
+# See: /lib/common/const.h @ 111
 
 BOTTOM_IX = 0
 RIGHT_IX = 1
@@ -47,7 +47,7 @@ LEFT = 1 << LEFT_IX
 
 
 # ── Spline router tunables ───────────────────────────────────────────────
-# C analogue: lib/dotgen/dotsplines.c:36-40.
+# See: /lib/dotgen/dotsplines.c @ 37
 
 NSUB = 9
 """Number of subdivisions when re-aiming splines.  C: ``NSUB``."""
@@ -107,8 +107,7 @@ def edge_type_from_splines(splines: str) -> int:
 
 
 # ── Tree-index flag bits ────────────────────────────────────────────────
-# C analogue: lib/common/const.h:149-155 (edge type bits) +
-# lib/dotgen/dotsplines.c:41-47 (direction + graph type bits).
+# See: /lib/common/const.h @ 150
 #
 # ``LayoutEdge.tree_index`` is the bitwise OR of one value from each of
 # the three groups: one edge-type flag, one direction flag, and one
@@ -134,8 +133,7 @@ GRAPHTYPEMASK = 192
 
 
 # ── Box ──────────────────────────────────────────────────────────────────
-# C analogue: ``typedef struct { pointf LL, UR; } boxf;`` in
-# lib/common/geom.h:41.
+# See: /lib/common/geom.h @ 41
 
 @dataclass
 class Box:
@@ -162,22 +160,19 @@ class Box:
     def is_valid(self) -> bool:
         """True iff ``ll`` is strictly below-and-left of ``ur``.
 
-        C analogue: the common ``b.LL.x < b.UR.x && b.LL.y < b.UR.y``
-        guard used by ``maximal_bbox``, ``make_regular_edge``, etc.
-        before inserting a box into the end-box chain.
+        See: /lib/common/geom.h @ 41
         """
         return self.ll_x < self.ur_x and self.ll_y < self.ur_y
 
 
 # ── Port ─────────────────────────────────────────────────────────────────
-# C analogue: ``typedef struct port { ... } port;`` in
-# lib/common/types.h:48-64.
+# See: /lib/common/types.h @ 48
 
 @dataclass
 class Port:
     """Internal edge endpoint specification.
 
-    C analogue: ``port`` in ``lib/common/types.h:48-64``.
+    See: /lib/common/types.h @ 48
 
     Default is an **undefined** port at the origin, matching C's
     zero-initialised ``port`` struct.
@@ -195,8 +190,7 @@ class Port:
 
 
 # ── PathEnd ──────────────────────────────────────────────────────────────
-# C analogue: ``typedef struct pathend_t { ... } pathend_t;`` in
-# lib/common/types.h:73-79.
+# See: /lib/common/types.h @ 73
 
 PATH_END_BOX_MAX = 20
 """Maximum number of end boxes, matching C ``pathend_t.boxes[20]``."""
@@ -233,8 +227,7 @@ class PathEnd:
 
 
 # ── Path ─────────────────────────────────────────────────────────────────
-# C analogue: ``typedef struct path { ... } path;`` in
-# lib/common/types.h:81-87.
+# See: /lib/common/types.h @ 81
 
 @dataclass
 class Path:
@@ -261,8 +254,7 @@ class Path:
 
 
 # ── SplineInfo ───────────────────────────────────────────────────────────
-# C analogue: ``typedef struct { ... } spline_info_t;`` in
-# lib/dotgen/dotsplines.c:64-70.
+# See: /lib/dotgen/dotsplines.c @ 71
 
 @dataclass
 class SplineInfo:
@@ -292,9 +284,7 @@ class SplineInfo:
 
 
 # ── Path construction helpers (B7) ──────────────────────────────────
-# C analogue: ``lib/common/splines.c`` — ``add_box``, ``beginpath``,
-# ``endpath``.  These build the end-box chain that
-# :func:`routespl.routesplines` traverses.
+# See: /lib/common/splines.c @ 338
 #
 # C accesses node/edge fields via macros (``ND_coord``, ``ED_tail_port``
 # etc.).  Python passes the needed values explicitly to avoid circular
@@ -308,12 +298,7 @@ _FUDGE_BEGINEND = 2
 def add_box(P: Path, b: Box) -> None:
     """Append *b* to the path's box chain if it is valid.
 
-    C analogue: ``splines.c:add_box`` lines 338-342::
-
-        void add_box(path *P, boxf b) {
-            if (b.LL.x < b.UR.x && b.LL.y < b.UR.y)
-                P->boxes[P->nbox++] = b;
-        }
+    See: /lib/common/splines.c @ 338
     """
     if b.ll_x < b.ur_x and b.ll_y < b.ur_y:
         P.boxes.append(b)
@@ -331,7 +316,7 @@ def beginpath(P: Path, et: int, endp: PathEnd, merge: bool, *,
               ranksep: float = 0.0) -> bool:
     """Set up boxes near the **tail** node for spline routing.
 
-    C analogue: ``splines.c:beginpath`` lines 378-573.
+    See: /lib/common/splines.c @ 378
 
     Sets ``P.start`` (point + theta/constrained) and fills
     ``endp.boxes`` / ``endp.boxn`` / ``endp.sidemask`` with 1-2
@@ -521,7 +506,7 @@ def endpath(P: Path, et: int, endp: PathEnd, merge: bool, *,
             ranksep: float = 0.0) -> bool:
     """Set up boxes near the **head** node for spline routing.
 
-    C analogue: ``splines.c:endpath`` lines 575-771.
+    See: /lib/common/splines.c @ 575
 
     Mirror image of :func:`beginpath` for the head end.  Sets
     ``P.end`` and fills ``endp`` for the final 1-2 boxes of the

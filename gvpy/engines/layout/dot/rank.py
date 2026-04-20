@@ -1,9 +1,11 @@
 """Phase 1: rank assignment.
 
-C analogue: ``lib/dotgen/rank.c``.  Given a directed graph, assign
-each node an integer rank such that every edge goes from a lower-
-rank node to a higher-rank one, and the total weighted edge length
-(sum of ``minlen * weight`` over edges) is minimized.
+See: /lib/dotgen/rank.c @ 545
+
+Given a directed graph, assign each node an integer rank such that
+every edge goes from a lower-rank node to a higher-rank one, and the
+total weighted edge length (sum of ``minlen * weight`` over edges)
+is minimized.
 
 Pipeline
 --------
@@ -107,7 +109,8 @@ def phase1_rank(layout):
 def break_cycles(layout):
     """Reverse back-edges so the constraint graph becomes a DAG.
 
-    C analogue: ``lib/dotgen/rank.c:break_cycles()`` and ``dfs()``.
+    See: /lib/dotgen/rank.c @ 944
+
     Standard DFS with three-state colouring (UNVISITED/IN_PROGRESS/
     DONE).  Any edge that points to an IN_PROGRESS node is a back
     edge — flip its tail/head and mark ``le.reversed = True``.
@@ -163,9 +166,10 @@ def classify_edges(layout):
 def classify_flat_edges(layout):
     """Post-ranking pass: mark same-rank edges as flat.
 
-    C analogue: part of ``lib/dotgen/class2.c:class2()`` — after
-    rank assignment, edges where both endpoints sit at the same rank
-    are flagged so Phase 2 mincross treats them via the flat-edge
+    See: /lib/dotgen/class2.c @ 155
+
+    After rank assignment, edges where both endpoints sit at the same
+    rank are flagged so Phase 2 mincross treats them via the flat-edge
     sub-pipeline rather than the cross-rank median heuristic.
     """
     for le in layout.ledges:
@@ -213,8 +217,8 @@ def inject_same_rank_edges(layout):
 def network_simplex_rank(layout):
     """Assign ranks via network simplex on the constraint graph.
 
-    C analogue: ``lib/dotgen/rank.c:rank1()`` and ``dot1_rank()``
-    which call into ``lib/dotgen/ns.c:rank2()`` for the NS solve.
+    See: /lib/dotgen/rank.c @ 449
+
     The flat (no-cluster) path: build edge weights with the
     ``group`` attribute boost (×100, capped at 1000), call NS,
     write the ranks back to ``ND_rank``.
@@ -484,9 +488,10 @@ def cluster_aware_rank(layout):
 def apply_rank_constraints(layout):
     """Enforce rank=min/max/source/sink hard constraints post-NS.
 
-    C analogue: ``lib/dotgen/rank.c:rankset_kind()`` and the post-
-    NS rank fix-up loop in ``rank.c:rank()``.  We re-process the
-    rank=same constraint here too even though it's also injected as
+    See: /lib/dotgen/rank.c @ 607
+
+    We re-process the rank=same constraint here too even though it's
+    also injected as
     weight=1000 edges before NS — covers the corner case where two
     same-rank nodes ended up at different ranks despite the
     constraint (rare but possible if the edges form a contradictory
@@ -514,9 +519,10 @@ def apply_rank_constraints(layout):
 def compact_ranks(layout):
     """Shift all ranks down so the minimum rank is zero.
 
-    C analogue: ``lib/dotgen/rank.c:compact_rankset()``.  After NS,
-    the smallest rank may be negative or > 0; renumber so rank 0 is
-    the topmost.
+    No direct C analogue — C performs this compaction inline while
+    tracking ``GD_minrank`` (see ``lib/dotgen/rank.c`` @ 473).  Python
+    hoists it into a dedicated helper.  After NS, the smallest rank
+    may be negative or > 0; renumber so rank 0 is the topmost.
     """
     if not layout.lnodes:
         return
@@ -529,16 +535,17 @@ def compact_ranks(layout):
 def add_virtual_nodes(layout):
     """Insert virtual nodes for edges spanning multiple ranks.
 
-    C analogue: ``lib/dotgen/mincross.c:make_chain()`` and the
-    long-edge handling in ``lib/dotgen/class2.c``.  For every edge
+    See: /lib/dotgen/class2.c @ 70
+
+    For every edge
     where ``rank(head) - rank(tail) > 1``, insert a chain of virtual
     nodes at each intermediate rank and replace the original edge
     with a sequence of rank-adjacent edges.  The chain is recorded
     in ``layout._vnode_chains`` for Phase 4 spline routing.
 
-    Cluster inheritance (C analogue: the ``ND_clust`` propagation in
-    ``mark_clusters``/``class2.c``): when both endpoints of a split
-    edge share a common cluster, the virtual nodes inherit that
+    Cluster inheritance (see: /lib/dotgen/cluster.c @ 332): when both
+    endpoints of a split edge share a common cluster, the virtual
+    nodes inherit that
     common cluster's membership so mincross orders them alongside
     the cluster's real members instead of dumping them at the end
     of each rank.  Without this, virtual nodes for intra-cluster

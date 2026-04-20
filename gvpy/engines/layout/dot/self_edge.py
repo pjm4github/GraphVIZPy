@@ -1,8 +1,6 @@
 """Self-loop edge routing.
 
-C analogue: ``lib/common/splines.c`` — ``makeSelfEdge`` and its
-helpers ``selfRight``, ``selfLeft``, ``selfTop``, ``selfBottom``,
-``selfRightSpace``.
+See: /lib/common/splines.c @ 1164
 
 Phase F of the splines port.
 
@@ -29,7 +27,7 @@ SELF_EDGE_SIZE = 18
 def self_right_space(le) -> float:
     """Return extra horizontal space needed for a right-side self-loop.
 
-    C analogue: ``splines.c:selfRightSpace`` lines 1139-1157.
+    See: /lib/common/splines.c @ 1139
     """
     tside = _port_side(le.tailport)
     hside = _port_side(le.headport)
@@ -46,7 +44,7 @@ def self_right_space(le) -> float:
 def make_self_edge(layout, le, tail) -> None:
     """Route a self-loop edge and install on the LayoutEdge.
 
-    C analogue: ``splines.c:makeSelfEdge`` lines 1164-1202.
+    See: /lib/common/splines.c @ 1164
     """
     tside = _port_side(le.tailport)
     hside = _port_side(le.headport)
@@ -71,7 +69,7 @@ def make_self_edge(layout, le, tail) -> None:
 def _self_right(layout, edges: list, n) -> None:
     """Route self-loop extending to the right of the node.
 
-    C analogue: ``splines.c:selfRight`` lines 986-1055.
+    See: /lib/common/splines.c @ 986
     Y-down adjustment: vertical offsets are negated so the loop
     extends upward (visually above the center line).
     """
@@ -120,7 +118,7 @@ def _self_right(layout, edges: list, n) -> None:
 def _self_left(layout, edges: list, n) -> None:
     """Route self-loop extending to the left of the node.
 
-    C analogue: ``splines.c:selfLeft`` lines 1057-1130.
+    See: /lib/common/splines.c @ 1057
     """
     cnt = len(edges)
     hw = n.width / 2
@@ -166,7 +164,7 @@ def _self_left(layout, edges: list, n) -> None:
 def _self_top(layout, edges: list, n) -> None:
     """Route self-loop extending above the node (smaller y in y-down).
 
-    C analogue: ``splines.c:selfTop`` lines 879-984.
+    See: /lib/common/splines.c @ 879
     """
     cnt = len(edges)
     hw = n.width / 2
@@ -212,7 +210,7 @@ def _self_top(layout, edges: list, n) -> None:
 def _self_bottom(layout, edges: list, n) -> None:
     """Route self-loop extending below the node (larger y in y-down).
 
-    C analogue: ``splines.c:selfBottom`` lines 809-877.
+    See: /lib/common/splines.c @ 809
     """
     cnt = len(edges)
     hw = n.width / 2
