@@ -182,6 +182,37 @@ existing call site continues to resolve.
   extracting would force a base-class-bloat tradeoff.  Defer until a
   second engine needs the same extension point.
 
+### 4.2 Second common/ pass: `lib/common/` citations (planned)
+
+The first pass pulled obviously-shared code (post-processing, font metrics,
+Schneider fit).  A broader audit of `See: /lib/common/` citations in
+`gvpy/engines/layout/dot/` identified **15 more engine-agnostic candidates**
+(77 total `/lib/common/` references across dot; 38 stay because they read
+`LayoutEdge` / `LayoutNode` / `layout._*` state).
+
+Proposed five commits, same cadence as §4.1:
+
+| # | Target module | Candidates | Source file(s) | Risk |
+|---|---|---|---|---|
+| 1 | `common/shapes.py` (NEW) | `ellipse_inside`, `box_inside`, `make_inside_fn`, `self_loop_points`, `Box` dataclass | `dot/clip.py`, `dot/splines.py`, `dot/path.py` | low |
+| 2 | `common/clip.py` (NEW) | `bezier_clip`, `shape_clip0`, `shape_clip`, `clip_and_install`, `conc_slope` | `dot/clip.py` | **medium** (critical path) |
+| 3 | `common/splines.py` (extend) | `bezier_point` (de Casteljau), pure-geometry core of `polyline_midpoint` | `dot/clip.py`, `dot/label_place.py` | low |
+| 4 | `common/labels.py` (NEW) | `_late_double` attribute-parse helper | `dot/label_place.py` | low |
+| 5 | `common/geom.py` (extend) | `_approx_eq`, `overlap` (interval overlap) | `dot/clip.py`, `dot/routespl.py` | low |
+
+**Must stay in `dot/`** (sample — reason in parens):
+- `end_points`, `getsplinepoints`, `place_portlabel`, `place_vnlabel`, `make_port_labels`, `add_edge_labels` (read `le.route` / `le.points` / `le.edge.attributes`)
+- `edge_start_point`, `edge_end_point`, `record_port_point`, `port_point` (read `le.tailport` / `le.headport` / node shape)
+- `_node_out_edges`, `_node_in_edges`, `_clust` (walk `layout.ledges` / `layout._chain_edges` / `layout._clusters`)
+- `beginpath`, `endpath` (mutate `PathEnd` + node-geometry workspace)
+- `routesplines_`, `routesplines`, `routepolylines`, `limit_boxes`, `checkpath` (routing pipeline state)
+- All `self_edge.py` / `straight_edge.py` functions (operate on `LayoutEdge` + `layout` structure)
+
+**SPLIT note**: `edge_midpoint` stays in `dot/label_place.py` because it calls `end_points`; its pure-geometry core `polyline_midpoint` moves to `common/splines.py` and is re-exported from `label_place.py` for back-compat.
+
+**Back-compat**: every moved symbol will leave a one-line re-export in its
+current module so no existing import breaks.
+
 ---
 
 ## 5. Other Layout Engines
