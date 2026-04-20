@@ -1453,6 +1453,53 @@ def transpose_rank(layout, rank: int):
     if len(nodes) < 2:
         return
     has_clusters = bool(layout._clusters)
+
+    # Pre-compute adjacent-rank neighbor orders for every node in this
+    # rank.  Used to be one O(E) scan of ``layout.ledges`` per
+    # :func:`count_crossings_for_pair` call — with N nodes and W
+    # while-loop iterations that's O(N·W·E), which is what made 2343.dot
+    # phase-2 sit at 55 s on the 172-node subset.  The swap loop only
+    # reorders nodes WITHIN this rank, so neighbor orders on adjacent
+    # ranks are invariant — precompute once per ``transpose_rank`` call.
+    node_set = set(nodes)
+    r_above = rank - 1
+    r_below = rank + 1
+    lnodes = layout.lnodes
+    above: dict[str, list[int]] = {n: [] for n in nodes}
+    below: dict[str, list[int]] = {n: [] for n in nodes}
+    for le in layout.ledges:
+        tname, hname = le.tail_name, le.head_name
+        if tname in node_set:
+            h_ln = lnodes.get(hname)
+            if h_ln is not None:
+                if h_ln.rank == r_above:
+                    above[tname].append(h_ln.order)
+                elif h_ln.rank == r_below:
+                    below[tname].append(h_ln.order)
+        if hname in node_set:
+            t_ln = lnodes.get(tname)
+            if t_ln is not None:
+                if t_ln.rank == r_above:
+                    above[hname].append(t_ln.order)
+                elif t_ln.rank == r_below:
+                    below[hname].append(t_ln.order)
+
+    def _count(u: str, v: str) -> int:
+        c = 0
+        # Rank above.
+        u_n, v_n = above[u], above[v]
+        for un in u_n:
+            for vn in v_n:
+                if un > vn:
+                    c += 1
+        # Rank below.
+        u_n, v_n = below[u], below[v]
+        for un in u_n:
+            for vn in v_n:
+                if un > vn:
+                    c += 1
+        return c
+
     improved = True
     while improved:
         improved = False
@@ -1461,12 +1508,12 @@ def transpose_rank(layout, rank: int):
             # (Graphviz mincross.c left2right).
             if has_clusters and layout._left2right(nodes[i], nodes[i + 1]):
                 continue
-            c_before = layout._count_crossings_for_pair(nodes[i], nodes[i + 1])
-            c_after = layout._count_crossings_for_pair(nodes[i + 1], nodes[i])
+            c_before = _count(nodes[i], nodes[i + 1])
+            c_after = _count(nodes[i + 1], nodes[i])
             if c_after < c_before:
                 nodes[i], nodes[i + 1] = nodes[i + 1], nodes[i]
-                layout.lnodes[nodes[i]].order = i
-                layout.lnodes[nodes[i + 1]].order = i + 1
+                lnodes[nodes[i]].order = i
+                lnodes[nodes[i + 1]].order = i + 1
                 improved = True
 
 
@@ -1476,7 +1523,11 @@ def count_crossings_for_pair(layout, u: str, v: str) -> int:
     See: /lib/dotgen/mincross.c @ 634
 
     Counts edges that go to the rank above and below ``u``/``v`` and
-    tallies pairwise crossings between them.
+    tallies pairwise crossings between them.  :func:`transpose_rank`
+    now precomputes a rank-local adjacency cache and calls a closure
+    over it instead of this function — this public variant is kept for
+    any external caller that holds a single-pair question and doesn't
+    amortise a per-rank cache.  O(E) per call.
     """
     u_rank = layout.lnodes[u].rank
     crossings = 0

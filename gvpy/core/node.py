@@ -690,9 +690,9 @@ class Node(Agobj):   # from core/core.c
             # Add edge to new head's inedges
             new_head.add_inedge(edge)
 
-        # Optionally, update comparison data
-        edge.tail.set_compound_data("centrality", self.compute_centrality(edge.tail))
-        edge.head.set_compound_data("centrality", self.compute_centrality(edge.head))
+        # Centrality recompute dropped — same rationale as in
+        # _graph_edges.add_edge: value is never read, O(V × E) per call
+        # blew up parse times on medium graphs (53 s on 2343.dot).
 
     def compute_betweenness_centrality(self, n: Optional['Node'] = None):
         """

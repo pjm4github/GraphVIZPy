@@ -141,9 +141,14 @@ class EdgeMixin:
         tail.outedges.append(new_edge)
         head.inedges.append(new_edge)
 
-        # Update comparison data metrics
-        tail.set_compound_data("centrality", self.compute_centrality(tail))
-        head.set_compound_data("centrality", self.compute_centrality(head))
+        # Centrality used to be recomputed here on every add_edge, but
+        # the stored value is never read anywhere in the codebase (grep
+        # confirms only the default assignment in _graph_cmpnd.py).
+        # Recomputing it was O(V × E) per edge via
+        # ``compute_betweenness_centrality``, giving O(V × E²) total for
+        # the full parse — which cost 53 s on 2343.dot alone.  Dropped
+        # entirely; callers that want centrality can invoke
+        # :meth:`compute_centrality` explicitly on a finished graph.
         tail.compound_node_data.update_degree(tail.outedges, tail.inedges)
         head.compound_node_data.update_degree(head.outedges, head.inedges)
 
@@ -177,9 +182,7 @@ class EdgeMixin:
         # agfreeid(self, ObjectType.AGEDGE, edge.id)
         # Also remove from adjacency lists
 
-        # Update comparison data metrics if necessary
-        edge_to_delete.tail.set_compound_data("centrality", self.compute_centrality(edge_to_delete.tail))
-        edge_to_delete.head.set_compound_data("centrality", self.compute_centrality(edge_to_delete.head))
+        # Centrality recompute dropped — see ``add_edge`` note above.
         # These should not be True because the edge_to_delete.tail.remove_outedge(edge_to_delete) call above
         if edge_to_delete in edge_to_delete.tail.outedges:
             edge_to_delete.tail.outedges.remove(edge_to_delete)
@@ -274,11 +277,7 @@ class EdgeMixin:
             # Add edge to new head's inedges
             new_head.add_inedge(edge)
 
-        # Optionally, update comparison data
-        if new_tail:
-            new_tail.set_compound_data("centrality", self.compute_centrality(new_tail))
-        if new_head:
-            new_head.set_compound_data("centrality", self.compute_centrality(new_head))
+        # Centrality recompute dropped — see ``add_edge`` note above.
 
 
 # ── Module-level C-API functions ────────────────────────────────────

@@ -51,7 +51,11 @@ class NodeMixin:
 
             self.nodes[n_name] = new_n
             self.disc.idregister(self.clos, ObjectType.AGNODE, new_n)
-            new_n.set_compound_data("centrality", self.compute_centrality(new_n))
+            # Centrality recompute dropped — the value was never read
+            # anywhere (only the default 0.0 in _graph_cmpnd.py) and
+            # running it on every ``add_node`` is O(V × E) betweenness.
+            # Callers needing centrality should call
+            # :meth:`compute_centrality` after the graph is fully built.
             new_n.set_compound_data("rank", 0)  # Example initialization
             # Invoke node added callbacks
             self.clos.invoke_callbacks(GraphEvent.NODE_ADDED, new_n)
