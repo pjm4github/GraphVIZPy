@@ -57,6 +57,51 @@ def bezier_point(V: list, t: float,
     return Ppoint(Vt[degree][0].x, Vt[degree][0].y)
 
 
+def polyline_midpoint_raw(
+    pts: list, stride: int,
+) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
+    """Length-parametric midpoint of a point list interpreted as a polyline.
+
+    See: /lib/common/splines.c @ 1247
+
+    *pts* is a sequence of ``(x, y)`` tuples; *stride* is the step
+    between consecutive anchors (``1`` for pure polyline, ``3`` for
+    Graphviz cubic-bezier format).  Returns ``(mid, pp, pq)`` where
+    ``mid`` is the midpoint and ``pp``/``pq`` are the segment
+    endpoints containing it.
+
+    Two-pass: first pass sums segment lengths, second walks until the
+    remaining half-length fits inside a segment, then linearly
+    interpolates.  Pure geometry — the dot-specific
+    :func:`label_place.polyline_midpoint` wraps this and reads
+    ``spline_type`` off an :class:`EdgeRoute` to pick the stride.
+    """
+    if len(pts) < stride + 1:
+        p0 = tuple(pts[0]) if pts else (0.0, 0.0)
+        return p0, p0, p0
+
+    total = 0.0
+    for j in range(0, len(pts) - stride, stride):
+        pf, qf = pts[j], pts[j + stride]
+        total += math.hypot(qf[0] - pf[0], qf[1] - pf[1])
+    remaining = total / 2.0
+
+    for j in range(0, len(pts) - stride, stride):
+        pf, qf = pts[j], pts[j + stride]
+        d = math.hypot(qf[0] - pf[0], qf[1] - pf[1])
+        if d >= remaining:
+            if d == 0.0:
+                return tuple(pf), tuple(pf), tuple(qf)
+            mx = (qf[0] * remaining + pf[0] * (d - remaining)) / d
+            my = (qf[1] * remaining + pf[1] * (d - remaining)) / d
+            return (mx, my), tuple(pf), tuple(qf)
+        remaining -= d
+
+    # All segments zero-length — degenerate.
+    p0 = tuple(pts[0])
+    return p0, p0, tuple(pts[-1])
+
+
 def make_polyline(line: Ppolyline) -> Ppolyline:
     """Expand a polyline into a bezier-ready control-point sequence.
 

@@ -96,40 +96,11 @@ def polyline_midpoint(route: "EdgeRoute") -> tuple[tuple[float, float],
 
     See: /lib/common/splines.c @ 1247
 
-    Returns ``(mid, pp, pq)`` where ``mid`` is the midpoint and
-    ``pp`` / ``pq`` are the endpoints of the segment containing it.
-
-    Two-pass: first pass accumulates total polyline length, second
-    pass walks until the remaining half-length fits inside the
-    current segment, then linearly interpolates to the midpoint.
+    Thin adapter that picks the correct stride from ``route.spline_type``
+    and delegates to :func:`common.splines.polyline_midpoint_raw`.
     """
-    pts = route.points
-    stride = _segment_stride(route)
-    if len(pts) < stride + 1:
-        p0 = tuple(pts[0]) if pts else (0.0, 0.0)
-        return p0, p0, p0
-
-    # First pass — total length.
-    total = 0.0
-    for j in range(0, len(pts) - stride, stride):
-        pf, qf = pts[j], pts[j + stride]
-        total += math.hypot(qf[0] - pf[0], qf[1] - pf[1])
-    remaining = total / 2.0
-
-    # Second pass — find the segment that swallows the midpoint.
-    for j in range(0, len(pts) - stride, stride):
-        pf, qf = pts[j], pts[j + stride]
-        d = math.hypot(qf[0] - pf[0], qf[1] - pf[1])
-        if d >= remaining:
-            if d == 0.0:
-                return tuple(pf), tuple(pf), tuple(qf)
-            mx = (qf[0] * remaining + pf[0] * (d - remaining)) / d
-            my = (qf[1] * remaining + pf[1] * (d - remaining)) / d
-            return (mx, my), tuple(pf), tuple(qf)
-        remaining -= d
-
-    # All segments were zero-length (degenerate spline).
-    return tuple(pts[0]), tuple(pts[0]), tuple(pts[-1])
+    from gvpy.engines.layout.common.splines import polyline_midpoint_raw
+    return polyline_midpoint_raw(route.points, _segment_stride(route))
 
 
 def edge_midpoint(layout, le: "LayoutEdge") -> tuple[float, float]:
