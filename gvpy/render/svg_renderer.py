@@ -561,9 +561,20 @@ def _render_node(node: dict) -> str:
         lines.append(f'<title>{escape(tooltip)}</title>')
 
     if shape in ("record", "Mrecord"):
-        # Record shape: parse label into fields, render with dividers
-        label_text = node.get("label", name)
-        fields = _parse_record_label(label_text)
+        # Record shape: parse label into fields, render with dividers.
+        # D7 — prefer the field tree that the layout engine computed
+        # via the ANTLR4 record parser (emitted as ``record_tree`` on
+        # the node dict).  Falls back to the legacy in-renderer
+        # string parser only when the layout didn't emit a tree
+        # (e.g. a node dict produced by an older layout or an
+        # upstream consumer that hand-built the dict).  Single-parser
+        # consistency avoids visual/layout port-placement drift — see
+        # the comment next to :func:`_record_field_to_svg_dict` in
+        # ``dot_layout.py``.
+        fields = node.get("record_tree")
+        if fields is None:
+            label_text = node.get("label", name)
+            fields = _parse_record_label(label_text)
         is_rounded = shape == "Mrecord" or "rounded" in style
         # TB/BT => horizontal (fields left-to-right), LR/RL => vertical
         rankdir = node.get("_rankdir", "TB")

@@ -233,6 +233,41 @@ from gvpy.engines.layout.dot import dotsplines  # noqa: E402
 
 # ── Internal data structures ─────────────────────
 
+
+def _record_field_to_svg_dict(field, parent_lr: bool) -> dict:
+    """Convert an ANTLR-parsed :class:`RecordField` tree to the dict
+    format consumed by :mod:`gvpy.render.svg_renderer`.
+
+    The svg_renderer's legacy ``_parse_record_label`` produced
+    ``{"text", "port", "children", "flipped"}`` where ``flipped``
+    means "this container flips orientation from its parent".
+    :class:`RecordField` carries an absolute ``LR`` flag instead.
+    ``flipped`` is then simply ``LR != parent_lr`` for containers;
+    leaves ignore the flag.
+
+    Part of divergence D7's record-port fix (2026-04-20): the
+    renderer was re-parsing the label string with its own
+    hand-written parser, which could place port cells at slightly
+    different positions than the layout engine's ANTLR parser
+    computed.  Emitting the tree here routes both the layout and
+    render sides through a single parse.
+    """
+    if not field.children:
+        return {
+            "text": field.text,
+            "port": field.port,
+            "children": [],
+            "flipped": False,
+        }
+    return {
+        "text": field.text,
+        "port": field.port,
+        "children": [_record_field_to_svg_dict(c, field.LR)
+                     for c in field.children],
+        "flipped": field.LR != parent_lr,
+    }
+
+
 @dataclass
 class LayoutNode:
     node: Optional[Node] = None
@@ -2097,6 +2132,19 @@ class DotGraphInfo(LayoutEngine):
                 _collect_port_fracs(rf)
                 if ports_dict:
                     entry["record_ports"] = ports_dict
+
+                # D7 — emit the ANTLR4-parsed field tree so svg_renderer
+                # uses the same structure the layout engine computed
+                # port.order from, instead of re-parsing the label
+                # string with its own hand-written parser.  The two
+                # parsers produce structurally equivalent trees in the
+                # common case, but any divergence would place ports
+                # visually differently from where the layout put them.
+                # Base orientation: TB/BT → LR fields (horizontal=True);
+                # LR/RL → TB fields (horizontal=False).
+                base_lr = not is_lr
+                entry["record_tree"] = _record_field_to_svg_dict(
+                    rf, base_lr)
             nodes_json.append(entry)
 
         edges_json = []
