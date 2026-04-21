@@ -107,7 +107,7 @@ class TableCell:
     border: Optional[int] = None  # overrides table CELLBORDER
     cellpadding: Optional[int] = None
     cellspacing: Optional[int] = None
-    colspan: int = 1   # not yet honoured in layout; parsed for forward-compat
+    colspan: int = 1
     rowspan: int = 1
     href: Optional[str] = None
     # Computed during sizing:
@@ -116,6 +116,19 @@ class TableCell:
     # Computed during placement (absolute within the table's coord frame):
     x: float = 0.0
     y: float = 0.0
+    # Grid position assigned by the sizer's occupancy walk.  ``grid_col``
+    # and ``grid_row`` are the top-left slot this cell occupies; with
+    # ``colspan`` / ``rowspan`` > 1 the cell covers a rectangular region
+    # starting at (grid_col, grid_row).  Set to ``-1`` until sized.
+    grid_col: int = -1
+    grid_row: int = -1
+    # Natural content size, before any span-driven column / row growth
+    # applies.  Kept separate from ``width`` / ``height`` (which after
+    # sizing hold the SPAN-ADJUSTED dimensions) so the renderer can
+    # place content relative to the span box while respecting the
+    # underlying content size.
+    content_w: float = 0.0
+    content_h: float = 0.0
 
 
 @dataclass
@@ -529,80 +542,142 @@ def _paragraph_size(lines: list["HtmlLine"], line_height_factor: float) -> tuple
 def size_html_table(tbl: "HtmlTable", line_height_factor: float = 1.2) -> tuple[float, float]:
     """Size an :class:`HtmlTable` tree in-place.
 
-    Algorithm:
+    Four-phase algorithm, matching the classic HTML table model:
 
-    1. For each cell, compute content dimensions (paragraph text or
-       recursed nested table) + ``2 × cellpadding`` for the cell's
-       padding border.
-    2. Column widths = max cell width per column.
-    3. Row heights = max cell height per row.
-    4. Cells are placed at ``(x, y)`` relative to the table's
-       top-left.  Table origin ``(0, 0)`` = top-left corner of the
-       outer border.
+    1. **Grid occupancy walk** — assign ``grid_col`` / ``grid_row`` to
+       every cell, skipping any slot already covered by an earlier
+       cell's ``COLSPAN`` / ``ROWSPAN``.
+    2. **Natural content size** — ``content_w`` / ``content_h`` =
+       paragraph or nested-table size + ``2 × cellpadding``.
+    3. **Column / row sizing** — simple cells
+       (colspan == rowspan == 1) drive the base column widths and
+       row heights; spanning cells then grow the covered columns /
+       rows proportionally if their content doesn't fit.
+    4. **Placement** — each cell's ``(x, y)`` is the top-left of its
+       span region; ``width`` / ``height`` are the total spanned
+       dimensions (content flows inside via ALIGN / VALIGN at render
+       time).
 
     Table dimensions::
 
         width  = 2·border + Σ col_widths + (ncols + 1) · cellspacing
         height = 2·border + Σ row_heights + (nrows + 1) · cellspacing
 
-    ``cellspacing`` contributes the gap BETWEEN cells AND between
-    the outer border and the first/last cell — matching Graphviz
-    and classic HTML table box model.
-
-    COLSPAN / ROWSPAN are not yet applied here; cells with
-    ``colspan/rowspan > 1`` occupy a single grid slot for now.
+    ``cellspacing`` contributes the gap between every pair of cells
+    and between the outer border and the first/last cell — matching
+    Graphviz and classic HTML table box model.
     """
     if not tbl.rows:
         tbl.width = tbl.height = 2 * tbl.border
         return tbl.width, tbl.height
 
-    ncols = max(len(r.cells) for r in tbl.rows)
+    # ── Phase 1: grid occupancy walk ────────────────────────────────
+    # Assign grid_col / grid_row to each cell, respecting COLSPAN /
+    # ROWSPAN of earlier cells.  ``occupied`` tracks which (row, col)
+    # slots are already claimed.
+    occupied: set[tuple[int, int]] = set()
+    nrows = len(tbl.rows)
+    max_col_seen = 0
+    for r, row in enumerate(tbl.rows):
+        c = 0
+        for cell in row.cells:
+            # Skip over any slot already claimed by an earlier cell's
+            # rowspan (from a previous row) or colspan (from a previous
+            # cell in this row).
+            while (r, c) in occupied:
+                c += 1
+            cell.grid_col = c
+            cell.grid_row = r
+            cs = max(1, cell.colspan)
+            rs = max(1, cell.rowspan)
+            for i in range(rs):
+                for j in range(cs):
+                    occupied.add((r + i, c + j))
+            c += cs
+            if c > max_col_seen:
+                max_col_seen = c
+    ncols = max_col_seen
 
-    # Phase 1: natural cell dims.
+    # ── Phase 2: natural content size ───────────────────────────────
     for row in tbl.rows:
         for cell in row.cells:
-            pad = cell.cellpadding if cell.cellpadding is not None else tbl.cellpadding
+            pad = (cell.cellpadding if cell.cellpadding is not None
+                   else tbl.cellpadding)
             if cell.nested is not None:
                 cw, ch = size_html_table(cell.nested, line_height_factor)
             else:
                 cw, ch = _paragraph_size(cell.lines, line_height_factor)
-            cell.width = cw + 2 * pad
-            cell.height = ch + 2 * pad
+            cell.content_w = cw + 2 * pad
+            cell.content_h = ch + 2 * pad
 
-    # Phase 2: column widths / row heights from grid maxima.
+    s = tbl.cellspacing
+
+    # ── Phase 3a: simple-cell driven column widths / row heights ────
     col_widths = [0.0] * ncols
-    row_heights = []
+    row_heights = [0.0] * nrows
+    for r, row in enumerate(tbl.rows):
+        for cell in row.cells:
+            if cell.colspan == 1:
+                col_widths[cell.grid_col] = max(
+                    col_widths[cell.grid_col], cell.content_w)
+            if cell.rowspan == 1:
+                row_heights[cell.grid_row] = max(
+                    row_heights[cell.grid_row], cell.content_h)
+
+    # ── Phase 3b: grow columns / rows for spanning cells ────────────
+    # If a spanning cell's natural size exceeds the sum of the
+    # columns / rows it covers (plus the cellspacing between them),
+    # distribute the extra evenly across the spanned columns / rows.
     for row in tbl.rows:
-        row_h = 0.0
-        for ci, cell in enumerate(row.cells):
-            if ci < ncols:
-                col_widths[ci] = max(col_widths[ci], cell.width)
-            row_h = max(row_h, cell.height)
-        row.height = row_h
-        row_heights.append(row_h)
+        for cell in row.cells:
+            if cell.colspan > 1:
+                c0 = cell.grid_col
+                c1 = c0 + cell.colspan
+                avail = sum(col_widths[c0:c1]) + (cell.colspan - 1) * s
+                extra = cell.content_w - avail
+                if extra > 0:
+                    per = extra / cell.colspan
+                    for c in range(c0, c1):
+                        col_widths[c] += per
+            if cell.rowspan > 1:
+                r0 = cell.grid_row
+                r1 = r0 + cell.rowspan
+                avail = sum(row_heights[r0:r1]) + (cell.rowspan - 1) * s
+                extra = cell.content_h - avail
+                if extra > 0:
+                    per = extra / cell.rowspan
+                    for rr in range(r0, r1):
+                        row_heights[rr] += per
+
     tbl.col_widths = col_widths
     tbl.row_heights = row_heights
 
-    # Phase 3: place each cell.  Grid coords start at the top-left
-    # inside the outer border.  Cellspacing separates every cell from
-    # its neighbour AND from the border.
+    # ── Phase 4: place cells ────────────────────────────────────────
+    # Column X origins: col_x[c] = b + s + Σ col_widths[0..c] + c·s.
     b = tbl.border
-    s = tbl.cellspacing
-    cur_y = b + s
-    for row, row_h in zip(tbl.rows, row_heights):
-        cur_x = b + s
-        for ci, cell in enumerate(row.cells):
-            if ci < ncols:
-                # Expand cell to its column / row slot so backgrounds
-                # fill the grid cleanly — content is placed within
-                # by the renderer using ALIGN / VALIGN.
-                cell.width = col_widths[ci]
-                cell.height = row_h
-                cell.x = cur_x
-                cell.y = cur_y
-                cur_x += col_widths[ci] + s
-        cur_y += row_h + s
+    col_x = [b + s]
+    for cw in col_widths[:-1]:
+        col_x.append(col_x[-1] + cw + s)
+    row_y = [b + s]
+    for rh in row_heights[:-1]:
+        row_y.append(row_y[-1] + rh + s)
+
+    for row in tbl.rows:
+        row_h = 0.0
+        for cell in row.cells:
+            c0 = cell.grid_col
+            r0 = cell.grid_row
+            cs = max(1, cell.colspan)
+            rs = max(1, cell.rowspan)
+            cell.x = col_x[c0]
+            cell.y = row_y[r0]
+            # Spanned cell dimensions include the cellspacing gap(s)
+            # that fall WITHIN the span (one per extra col / row).
+            cell.width = sum(col_widths[c0:c0 + cs]) + (cs - 1) * s
+            cell.height = sum(row_heights[r0:r0 + rs]) + (rs - 1) * s
+            row_h = max(row_h, cell.height)
+        row.height = row_h
 
     tbl.width = 2 * b + sum(col_widths) + (ncols + 1) * s
-    tbl.height = 2 * b + sum(row_heights) + (len(tbl.rows) + 1) * s
+    tbl.height = 2 * b + sum(row_heights) + (nrows + 1) * s
     return tbl.width, tbl.height

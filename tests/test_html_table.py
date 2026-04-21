@@ -336,6 +336,152 @@ class TestTableRender:
         assert "dy=" in out
 
 
+# ── COLSPAN / ROWSPAN ───────────────────────────────────────────────
+
+
+class TestColspanRowspan:
+    """Grid allocation, sizing, and rendering for cells with
+    ``COLSPAN`` / ``ROWSPAN`` > 1."""
+
+    def _size(self, label: str):
+        lbl = parse_html_label(label)
+        size_html_table(lbl.table)
+        return lbl.table
+
+    # Grid assignment ────────────────────────────────────────────────
+
+    def test_colspan_advances_column_cursor(self):
+        """A ``COLSPAN=2`` cell at column 0 forces the next cell in
+        the same row to start at column 2, not column 1."""
+        t = self._size(
+            '<<TABLE><TR>'
+            '<TD COLSPAN="2">span</TD><TD>after</TD>'
+            '</TR></TABLE>>'
+        )
+        assert t.rows[0].cells[0].grid_col == 0
+        assert t.rows[0].cells[1].grid_col == 2
+
+    def test_rowspan_skips_covered_slot_in_next_row(self):
+        """A ``ROWSPAN=2`` at (row=0, col=0) means the first TD of
+        row 1 starts at col=1, not col=0."""
+        t = self._size(
+            '<<TABLE>'
+            '<TR><TD ROWSPAN="2">spans</TD><TD>a</TD></TR>'
+            '<TR><TD>b</TD></TR>'
+            '</TABLE>>'
+        )
+        r0 = t.rows[0].cells
+        r1 = t.rows[1].cells
+        assert r0[0].grid_col == 0 and r0[0].grid_row == 0
+        assert r0[1].grid_col == 1 and r0[1].grid_row == 0
+        assert r1[0].grid_col == 1 and r1[0].grid_row == 1
+
+    def test_combined_colspan_rowspan(self):
+        """The fixture's 3×3 layout assigns the right grid slots
+        given colspan / rowspan interactions."""
+        t = self._size(
+            '<<TABLE>'
+            '<TR><TD COLSPAN="2">header</TD><TD>single</TD></TR>'
+            '<TR><TD ROWSPAN="2">spans</TD><TD>b</TD><TD>c</TD></TR>'
+            '<TR><TD>e</TD><TD>f</TD></TR>'
+            '</TABLE>>'
+        )
+        # Row 0: header at (0,0) covering cols 0-1, single at (0,2).
+        assert t.rows[0].cells[0].grid_col == 0
+        assert t.rows[0].cells[1].grid_col == 2
+        # Row 1: spans-2-rows at (1,0), b at (1,1), c at (1,2).
+        assert [c.grid_col for c in t.rows[1].cells] == [0, 1, 2]
+        # Row 2: e at (2,1) — col 0 is covered by rowspan, f at (2,2).
+        assert t.rows[2].cells[0].grid_col == 1
+        assert t.rows[2].cells[1].grid_col == 2
+
+    # Sizing ─────────────────────────────────────────────────────────
+
+    def test_colspan_cell_covers_full_span_width(self):
+        """A COLSPAN=2 cell's final ``width`` equals the sum of the
+        two column widths + the cellspacing between them."""
+        t = self._size(
+            '<<TABLE CELLSPACING="4"><TR>'
+            '<TD COLSPAN="2">big</TD><TD>x</TD>'
+            '</TR><TR><TD>a</TD><TD>b</TD><TD>c</TD></TR></TABLE>>'
+        )
+        span_cell = t.rows[0].cells[0]
+        expected = t.col_widths[0] + t.col_widths[1] + t.cellspacing
+        assert span_cell.width == pytest.approx(expected)
+
+    def test_rowspan_cell_covers_full_span_height(self):
+        t = self._size(
+            '<<TABLE CELLSPACING="4">'
+            '<TR><TD ROWSPAN="2">tall</TD><TD>a</TD></TR>'
+            '<TR><TD>b</TD></TR>'
+            '</TABLE>>'
+        )
+        span_cell = t.rows[0].cells[0]
+        expected = t.row_heights[0] + t.row_heights[1] + t.cellspacing
+        assert span_cell.height == pytest.approx(expected)
+
+    def test_wide_colspan_grows_columns(self):
+        """When a spanning cell's natural content is wider than the
+        sum of the columns it covers, the excess is distributed
+        evenly across the spanned columns."""
+        t = self._size(
+            '<<TABLE CELLSPACING="0"><TR>'
+            # First row's spanning cell has much more text than the
+            # second row's cells in the same columns.
+            '<TD COLSPAN="2">'
+            'this is a much wider spanning header than the cells below'
+            '</TD></TR>'
+            '<TR><TD>x</TD><TD>y</TD></TR></TABLE>>'
+        )
+        # Each column now carries part of the span's content width.
+        span_content_w = t.rows[0].cells[0].content_w
+        assert sum(t.col_widths) + t.cellspacing >= span_content_w
+
+    # Cells-don't-overlap ────────────────────────────────────────────
+
+    def test_spanning_and_non_spanning_cells_do_not_overlap(self):
+        t = self._size(
+            '<<TABLE>'
+            '<TR><TD COLSPAN="2">hdr</TD><TD>s</TD></TR>'
+            '<TR><TD ROWSPAN="2">v</TD><TD>b</TD><TD>c</TD></TR>'
+            '<TR><TD>e</TD><TD>f</TD></TR>'
+            '</TABLE>>'
+        )
+        # Collect (x, y, x+w, y+h) rectangles; no two should strictly overlap.
+        rects = [(c.x, c.y, c.x + c.width, c.y + c.height)
+                 for row in t.rows for c in row.cells]
+        for i, (x1, y1, x2, y2) in enumerate(rects):
+            for j, (X1, Y1, X2, Y2) in enumerate(rects):
+                if i == j:
+                    continue
+                # Strict overlap: inner intersection > 0.
+                dx = min(x2, X2) - max(x1, X1)
+                dy = min(y2, Y2) - max(y1, Y1)
+                assert not (dx > 0.5 and dy > 0.5), (
+                    f"cells {i} {rects[i]} and {j} {rects[j]} overlap"
+                )
+
+    # Rendering ──────────────────────────────────────────────────────
+
+    def test_render_colspan_emits_wide_rect(self):
+        """A ``COLSPAN=2`` cell should render as ONE wide ``<rect>``
+        covering both columns, not two narrow rects."""
+        from gvpy.render.svg_renderer import _render_html_text
+        out = _render_html_text(
+            0.0, 0.0,
+            '<<TABLE CELLBORDER="1" CELLSPACING="0"><TR>'
+            '<TD COLSPAN="2">wide</TD></TR>'
+            '<TR><TD>a</TD><TD>b</TD></TR></TABLE>>',
+            default_face="Times-Roman", default_size=14.0,
+            default_color="#000000",
+        )
+        # 1 outer rect + 1 wide colspan rect + 2 row-2 rects = 4 rects.
+        assert out.count("<rect") == 4
+        # The ">wide<" text element exists (single tspan under the
+        # spanning cell — not duplicated across two cells).
+        assert out.count(">wide<") == 1
+
+
 # ── End-to-end: html_tables.dot ─────────────────────────────────────
 
 
@@ -405,3 +551,21 @@ class TestEndToEndHtmlTables:
         assert ">label<" in svg
         # The edge-table has a BGCOLOR="#ffffcc" background.
         assert 'fill="#ffffcc"' in svg
+
+    def test_spans_table_renders_all_cells(self, svg):
+        """t_spans — the 3×3 COLSPAN+ROWSPAN fixture.  Every visible
+        text should make it to the output exactly once."""
+        win = self._node(svg, "node_t_spans")
+        assert ">header spans 2 cols<" in win
+        assert ">single<" in win
+        # "spans 2" and "rows" are on separate lines of the rowspan cell.
+        assert ">spans 2<" in win and ">rows<" in win
+        for letter in ("b", "c", "e", "f"):
+            assert f">{letter}<" in win
+
+    def test_spans_table_has_span_bgcolors(self, svg):
+        """Header colspan cell has BGCOLOR="#fde68a"; rowspan cell has
+        BGCOLOR="#bae6fd".  Both should appear as fills in the output."""
+        win = self._node(svg, "node_t_spans")
+        assert 'fill="#fde68a"' in win
+        assert 'fill="#bae6fd"' in win

@@ -92,7 +92,34 @@ digraph html_tables {
                         <TR><TD>in-c</TD><TD>in-d</TD></TR>
                     </TABLE>
                 </TD></TR>
-            <TR><TD COLSPAN="2">spans both (parsed only)</TD></TR>
+            <TR><TD COLSPAN="2">colspan=2 footer</TD></TR>
+        </TABLE>
+    >];
+
+    // ── COLSPAN + ROWSPAN ────────────────────────────────────────────
+    // Shape of the resulting 3×3 grid:
+    //     ┌───────────────────────┬─────────┐
+    //     │ header spans 2 cols   │ single  │
+    //     ├───────────┬───────────┼─────────┤
+    //     │ spans 2   │     b     │    c    │
+    //     │ rows      ├───────────┼─────────┤
+    //     │           │     e     │    f    │
+    //     └───────────┴───────────┴─────────┘
+    t_spans [label=<
+        <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+            <TR>
+                <TD COLSPAN="2" BGCOLOR="#fde68a"><B>header spans 2 cols</B></TD>
+                <TD>single</TD>
+            </TR>
+            <TR>
+                <TD ROWSPAN="2" BGCOLOR="#bae6fd">spans 2<BR/>rows</TD>
+                <TD>b</TD>
+                <TD>c</TD>
+            </TR>
+            <TR>
+                <TD>e</TD>
+                <TD>f</TD>
+            </TR>
         </TABLE>
     >];
 
@@ -110,4 +137,5 @@ digraph html_tables {
     t_align -> t_styled;
     t_styled -> t_borderless;
     t_borderless -> t_nested;
+    t_nested -> t_spans;
 }
