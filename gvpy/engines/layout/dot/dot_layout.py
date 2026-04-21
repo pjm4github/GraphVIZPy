@@ -769,7 +769,7 @@ class DotGraphInfo(LayoutEngine):
             fontsize = float(attrs.get("fontsize", "14"))
         except ValueError:
             fontsize = 14.0
-        char_w = fontsize * 0.52  # proportional character width estimate
+        char_w = fontsize * 0.52  # avg estimate, only used by record_size
 
         # Record shapes: parse fields to determine dimensions
         # Port positions now come from Node.record_fields (sized in
@@ -782,10 +782,24 @@ class DotGraphInfo(LayoutEngine):
                 import re
                 label = re.sub(r"<[^>]+>", "", label)
 
+            # Per-glyph Times-Roman AFM widths.  Matches what C's
+            # ``lib/common/labels.c: make_label()`` computes via the
+            # ``textspan`` callback — GDI+ on Windows, FreeType on
+            # Linux, both backed by the Adobe Times-Roman AFM table
+            # for the default font.  The prior ``len × fontsize*0.52``
+            # estimate over-estimated narrow letters (i, l, t, …) by
+            # ~21 % and under-estimated wide letters (m, w, M, W, …)
+            # by ~15 %, tilting node widths away from C's on any
+            # label with non-average glyph frequency.
+            from gvpy.engines.layout.common.text import (
+                text_width_times_roman,
+            )
             lines = label.replace("\\n", "\n").split("\n")
-            max_line_len = max(len(line) for line in lines) if lines else len(name)
+            if not lines:
+                lines = [name]
             num_lines = len(lines)
-            text_w = max_line_len * char_w
+            text_w = max(text_width_times_roman(line, fontsize)
+                         for line in lines)
             text_h = num_lines * fontsize * 1.2
             w = text_w + self._H_PAD
             h = text_h + self._V_PAD
