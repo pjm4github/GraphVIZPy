@@ -93,17 +93,54 @@ def _style_dasharray(style: str) -> str:
     return ""
 
 
+def _fit_polygon(cx: float, cy: float, hw: float, hh: float, sides: int,
+                 orientation_deg: float = 0.0,
+                 fill: str = _DEF_NODE_FILL, stroke: str = _DEF_NODE_STROKE,
+                 penwidth: float = 1.0) -> str:
+    """Render an N-gon inscribed in the (2·hw × 2·hh) bbox.
+
+    Mirrors C's ``lib/common/shapes.c: poly_init`` vertex generation
+    (lines 2222-2290): build a unit regular polygon, then stretch so
+    its horizontal extremes touch ±hw and vertical extremes touch
+    ±hh.  For a squashed hexagon (w ≫ h) this produces a flat-top
+    shape with pointy L/R ends — which is how C renders it — rather
+    than the old ``r = max(hw, hh)`` circle-inscribed polygon which
+    was always square-aspect regardless of the node's actual bbox.
+    """
+    sector = 2 * math.pi / sides
+    side_len = math.sin(sector / 2)
+    # Accumulator walks the edges of the unit polygon; matches C's
+    # loop at shapes.c:2229-2241.
+    a0 = (sector - math.pi) / 2
+    rx = 0.5 * math.cos(a0)
+    ry = 0.5 * math.sin(a0)
+    angle = 0.0
+    orient = math.radians(orientation_deg)
+    raw: list[tuple[float, float]] = []
+    for _ in range(sides):
+        angle += sector
+        rx += side_len * math.cos(angle)
+        ry += side_len * math.sin(angle)
+        # Apply orientation rotation (zero for default shapes).
+        alpha = orient + math.atan2(ry, rx)
+        r = math.hypot(rx, ry)
+        raw.append((r * math.cos(alpha), r * math.sin(alpha)))
+    xmax = max(abs(x) for x, _ in raw) or 1e-9
+    ymax = max(abs(y) for _, y in raw) or 1e-9
+    sx = hw / xmax
+    sy = hh / ymax
+    pts = " ".join(f"{cx + x*sx:.2f},{cy + y*sy:.2f}" for x, y in raw)
+    return (f'<polygon points="{pts}" '
+            f'fill="{fill}" stroke="{stroke}" stroke-width="{penwidth}"/>')
+
+
+# Back-compat alias for any external callers.
 def _regular_polygon(cx: float, cy: float, r: float, n: int,
                      fill: str = _DEF_NODE_FILL, stroke: str = _DEF_NODE_STROKE,
                      penwidth: float = 1.0) -> str:
-    pts = []
-    for i in range(n):
-        angle = -math.pi / 2 + 2 * math.pi * i / n
-        px = cx + r * math.cos(angle)
-        py = cy + r * math.sin(angle)
-        pts.append(f"{px:.2f},{py:.2f}")
-    return (f'<polygon points="{" ".join(pts)}" '
-            f'fill="{fill}" stroke="{stroke}" stroke-width="{penwidth}"/>')
+    """Deprecated: callers should use :func:`_fit_polygon` with the
+    node's actual (hw, hh) so squashed bboxes render correctly."""
+    return _fit_polygon(cx, cy, r, r, n, 0.0, fill, stroke, penwidth)
 
 
 def render_svg(layout: dict) -> str:
@@ -616,16 +653,20 @@ def _render_node(node: dict) -> str:
                f"{x+hw:.2f},{y+hh:.2f} {x-hw:.2f},{y+hh:.2f} {x-hw:.2f},{y:.2f}")
         lines.append(f'<polygon points="{pts}" {base}/>')
     elif shape == "pentagon":
-        lines.append(_regular_polygon(x, y, max(hw, hh), 5, fill, stroke, penwidth))
+        lines.append(_fit_polygon(x, y, hw, hh, 5, 0.0, fill, stroke, penwidth))
     elif shape == "hexagon":
-        lines.append(_regular_polygon(x, y, max(hw, hh), 6, fill, stroke, penwidth))
+        lines.append(_fit_polygon(x, y, hw, hh, 6, 0.0, fill, stroke, penwidth))
     elif shape in ("septagon", "heptagon"):
-        lines.append(_regular_polygon(x, y, max(hw, hh), 7, fill, stroke, penwidth))
+        lines.append(_fit_polygon(x, y, hw, hh, 7, 0.0, fill, stroke, penwidth))
     elif shape == "octagon":
-        lines.append(_regular_polygon(x, y, max(hw, hh), 8, fill, stroke, penwidth))
+        lines.append(_fit_polygon(x, y, hw, hh, 8, 0.0, fill, stroke, penwidth))
     elif shape == "doubleoctagon":
-        lines.append(_regular_polygon(x, y, max(hw, hh), 8, fill, stroke, penwidth))
-        lines.append(_regular_polygon(x, y, max(hw, hh) - 3, 8, "none", stroke, penwidth))
+        # Inner octagon inset by 3 pt on each axis to visually nest
+        # within the outer — preserves the old "max(hw,hh)-3" offset.
+        lines.append(_fit_polygon(x, y, hw, hh, 8, 0.0, fill, stroke, penwidth))
+        if hw > 3 and hh > 3:
+            lines.append(_fit_polygon(x, y, hw - 3, hh - 3, 8, 0.0,
+                                      "none", stroke, penwidth))
     elif shape == "point":
         lines.append(f'<circle cx="{x:.2f}" cy="{y:.2f}" r="3" fill="{stroke}" stroke="{stroke}"/>')
     elif shape in ("plaintext", "plain", "none"):
