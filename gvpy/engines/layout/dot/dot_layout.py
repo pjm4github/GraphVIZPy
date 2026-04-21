@@ -804,6 +804,17 @@ class DotGraphInfo(LayoutEngine):
         if explicit_h:
             h = max(h, float(explicit_h) * 72.0)
 
+        # Default-size floor: apply ``_MIN_WIDTH`` / ``_MIN_HEIGHT`` in
+        # the user's frame (before any LR pre-swap) so a node with a
+        # wide-short label (e.g. a single-line scheduler name) keeps its
+        # natural thin height.  Applying the floor AFTER the pre-swap
+        # would push the rank-direction axis back up to 54 pt,
+        # incorrectly fattening the node vertically in LR output — on
+        # 2620.dot this made single-line scheduler nodes 54 pt tall when
+        # C keeps them at 36 pt.
+        w = max(w, self._MIN_WIDTH)
+        h = max(h, self._MIN_HEIGHT)
+
         # Pre-swap node dimensions for LR/RL so the TB-internal layout
         # pipeline sees the user's height as the cross-rank (x) extent
         # and the user's width as the rank (y) extent — matches C's
@@ -812,16 +823,9 @@ class DotGraphInfo(LayoutEngine):
         # of phase 3, restoring the user's original dimensions in the
         # LR-final output.  ``_record_size`` already pre-swaps record
         # dimensions; this covers every other shape (box, ellipse,
-        # hexagon, octagon, diamond, …).  Pre-2026-04-21 Python stored
-        # regular-node dimensions unflipped and ``apply_rankdir`` then
-        # swapped them, producing LR output with w/h inverted from
-        # user intent — on 2620.dot this turned a 2 × 1 in box into a
-        # 1 × 2 in rendered box and gave the graph a 1 : 12.8 aspect
-        # instead of C's 1 : 1.7.
+        # hexagon, octagon, diamond, …).
         if self.rankdir in ("LR", "RL"):
             w, h = h, w
-        w = max(w, self._MIN_WIDTH)
-        h = max(h, self._MIN_HEIGHT)
         return w, h
 
     def _record_size(self, label: str, fontsize: float, char_w: float) -> tuple[float, float]:
