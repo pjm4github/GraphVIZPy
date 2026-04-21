@@ -205,31 +205,55 @@ def _point_indexer_triang(base: Any, index: int) -> Ppoint:
 def _triangulate_recursive(pointp: list, pointn: int,
                             fn: Callable[[Any, list], None],
                             vc: Any) -> int:
-    """Recursive ear-clipping helper.
+    """Ear-clipping triangulator for the generic ``Ptriangulate`` API.
 
     See: /lib/pathplan/triang.c @ 63
 
-    Returns 0 on success, -1 if no diagonal exists (malformed
-    polygon).
+    Delegates the ear-clip scan to the numba-JIT'd hot path in
+    :mod:`...triang_nb` when available, falling back to the pure-
+    Python iterative loop otherwise.  Semantics are identical to
+    the reference C implementation.
     """
     assert pointn >= 3
-    if pointn > 3:
+    # Fast path: numba
+    from gvpy.engines.layout.pathplan.triang_nb import (
+        NUMBA_AVAILABLE as _nb_available,
+        triangulate_nb as _tnb,
+    )
+    if _nb_available and pointn >= 4:
+        import numpy as _np
+        xs = _np.fromiter((pointp[k].x for k in range(pointn)),
+                          dtype=_np.float64, count=pointn)
+        ys = _np.fromiter((pointp[k].y for k in range(pointn)),
+                          dtype=_np.float64, count=pointn)
+        tris_out, n_tris = _tnb(xs, ys)
+        if n_tris < 0:
+            return -1
+        for row in range(n_tris):
+            a = int(tris_out[row, 0])
+            b = int(tris_out[row, 1])
+            c = int(tris_out[row, 2])
+            A = [pointp[a], pointp[b], pointp[c]]
+            fn(vc, A)
+        return 0
+
+    # Slow path: pure Python iterative ear-clip.
+    while pointn > 3:
+        found_ear = False
         for i in range(pointn):
             ip1 = (i + 1) % pointn
             ip2 = (i + 2) % pointn
             if isdiagonal(i, ip2, pointp, pointn, _point_indexer_triang):
-                # Emit triangle
                 A = [pointp[i], pointp[ip1], pointp[ip2]]
                 fn(vc, A)
-                # Remove ip1 from pointp and recurse on one fewer
-                # vertex.  C does the removal in-place with a two-
-                # pointer walk; Python uses a fresh list for clarity.
-                reduced = [pointp[k] for k in range(pointn) if k != ip1]
-                return _triangulate_recursive(reduced, pointn - 1, fn, vc)
-        return -1
-    else:
-        A = [pointp[0], pointp[1], pointp[2]]
-        fn(vc, A)
+                pointp = [pointp[k] for k in range(pointn) if k != ip1]
+                pointn -= 1
+                found_ear = True
+                break
+        if not found_ear:
+            return -1
+    A = [pointp[0], pointp[1], pointp[2]]
+    fn(vc, A)
     return 0
 
 

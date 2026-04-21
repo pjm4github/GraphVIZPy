@@ -348,9 +348,30 @@ diagram UI; 6–9 add simulation.
      inside its pair-count inner loop.  Pre-compute rank-local
      adjacency cache once per call.  Phase 2 on 172-node 2343
      subset 55 s → 4 s (14 ×).
+  4. (2026-04-20 follow-up) ``dot/mincross.order_by_weighted_median``
+     — same precompute pattern as #3 was missing on the sibling
+     function.  On 2343.dot: phase-2 108 s → 13.5 s (8 ×); total
+     runtime 369 s → 156 s.  Equivalence verified via side-by-side
+     ``GVPY_MINCROSS_CHECK`` trace — medians byte-identical to legacy
+     implementation across full 2343 run; 893 tests pass.
+     Post-audit (2026-04-20): 3 previously-timing-out graphs now
+     measure (2470 → 19 cross, 2620 → 3 cross ✓ confirms TODO §5b
+     V2 ortho win, 1879 → 251 cross newly exposed).
 
   Remaining timeouts fall into two groups: very large graphs (≥ 20 k
-  lines, bounded by algorithmic complexity not overhead) and
-  medium graphs (~500 nodes like 2343.dot whose phase-3/4 still
-  takes >60 s — next triage target).  Re-run the visual audit to
-  refresh the failure list after these speedups propagate.
+  lines, bounded by algorithmic complexity not overhead) and medium
+  graphs (~500 nodes like 2343.dot) where phase-4 splines
+  shortest-path triangulation now dominates — 94 % of the post-fix
+  2343.dot runtime is ``routespl.routesplines_`` →
+  ``shortest.Pshortestpath`` → ``_triangulate_pnls`` →
+  ``isdiagonal`` (236 M ``ccw`` calls on obstacle polygons per run).
+  This is algorithmic (C's ear-clip triangulation is the same shape,
+  just faster per-call); not a cache miss.  Next triage target would
+  need to attack the triangulation itself — memoise per-obstacle,
+  cache-once-per-edge the clip-box, or swap in a different visibility
+  algorithm.  Also note a large volume of
+  ``routesplines, Pshortestpath failed`` fallback messages on
+  2343.dot (≈ 40 per run) — each failed shortest-path call still
+  costs the full triangulation and then routes to a straight fallback;
+  fixing whatever makes ``Pshortestpath`` fail could cut those
+  triangulations entirely.

@@ -492,13 +492,25 @@ class DotGraphInfo(LayoutEngine):
         self._init_from_graph()
 
         trace("rank", f"begin layout: nodes={len(self.lnodes)} edges={len(self.ledges)} clusters={len(self._clusters)}")
-        self._phase1_rank()
-        self._phase2_ordering()
-        self._phase3_position()
+        # [TRACE phase] — phase-level timing (gated on GV_TRACE=phase).
+        import time as _time_phase
+        from gvpy.engines.layout.dot.trace import trace_on as _ph_on, trace as _ph_tr
+        _ph_t = _ph_on("phase")
+        def _ph_mark(name, fn):
+            if not _ph_t:
+                return fn()
+            _t0 = _time_phase.perf_counter()
+            r = fn()
+            _dt = _time_phase.perf_counter() - _t0
+            _ph_tr("phase", f"{name} elapsed={_dt:.2f}s nodes={len(self.lnodes)} edges={len(self.ledges)}")
+            return r
+        _ph_mark("phase1_rank", self._phase1_rank)
+        _ph_mark("phase2_ordering", self._phase2_ordering)
+        _ph_mark("phase3_position", self._phase3_position)
         self._apply_fixed_positions()
         self._apply_size()
         self._compute_cluster_boxes()
-        self._phase4_routing()
+        _ph_mark("phase4_routing", self._phase4_routing)
         if self.concentrate:
             self._concentrate_edges()
         if self.quantum > 0:

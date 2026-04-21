@@ -10,7 +10,7 @@ value ``all`` turns on every channel.
 The ``spline_*`` family is progressively enabled as functions land
 in ``TODO_dot_splines_port.md`` Phases A–G.  Each sub-channel maps
 to a concrete subsystem in ``lib/dotgen/dotsplines.c`` and
-``lib/common/splines.c`` so that ``tools/diff_phases.py`` can
+``lib/common/splines.c`` so that ``filters/diff_phases.py`` can
 compare one function's output at a time.
 
 Examples::
@@ -22,7 +22,7 @@ Examples::
 
 The matching C side uses the same channel vocabulary and is gated via
 ``lib/common/tracegate.h`` in the graphviz source tree.  Keeping the
-vocabulary identical lets ``tools/compare_traces.py`` diff output
+vocabulary identical lets ``filters/compare_traces.py`` diff output
 line-for-line when both engines are re-enabled.
 
 Design notes
@@ -55,6 +55,7 @@ KNOWN_CHANNELS: Final[frozenset[str]] = frozenset({
     "label",
     "median",
     "order",
+    "phase",
     "port",
     "position",
     "rank",

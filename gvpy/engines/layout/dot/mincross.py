@@ -151,12 +151,23 @@ def run_mincross(layout):
     seen so far via save_best / restore_best.  Iteration count is
     bounded by MAX_MINCROSS_ITER × mclimit (C ``MaxIter``).
     """
+    from gvpy.engines.layout.dot.trace import trace, trace_on
+    _trace_order = trace_on("order")
+    if _trace_order:
+        _n_nodes = sum(len(v) for v in layout.ranks.values())
+        _n_ranks = len(layout.ranks)
+        trace("order", f"mincross_entry n_ranks={_n_ranks} "
+                       f"n_nodes={_n_nodes}")
+
     max_rank = max(layout.ranks.keys()) if layout.ranks else 0
     best_crossings = layout._count_all_crossings()
     best_order = layout._save_ordering()
 
     iterations = max(1, int(layout.MAX_MINCROSS_ITER * layout.mclimit))
+    _done_iter = 0
+    _step_calls = 0
     for _ in range(iterations):
+        _done_iter += 1
         for r in range(1, max_rank + 1):
             if r in layout.ranks:
                 layout._order_by_weighted_median(r, r - 1)
@@ -165,6 +176,7 @@ def run_mincross(layout):
             if r in layout.ranks:
                 layout._order_by_weighted_median(r, r + 1)
                 layout._transpose_rank(r)
+        _step_calls += 1  # one "pass" = down + up
         c = layout._count_all_crossings()
         if c < best_crossings:
             best_crossings = c
@@ -172,6 +184,7 @@ def run_mincross(layout):
 
     if layout.remincross and best_crossings > 0:
         for _ in range(iterations):
+            _done_iter += 1
             for r in range(1, max_rank + 1):
                 if r in layout.ranks:
                     layout._order_by_weighted_median(r, r - 1)
@@ -180,12 +193,17 @@ def run_mincross(layout):
                 if r in layout.ranks:
                     layout._order_by_weighted_median(r, r + 1)
                     layout._transpose_rank(r)
+            _step_calls += 1
             c = layout._count_all_crossings()
             if c < best_crossings:
                 best_crossings = c
                 best_order = layout._save_ordering()
 
     layout._restore_ordering(best_order)
+    if _trace_order:
+        trace("order", f"mincross_exit total_iterations={_done_iter} "
+                       f"total_step_calls={_step_calls} "
+                       f"final_crossings={best_crossings}")
 
 
 def remincross_full(layout):
@@ -607,7 +625,7 @@ def skeleton_mincross(layout):
                         if idx < skel_pos:
                             skel_pos -= 1
 
-                # Get BFS-ordered nodes for this rank, filter to
+                # Get BFS-ordered nodes for this rank, filters to
                 # correct rank
                 restore = [n for n in bfs_order.get(r, [])
                            if n in layout.lnodes
@@ -1400,21 +1418,32 @@ def order_by_weighted_median(layout, rank: int, adj_rank: int):
     if not nodes:
         return
     adj_set = set(layout.ranks.get(adj_rank, []))
+    node_set = set(nodes)
+    lnodes = layout.lnodes
+
+    # Pre-compute each node's adj-rank neighbour list with weight, in one
+    # pass over ``layout.ledges``.  Replaces the prior O(N·E) per-rank
+    # scan — same precompute pattern shipped for ``transpose_rank`` in
+    # commit 7dd6c1b; this sibling was missed.  On 2343.dot this was
+    # 100 s / 13680 calls of own time; the rest of the function is
+    # cheap per-node median arithmetic that the precompute serves.
+    neighbours: dict[str, list[tuple[str, int]]] = {n: [] for n in nodes}
+    for le in layout.ledges:
+        tname, hname, w = le.tail_name, le.head_name, le.weight
+        if tname in node_set and hname in adj_set:
+            neighbours[tname].append((hname, w))
+        if hname in node_set and tname in adj_set:
+            neighbours[hname].append((tname, w))
 
     medians: dict[str, float] = {}
     for name in nodes:
-        positions = []
-        for le in layout.ledges:
-            neighbor = None
-            w = le.weight
-            if le.tail_name == name and le.head_name in adj_set:
-                neighbor = le.head_name
-            elif le.head_name == name and le.tail_name in adj_set:
-                neighbor = le.tail_name
-            if neighbor is not None:
-                pos = layout.lnodes[neighbor].order
-                for _ in range(max(1, w)):
-                    positions.append(pos)
+        positions: list[int] = []
+        for neighbour, w in neighbours[name]:
+            pos = lnodes[neighbour].order
+            if w <= 1:
+                positions.append(pos)
+            else:
+                positions.extend([pos] * w)
         if positions:
             positions.sort()
             m = len(positions)
@@ -1423,7 +1452,7 @@ def order_by_weighted_median(layout, rank: int, adj_rank: int):
             else:
                 medians[name] = (positions[m // 2 - 1] + positions[m // 2]) / 2.0
         else:
-            medians[name] = layout.lnodes[name].order
+            medians[name] = lnodes[name].order
 
     if layout._node_to_cluster:
         # Group-aware sort: sort within contiguous cluster runs
@@ -1444,7 +1473,7 @@ def order_by_weighted_median(layout, rank: int, adj_rank: int):
     else:
         nodes.sort(key=lambda n: medians[n])
     for i, name in enumerate(nodes):
-        layout.lnodes[name].order = i
+        lnodes[name].order = i
     layout.ranks[rank] = nodes
 
 

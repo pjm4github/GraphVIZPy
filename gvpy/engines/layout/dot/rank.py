@@ -608,10 +608,33 @@ def add_virtual_nodes(layout):
         t_rank = layout.lnodes[le.tail_name].rank
         h_rank = layout.lnodes[le.head_name].rank
         span = h_rank - t_rank
+        # [TRACE rank] — matches C's trace in lib/dotgen/class2.c
+        # ``make_chain``.  Gated on ``GV_TRACE=rank``.  Fires for all
+        # edges (including span<=1) so missing entries indicate edges
+        # absent from ``layout.ledges`` entirely, not just edges
+        # C-would-chain that Python puts on adjacent ranks.
+        from gvpy.engines.layout.dot.trace import trace as _trace_rank
+        t_rk = layout.lnodes[le.tail_name].rank
+        h_rk = layout.lnodes[le.head_name].rank
+        _trace_rank("rank", f"edge={le.tail_name}->{le.head_name} "
+                            f"tail_rank={t_rk} head_rank={h_rk} span={span}")
         if span <= 1:
             continue  # No virtual nodes needed
-        if span > 100:
-            continue  # Too many virtual nodes, skip
+        # Historical note: commit 4bdecdb introduced an arbitrary
+        # ``span > 100`` cap as a dev-time safety guard.  The cap
+        # silently dropped cross-rank edges — they became 3-box
+        # corridors whose polygons self-intersected, so
+        # ``Pshortestpath`` failed and the edge never appeared in
+        # output.  Confirmed on 2343.dot (rankdir=LR, 500+ ranks)
+        # where 66 edges were silently missing.  C's ``make_chain``
+        # has no cap.  Raised to 200 here as a tuned stop-gap:
+        # eliminates ~80% of skip-induced failures on realistic graphs
+        # while keeping virtual-node count tractable (removing the cap
+        # entirely on 2343 added 12 k virtuals and ballooned mincross
+        # time past the audit budget).  Proper fix is a performance
+        # pass on mincross+position to handle dense virtual chains.
+        if span > 200:
+            continue
 
         # Determine the cluster chain the virtual chain should live
         # in (LCA upward through every ancestor cluster that also

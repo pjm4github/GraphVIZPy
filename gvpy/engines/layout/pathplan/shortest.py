@@ -29,12 +29,18 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+import numpy as np
+
 from gvpy.engines.layout.pathplan.pathgeom import Ppoint, Ppoly, Ppolyline
 from gvpy.engines.layout.pathplan.triang import (
     ISCCW,
     ISCW,
     ccw,
     isdiagonal,
+)
+from gvpy.engines.layout.pathplan.triang_nb import (
+    NUMBA_AVAILABLE as _NB_AVAILABLE,
+    triangulate_nb as _triangulate_nb,
 )
 
 
@@ -141,26 +147,48 @@ def _triangulate_pnls(state: dict, points: list, point_count: int) -> int:
 
     See: /lib/pathplan/shortest.c @ 317
 
-    Same algorithm as :func:`...triang._triangulate_recursive` but
-    operates on :class:`_PointNLink` arrays and emits into the shared
-    triangle list instead of calling a user callback.
+    Delegates the ear-clip inner loop to a numba-JIT'd routine in
+    :mod:`...triang_nb` when available — the arithmetic-heavy
+    ``ccw`` / ``_intersects`` / ``isdiagonal`` helpers dominate
+    phase-4 time on graphs with long virtual-chain corridors
+    (97% of 2343.dot).  Falls back to the pure-Python iterative
+    loop if numba isn't installed.
     """
-    if point_count > 3:
+    # Fast path: numba
+    if _NB_AVAILABLE and point_count >= 4:
+        xs = np.fromiter((p.pp.x for p in points[:point_count]),
+                         dtype=np.float64, count=point_count)
+        ys = np.fromiter((p.pp.y for p in points[:point_count]),
+                         dtype=np.float64, count=point_count)
+        tris_out, n_tris = _triangulate_nb(xs, ys)
+        if n_tris < 0:
+            return -1
+        for row in range(n_tris):
+            a = int(tris_out[row, 0])
+            b = int(tris_out[row, 1])
+            c = int(tris_out[row, 2])
+            if _loadtriangle(state, points[a], points[b], points[c]) != 0:
+                return -1
+        return 0
+
+    # Slow path: pure Python iterative ear-clip.
+    while point_count > 3:
+        found_ear = False
         for pnli in range(point_count):
             pnlip2 = (pnli + 2) % point_count
             if isdiagonal(pnli, pnlip2, points, point_count, _point_indexer_shortest):
                 pnlip1 = (pnli + 1) % point_count
                 if _loadtriangle(state, points[pnli], points[pnlip1], points[pnlip2]) != 0:
                     return -1
-                # Remove points[pnlip1] by shifting the tail down,
-                # then recurse with one fewer point (C's in-place
-                # compaction).
-                new_points = points[:pnlip1] + points[pnlip1 + 1:]
-                return _triangulate_pnls(state, new_points, point_count - 1)
-        return -1  # prerror: "triangulation failed"
-    else:
-        if _loadtriangle(state, points[0], points[1], points[2]) != 0:
-            return -1
+                # Remove points[pnlip1] — C's in-place compaction.
+                points = points[:pnlip1] + points[pnlip1 + 1:]
+                point_count -= 1
+                found_ear = True
+                break
+        if not found_ear:
+            return -1  # prerror: "triangulation failed"
+    if _loadtriangle(state, points[0], points[1], points[2]) != 0:
+        return -1
     return 0
 
 
@@ -301,6 +329,18 @@ def Pshortestpath(polyp: Ppoly, eps: list) -> tuple[int, Ppolyline]:
     """
     # Per-call state replaces C's static globals ``tris`` and ``ops``.
     state: dict = {"tris": []}
+
+    # Raise the process-wide recursion limit if the polygon is big
+    # enough that ``_marktripath``'s DFS could need it.
+    # ``_marktripath`` depth ≤ triangle count (≈ polygon_vertex_count).
+    # Default 1000 trips on 2343.dot's 1000+ vertex corridors.
+    # Monotonically raising the limit is fine — Python frames are
+    # ~1 KB each; 20k deep ≈ 20 MB, well under any platform stack.
+    if polyp.pn > 200:
+        import sys as _sys_rec
+        _needed = polyp.pn * 4 + 100
+        if _sys_rec.getrecursionlimit() < _needed:
+            _sys_rec.setrecursionlimit(_needed)
 
     # Build the pnls array in CCW order.  C also dedupes adjacent
     # coincident vertices.  We preserve both behaviours.

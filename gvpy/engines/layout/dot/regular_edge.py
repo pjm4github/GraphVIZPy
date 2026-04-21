@@ -436,7 +436,7 @@ def completeregularpath(P: Path, tendp: PathEnd, hendp: PathEnd,
 
     Note on defensiveness
     ---------------------
-    Because ``top_bound`` / ``bot_bound`` already filter siblings by
+    Because ``top_bound`` / ``bot_bound`` already filters siblings by
     ``getsplinepoints != None``, the post-check below is unreachable
     under well-formed state — it mirrors the C source's own redundant
     safety net, which defends against corrupted spline lists.
@@ -600,6 +600,20 @@ def make_regular_edge(layout, sp: SplineInfo, P: Path,
                         layout=layout,
                         tail_ln=tail, first_hop_order=first_hop_order,
                         head_ln=real_head, last_hop_order=last_hop_order)
+
+    # [TRACE spline] — emit box corridor + endpoints per edge, matching
+    # the C-side trace in ``lib/common/routespl.c``.  Gated on
+    # ``GV_TRACE=spline``.
+    from gvpy.engines.layout.dot.trace import trace_on as _sp_on, trace as _sp_tr
+    if _sp_on("spline"):
+        _boxes = P.boxes
+        _bs = "".join(f"[{b.ll_x:.1f},{b.ll_y:.1f},{b.ur_x:.1f},{b.ur_y:.1f}]"
+                      for b in _boxes)
+        _sx, _sy = P.start.np
+        _ex, _ey = P.end.np
+        _sp_tr("spline", f"edge={tail_name}->{head_final_name} "
+                         f"n_boxes={len(_boxes)} boxes={_bs} "
+                         f"eps=({_sx:.1f},{_sy:.1f})->({_ex:.1f},{_ey:.1f})")
 
     if is_spline:
         ps = routesplines(P)

@@ -62,6 +62,28 @@ def checkpath(boxes: list[Box], pp: Path) -> tuple[int, list[Box]]:
     (degenerate boxes are removed).  ``pp.start`` and ``pp.end`` are
     clamped to the first/last box if they fall outside.
     """
+    # Diagnostic (GVPY_CHECKPATH_WARN=1): flag box chains that violate
+    # the polygon builder's monotone-y assumption — adjacent boxes
+    # whose y-ranges overlap substantially rather than just touching.
+    # This produces self-intersecting polygons in ``routesplines_``,
+    # causing ``Pshortestpath`` to fail silently and the edge to be
+    # dropped.  The canonical cause is an upstream bug that skipped
+    # building a virtual-node chain for a long cross-rank edge.
+    import os as _os_cp
+    if _os_cp.environ.get("GVPY_CHECKPATH_WARN") and len(boxes) >= 2:
+        for _i in range(len(boxes) - 1):
+            _a, _b = boxes[_i], boxes[_i + 1]
+            _a_ext = _a.ur_y - _a.ll_y
+            _b_ext = _b.ur_y - _b.ll_y
+            _ov = min(_a.ur_y, _b.ur_y) - max(_a.ll_y, _b.ll_y)
+            if _ov > 0 and _ov > 0.5 * min(_a_ext, _b_ext):
+                print(f"[CHECKPATH_WARN] box[{_i}] y-overlaps box[{_i+1}] "
+                      f"by {_ov:.1f} ({100*_ov/min(_a_ext,_b_ext):.0f}% of "
+                      f"smaller box) — corridor violates monotone-y "
+                      f"assumption, polygon will self-intersect",
+                      file=sys.stderr)
+                break
+
     # Remove degenerate boxes.
     kept: list[Box] = []
     for b in boxes:
