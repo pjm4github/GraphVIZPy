@@ -94,15 +94,33 @@ def _render_html_text(cx: float, cy: float, raw_label: str,
     # LEFT / RIGHT alignment x positions.
     label_w, _ = html_label_size(ast)
 
-    if bottom_above_y is not None:
-        # Position label so its visual bottom = ``bottom_above_y - MARGIN``.
-        # Derive cy so the existing ``cy - total_h/2`` top anchor
-        # gives that bottom.
-        cy = bottom_above_y - _EDGE_LABEL_MARGIN - total_h / 2
-
     first_runs = next((l.runs for l in ast.lines if l.runs), None)
     first_font = first_runs[0].font_size if first_runs else default_size
-    first_baseline_y = cy - total_h / 2 + first_font * 0.85
+
+    if bottom_above_y is not None:
+        # Edge-label mode: position LAST visible line's baseline so
+        # the descent sits ``_EDGE_LABEL_MARGIN`` above ``bottom_above_y``.
+        # Previous centre-based formula over-estimated total_h because
+        # the 1.2 line-height factor includes leading, not actual
+        # descent — on the mixed-size ``sMs`` label (max=18) this put
+        # the visual bottom ~12 pt above the edge instead of 3 pt.
+        last_visible_runs = None
+        for line in reversed(ast.lines):
+            if line.runs:
+                last_visible_runs = line.runs
+                break
+        last_font = (max(r.font_size for r in last_visible_runs)
+                     if last_visible_runs else default_size)
+        last_descent = last_font * 0.2  # Times-Roman descent ≈ 0.2 × em
+        visible_heights = [
+            lh for lh, line in zip(line_heights, ast.lines) if line.runs
+        ]
+        dy_total = sum(visible_heights[1:])  # lines 2..N dy advance
+        last_baseline_y = (bottom_above_y - _EDGE_LABEL_MARGIN
+                           - last_descent)
+        first_baseline_y = last_baseline_y - dy_total
+    else:
+        first_baseline_y = cy - total_h / 2 + first_font * 0.85
 
     root_attrs = [
         f'text-anchor="{anchor}"',
@@ -966,13 +984,13 @@ def _render_edge(edge: dict, directed: bool) -> str:
             # the tooltip is only applied to plain labels.
         else:
             # Plain text edge label: shift baseline so the visual
-            # bottom (baseline + descent ≈ 0.25·F) sits
+            # bottom (baseline + descent ≈ 0.2·F Times-Roman) sits
             # ``_EDGE_LABEL_MARGIN`` above the edge line.
             try:
                 _fs = float(font_size)
             except (ValueError, TypeError):
                 _fs = _DEF_FONT_SIZE
-            _baseline_y = label_pos[1] - _EDGE_LABEL_MARGIN - _fs * 0.25
+            _baseline_y = label_pos[1] - _EDGE_LABEL_MARGIN - _fs * 0.2
             label_svg = (
                 f'<text x="{label_pos[0]:.2f}" y="{_baseline_y:.2f}" '
                 f'text-anchor="middle" font-family="{font_family}" '

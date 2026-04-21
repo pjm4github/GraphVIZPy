@@ -641,15 +641,21 @@ def add_virtual_nodes(layout):
         # contains both endpoints).
         cluster_chain = _lca_ancestor_chain(le.tail_name, le.head_name)
 
-        # Size the label-bearing vnode (middle of the chain) to the
-        # label's dimensions so the rank it sits in gets enough
-        # cross-axis space for the label to fit.  For LR/RL layouts
-        # the label's width → vnode.width maps to rank-direction X
-        # extent after the final rankdir pre-swap, so the ranksep
-        # computation naturally spaces the two real endpoints apart
-        # by at least label_width + ranksep gaps.  Without this, a
-        # wide edge label sat in a 2 pt vnode and collided with the
-        # surrounding real nodes.
+        # Size the label-bearing vnode (middle of the chain) so the
+        # final spacing between the two real endpoints accommodates
+        # the label with ~15 % margin on each side (total ~1.3 ×
+        # label width).  The rank-axis gap at route time is
+        # ``2 × ranksep + vnode_width`` (one ranksep on each side of
+        # the vnode's rank box), so:
+        #
+        #     target_gap   = 1.3 × label_width
+        #     vnode_width  = target_gap - 2 × ranksep
+        #                  = 1.3 × label_width - 2 × ranksep
+        #
+        # For small labels the formula can go negative; clamp to a
+        # small positive floor so the vnode never disappears.
+        # Without this sizing a labeled edge's vnode was 2 pt × 2 pt
+        # and wide labels collided with the surrounding real nodes.
         label_vnode_idx = -1  # index in the chain that carries the label
         label_w = label_h = 0.0
         edge_obj = getattr(le, "edge", None)
@@ -674,6 +680,13 @@ def add_virtual_nodes(layout):
                 _lines = edge_label.replace("\\n", "\n").split("\n")
                 label_w = max(text_width_times_roman(ln, _fs) for ln in _lines)
                 label_h = len(_lines) * _fs * 1.2
+            # Reduce the vnode from its raw label dims to account for
+            # the two ranksep gaps that already sit around it.  The
+            # resulting total real-to-real gap targets ~1.3 × label_w
+            # (= 15 % margin each side).
+            _rs = float(getattr(layout, "ranksep", 36.0))
+            label_w = max(4.0, 1.3 * label_w - 2.0 * _rs)
+            label_h = max(4.0, 1.3 * label_h - 2.0 * _rs)
             # Pre-swap for LR/RL so the TB-internal pipeline sees the
             # label width on the cross-rank axis.
             if layout.rankdir in ("LR", "RL"):
