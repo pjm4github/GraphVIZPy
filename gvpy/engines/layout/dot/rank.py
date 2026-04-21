@@ -641,6 +641,45 @@ def add_virtual_nodes(layout):
         # contains both endpoints).
         cluster_chain = _lca_ancestor_chain(le.tail_name, le.head_name)
 
+        # Size the label-bearing vnode (middle of the chain) to the
+        # label's dimensions so the rank it sits in gets enough
+        # cross-axis space for the label to fit.  For LR/RL layouts
+        # the label's width → vnode.width maps to rank-direction X
+        # extent after the final rankdir pre-swap, so the ranksep
+        # computation naturally spaces the two real endpoints apart
+        # by at least label_width + ranksep gaps.  Without this, a
+        # wide edge label sat in a 2 pt vnode and collided with the
+        # surrounding real nodes.
+        label_vnode_idx = -1  # index in the chain that carries the label
+        label_w = label_h = 0.0
+        edge_obj = getattr(le, "edge", None)
+        edge_label = ""
+        if edge_obj is not None:
+            edge_label = edge_obj.attributes.get("label", "")
+        if edge_label and span >= 2:
+            try:
+                _fs = float(edge_obj.attributes.get("fontsize", "14"))
+            except (ValueError, TypeError):
+                _fs = 14.0
+            from gvpy.grammar.html_label import (
+                is_html_label, parse_html_label, html_label_size,
+            )
+            if is_html_label(edge_label):
+                _ast = parse_html_label(edge_label, default_font_size=_fs)
+                label_w, label_h = html_label_size(_ast)
+            else:
+                from gvpy.engines.layout.common.text import (
+                    text_width_times_roman,
+                )
+                _lines = edge_label.replace("\\n", "\n").split("\n")
+                label_w = max(text_width_times_roman(ln, _fs) for ln in _lines)
+                label_h = len(_lines) * _fs * 1.2
+            # Pre-swap for LR/RL so the TB-internal pipeline sees the
+            # label width on the cross-rank axis.
+            if layout.rankdir in ("LR", "RL"):
+                label_w, label_h = label_h, label_w
+            label_vnode_idx = (span - 1) // 2  # middle vnode (0-indexed)
+
         # Create chain of virtual nodes
         chain = []
         prev_name = le.tail_name
@@ -649,9 +688,15 @@ def add_virtual_nodes(layout):
             # Ensure unique name
             while vname in layout.lnodes:
                 vname += "_"
+            # Label-bearing vnodes absorb the edge label's dimensions;
+            # plain bend vnodes stay at 2pt × 2pt.
+            if (j - 1) == label_vnode_idx and label_w > 0:
+                vn_w, vn_h = label_w, label_h
+            else:
+                vn_w, vn_h = 2.0, 2.0
             layout.lnodes[vname] = LayoutNode(
                 name=vname, node=None, rank=t_rank + j, virtual=True,
-                width=2.0, height=2.0,
+                width=vn_w, height=vn_h,
             )
             chain.append(vname)
             # Inherit cluster membership from the edge's LCA and

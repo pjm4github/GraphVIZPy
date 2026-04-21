@@ -43,22 +43,36 @@ _STYLE_DASH = {
 # ── HTML label rendering ────────────────────────────────────────────
 
 
+# Margin between an edge label's visual bottom and the edge it sits
+# on.  Matches C's ``lib/common/labels.c`` placement — labels float a
+# few points above the edge so the stroke doesn't cut through text.
+_EDGE_LABEL_MARGIN = 3.0
+
+
 def _render_html_text(cx: float, cy: float, raw_label: str,
                       default_face: str, default_size: float,
                       default_color: str | None,
                       anchor: str = "middle",
-                      italic: bool = False) -> str:
-    """Render a Graphviz HTML-like label at ``(cx, cy)`` as an SVG
-    ``<text>`` with ``<tspan>`` children for inline style changes.
+                      italic: bool = False,
+                      bottom_above_y: float | None = None) -> str:
+    """Render a Graphviz HTML-like label as an SVG ``<text>`` element
+    with per-run ``<tspan>`` children.
 
-    ``raw_label`` is still wrapped in outer ``<...>`` — :func:`parse_html_label`
-    strips those brackets internally.  Each run becomes one ``<tspan>``;
-    ``<BR/>`` starts a new line with the first tspan carrying an ``x=``
-    reset and a ``dy=`` offset.  Vertical centering places the first
-    line's baseline at ``cy - total_h/2 + first_font * 0.85`` so the
-    whole label ends up visually centered on ``(cx, cy)``.
+    Position modes:
+
+    - Default: ``cy`` is the label's visual vertical centre.  Used for
+      node labels, cluster labels, xlabels.
+    - ``bottom_above_y`` set: the label's visual BOTTOM is placed
+      ``_EDGE_LABEL_MARGIN`` points above ``bottom_above_y``, ``cy`` is
+      ignored.  Used for edge labels so the label floats just above
+      the edge stroke.
+
+    Per-line alignment (``<BR ALIGN="LEFT|CENTER|RIGHT"/>``) emits
+    ``text-anchor`` + ``x=`` on each line's first ``<tspan>`` so
+    LEFT / RIGHT lines actually anchor to the label's left / right
+    edge rather than falling back to the root text-anchor.
     """
-    from gvpy.grammar.html_label import parse_html_label
+    from gvpy.grammar.html_label import parse_html_label, html_label_size
 
     ast = parse_html_label(
         raw_label,
@@ -67,8 +81,8 @@ def _render_html_text(cx: float, cy: float, raw_label: str,
         default_face=default_face,
     )
 
-    # Per-line height = max(run.font_size) × 1.2.  Empty lines (e.g.
-    # ``<BR/><BR/>``) still contribute the default line height.
+    # Per-line height = max(run.font_size) × 1.2; empty lines
+    # (``<BR/><BR/>``) still contribute the default line height.
     line_heights: list[float] = []
     for line in ast.lines:
         if not line.runs:
@@ -76,6 +90,16 @@ def _render_html_text(cx: float, cy: float, raw_label: str,
         else:
             line_heights.append(max(run.font_size for run in line.runs) * 1.2)
     total_h = sum(line_heights)
+    # Total label width (max of line widths) — needed for per-line
+    # LEFT / RIGHT alignment x positions.
+    label_w, _ = html_label_size(ast)
+
+    if bottom_above_y is not None:
+        # Position label so its visual bottom = ``bottom_above_y - MARGIN``.
+        # Derive cy so the existing ``cy - total_h/2`` top anchor
+        # gives that bottom.
+        cy = bottom_above_y - _EDGE_LABEL_MARGIN - total_h / 2
+
     first_runs = next((l.runs for l in ast.lines if l.runs), None)
     first_font = first_runs[0].font_size if first_runs else default_size
     first_baseline_y = cy - total_h / 2 + first_font * 0.85
@@ -95,17 +119,32 @@ def _render_html_text(cx: float, cy: float, raw_label: str,
     for i, line in enumerate(ast.lines):
         if not line.runs:
             continue
-        # Per-line anchor override (LEFT/RIGHT in a <BR ALIGN=…>).
-        # Default SVG text-anchor already applies unless overridden.
+        # Per-line anchor + x based on line.align.  ``<BR ALIGN=…/>``
+        # sets this on the line following the break; the first line
+        # inherits the label's default alignment (middle).
+        line_align = (line.align or "center").lower()
+        if line_align == "left":
+            line_x = cx - label_w / 2
+            line_anchor_attr = 'text-anchor="start"'
+        elif line_align == "right":
+            line_x = cx + label_w / 2
+            line_anchor_attr = 'text-anchor="end"'
+        else:
+            line_x = cx
+            # Inherit middle from root — no attribute needed.
+            line_anchor_attr = ""
+
         for j, run in enumerate(line.runs):
             tattrs: list[str] = []
             if j == 0:
-                tattrs.append(f'x="{cx:.2f}"')
+                tattrs.append(f'x="{line_x:.2f}"')
                 if not emitted_first_line:
                     tattrs.append(f'y="{first_baseline_y:.2f}"')
                     emitted_first_line = True
                 else:
                     tattrs.append(f'dy="{line_heights[i]:.2f}"')
+                if line_anchor_attr:
+                    tattrs.append(line_anchor_attr)
             if run.font_size != default_size:
                 tattrs.append(f'font-size="{run.font_size}"')
             if run.color and run.color != default_color:
@@ -912,18 +951,30 @@ def _render_edge(edge: dict, directed: bool) -> str:
 
         from gvpy.grammar.html_label import is_html_label as _is_html
         if _is_html(label):
+            # Edge labels float above the edge line: bottom sits
+            # ``_EDGE_LABEL_MARGIN`` points above ``label_pos[1]``
+            # (the edge crossing).  See :func:`_render_html_text`.
             label_svg = _render_html_text(
                 label_pos[0], label_pos[1], label,
                 default_face=font_family,
                 default_size=font_size,
                 default_color=font_color,
                 anchor="middle",
+                bottom_above_y=label_pos[1],
             )
             # html_text path doesn't carry a <title> tooltip — for now
             # the tooltip is only applied to plain labels.
         else:
+            # Plain text edge label: shift baseline so the visual
+            # bottom (baseline + descent ≈ 0.25·F) sits
+            # ``_EDGE_LABEL_MARGIN`` above the edge line.
+            try:
+                _fs = float(font_size)
+            except (ValueError, TypeError):
+                _fs = _DEF_FONT_SIZE
+            _baseline_y = label_pos[1] - _EDGE_LABEL_MARGIN - _fs * 0.25
             label_svg = (
-                f'<text x="{label_pos[0]:.2f}" y="{label_pos[1]:.2f}" '
+                f'<text x="{label_pos[0]:.2f}" y="{_baseline_y:.2f}" '
                 f'text-anchor="middle" font-family="{font_family}" '
                 f'font-size="{font_size}" fill="{font_color}">'
             )
