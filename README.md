@@ -1098,7 +1098,9 @@ GraphvizPy/
 │   │   ├── json_io.py            #   Graphviz JSON/JSON0 read/write
 │   │   └── gxl_io.py             #   GXL (XML) read/write
 │   │
-│   └── tools/                    # Graph utilities (analysis, transforms, generation)
+│   └── filters/                  # Graphviz-style filters (analysis, transforms, generation)
+│       ├── __init__.py           #   Registry of filter entry points
+│       ├── README.md             #   Filter usage + invocation examples
 │       ├── acyclic.py            #   Break cycles
 │       ├── tred.py               #   Transitive reduction
 │       ├── unflatten.py          #   Improve aspect ratio
@@ -1134,14 +1136,27 @@ GraphvizPy/
 │   ├── test_twopi_layout.py      #   Twopi layout
 │   ├── test_osage_layout.py      #   Osage layout
 │   ├── test_patchwork_layout.py  #   Patchwork layout
+│   ├── test_ortho_*.py           #   Ortho router port (rawgraph/sgraph/
+│   │                             #   trapezoid/partition/maze/cluster_avoid)
 │   ├── test_mingle.py            #   Mingle bundling
 │   ├── test_sim_skeleton.py      #   Sim engines smoke tests
 │   └── test_all_files.py         #   Bulk file validation
 │
-├── tools/
-│   └── run_all_dots.py           # Bulk-test all test_data/*.dot files
-│                                 # through Python + C dot.exe, writes
-│                                 # side-by-side results to test_run.md
+└── porting_scripts/              # C-port comparison + extraction tooling
+    ├── run_all_dots.py           #   Bulk test_data/*.dot Python vs dot.exe
+    ├── visual_audit.py           #   Corpus-wide crossings audit (→ audit_report.md)
+    ├── count_cluster_crossings.py#   Per-graph cluster-crossing counter
+    ├── diff_phases.py            #   Side-by-side [TRACE] phase diff driver
+    ├── compare_positions.py      #   Node-position diff Python vs C
+    ├── compare_expand.py         #   Cluster-expand structure diff
+    ├── audit_c_refs.py           #   Verify every ``See: /lib/...`` reference
+    ├── extract_rank.py           #   Pull rank-phase trace sections
+    ├── extract_mincross.py       #   Pull mincross sections
+    ├── extract_phase3.py         #   Pull position-phase sections
+    ├── extract_splines.py        #   Pull spline-phase sections
+    ├── extract_cluster_init.py   #   Pull cluster-init sections
+    ├── partition_harness/        #   Ortho partition C harness + fixtures
+    └── trapezoid_harness/        #   Ortho trapezoidation C harness + fixtures
 ```
 
 ## Interactive Wizard
@@ -1256,10 +1271,10 @@ timeline):
 | Core API | 100+ | All pass |
 | Format I/O (DOT/JSON/GXL) | 71 | All pass |
 | Sim engines (event + CBD smoke tests) | 9 | All pass |
-| Bulk DOT file run (`tools/run_all_dots.py`) | 199 files | 175 OK, 4 FAIL, 16 TIMEOUT, 4 SLOW |
+| Bulk DOT file run (`porting_scripts/run_all_dots.py`) | 199 files | 175 OK, 4 FAIL, 16 TIMEOUT, 4 SLOW |
 | **Total (unit tests)** | **285** | **All pass** |
 
-**Phase 4 module coverage** (after `tools/run_all_dots.py` + targeted
+**Phase 4 module coverage** (after `porting_scripts/run_all_dots.py` + targeted
 unit tests): `pathplan/route.py` 94%, `pathplan/shortest.py` 96%,
 `pathplan/solvers.py` 97%, `clip.py` 95%, `routespl.py` 90%,
 `regular_edge.py` 82%, `self_edge.py` 98%, `straight_edge.py` 84%,
