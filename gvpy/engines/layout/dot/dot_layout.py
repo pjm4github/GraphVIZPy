@@ -925,10 +925,16 @@ class DotGraphInfo(LayoutEngine):
         # ``gv_nodesize(n, GD_flip(g))`` in ``lib/dotgen/dotinit.c @ 49``.
         # ``_apply_rankdir`` swaps positions AND (w, h) back at the end
         # of phase 3, restoring the user's original dimensions in the
-        # LR-final output.  ``_record_size`` already pre-swaps record
-        # dimensions; this covers every other shape (box, ellipse,
-        # hexagon, octagon, diamond, …).
-        if self.rankdir in ("LR", "RL"):
+        # LR-final output.
+        #
+        # Records (``_record_size``) already pre-swap internally — do
+        # not swap again here or we'd double-flip and end up in the
+        # LR-rendered frame instead of the TB-internal frame the rest
+        # of the pipeline expects.  Regression observed on aa1332.dot
+        # (all Mrecord nodes, rankdir=LR): without this guard, c0 came
+        # out as w=54 h=81 instead of C's w=76 h=50 — dimensions
+        # effectively reversed.
+        if self.rankdir in ("LR", "RL") and shape not in ("record", "Mrecord"):
             w, h = h, w
         return w, h
 
