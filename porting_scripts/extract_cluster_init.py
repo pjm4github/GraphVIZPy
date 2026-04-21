@@ -1,12 +1,12 @@
 """One-shot script: extract cluster.py and dotinit.py methods from
 dot_layout.py.
 
-Same transformation rules as tools/extract_rank.py (which has the
+Same transformation rules as filters/extract_rank.py (which has the
 string-aware self->layout substitution).  This version handles two
 target modules and two method lists in a single run.
 
 Usage:
-    .venv/Scripts/python.exe tools/extract_cluster_init.py
+    .venv/Scripts/python.exe filters/extract_cluster_init.py
 """
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ def is_already_wrapper(lines: list[str], start: int, end: int,
 def _apply_self_to_layout(line: str) -> str:
     """Walk the line in segments and apply self->layout only outside
     string literals and comments.  Same logic as
-    tools/extract_rank.py."""
+    filters/extract_rank.py."""
     result: list[str] = []
     i = 0
     n = len(line)

@@ -32,7 +32,7 @@ By default, gc prints nodes and edges.
 If no files are specified, stdin is used
 """
 from gvpy.grammar.gv_reader import read_gv, read_gv_file
-from gvpy.tools.ccomps import connected_components
+from gvpy.filters.ccomps import connected_components
 
 
 def graph_stats(graph, recurse=False) -> dict:

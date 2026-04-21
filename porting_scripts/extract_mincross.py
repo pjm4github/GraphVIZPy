@@ -7,7 +7,7 @@ Improved over ``extract_phase3.py``:
     works without the script parsing arg names
 
 Usage:
-    .venv/Scripts/python.exe tools/extract_mincross.py
+    .venv/Scripts/python.exe filters/extract_mincross.py
 """
 from __future__ import annotations
 

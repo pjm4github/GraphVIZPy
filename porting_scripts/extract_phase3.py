@@ -20,7 +20,7 @@ Idempotent check: if the method in dot_layout.py is already a 3-line
 wrapper, skip it.
 
 Usage:
-    .venv/Scripts/python.exe tools/extract_phase3.py
+    .venv/Scripts/python.exe filters/extract_phase3.py
 """
 from __future__ import annotations
 
@@ -127,7 +127,7 @@ def make_wrapper(method_name: str, signature_line: str) -> list[str]:
     """Build a 3-line delegating wrapper for a method.
 
     Preserves the original signature (including return type hint) so
-    IDE tools still show the correct interface.
+    IDE filters still show the correct interface.
     """
     func_name = method_name.lstrip("_")
     indent = "        "  # 8 spaces = inside class method body

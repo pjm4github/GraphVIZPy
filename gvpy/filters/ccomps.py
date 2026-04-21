@@ -1,4 +1,4 @@
-"""ccomps — connected components filter.
+"""ccomps — connected components filters.
 
 Usage: gvtools.py ccomps [-sxvz] [-o template] [files]
   -s          silent (no output)

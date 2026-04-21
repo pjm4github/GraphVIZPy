@@ -1,4 +1,4 @@
-"""tred — transitive reduction filter for directed graphs.
+"""tred — transitive reduction filters for directed graphs.
 
 Usage: gvtools.py tred [-vr] [-o outfile] [files]
   -o FILE  redirect output to FILE (default: stdout)

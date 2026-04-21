@@ -3,9 +3,9 @@
 Originally built for a channel-routing A/B metric; the standalone
 channel router was removed in commit B4 (its cluster-aware pieces are
 now part of ``make_regular_edge``'s ``maximal_bbox`` path).  Still used
-by ``tools/visual_audit.py`` as the Python-side crossing counter.  Run:
+by ``filters/visual_audit.py`` as the Python-side crossing counter.  Run:
 
-    python tools/count_cluster_crossings.py test_data/aa1332.dot
+    python filters/count_cluster_crossings.py test_data/aa1332.dot
 
 Exit status is always 0; results printed to stdout.
 """
@@ -79,7 +79,7 @@ def count_crossings(dot_path: str, use_channel: bool = False):
     effect — the standalone channel router was removed (its cluster
     clipping is in ``make_regular_edge``'s ``maximal_bbox`` now).
     Kept as a keyword for callers that still pass it, e.g.
-    ``tools/visual_audit.py``.
+    ``filters/visual_audit.py``.
     """
     del use_channel  # obsolete; retained for API back-compat
     graph = read_dot_file(dot_path)

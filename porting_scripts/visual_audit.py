@@ -11,9 +11,9 @@ For each ``.dot`` file the script:
 
 Usage::
 
-    PYTHONPATH=. .venv/Scripts/python.exe tools/visual_audit.py
-    PYTHONPATH=. .venv/Scripts/python.exe tools/visual_audit.py --limit 20
-    PYTHONPATH=. .venv/Scripts/python.exe tools/visual_audit.py \\
+    PYTHONPATH=. .venv/Scripts/python.exe filters/visual_audit.py
+    PYTHONPATH=. .venv/Scripts/python.exe filters/visual_audit.py --limit 20
+    PYTHONPATH=. .venv/Scripts/python.exe filters/visual_audit.py \\
         --files test_data/1332.dot test_data/aa1332.dot
 
 Writes ``audit_report.md`` in repo root by default.
@@ -212,7 +212,7 @@ def _python_audit_worker(dot_path_str: str, out: dict) -> None:
     try:
         from gvpy.engines.layout.dot.dot_layout import DotGraphInfo
         from gvpy.grammar.gv_reader import read_dot_file
-        sys.path.insert(0, str(REPO_ROOT / "tools"))
+        sys.path.insert(0, str(REPO_ROOT / "filters"))
         from count_cluster_crossings import count_crossings  # noqa: E402
 
         graph = read_dot_file(dot_path_str)

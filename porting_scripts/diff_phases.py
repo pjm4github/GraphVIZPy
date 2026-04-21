@@ -10,20 +10,20 @@ exit 1 on any drift.
 Usage
 -----
 
-    python tools/diff_phases.py <dotfile> <channel> [--tolerance N]
+    python filters/diff_phases.py <dotfile> <channel> [--tolerance N]
                                 [--full-diff] [--show-only-in-c]
                                 [--show-only-in-py]
 
-    python tools/diff_phases.py test_data/1444.dot rank
-    python tools/diff_phases.py test_data/2734.dot position --tolerance 0.5
-    python tools/diff_phases.py test_data/1453.dot spline_path --full-diff
+    python filters/diff_phases.py test_data/1444.dot rank
+    python filters/diff_phases.py test_data/2734.dot position --tolerance 0.5
+    python filters/diff_phases.py test_data/1453.dot spline_path --full-diff
 
 Channels
 --------
 
 The ``<channel>`` argument is passed verbatim as ``GV_TRACE=<channel>`` to
 both engines.  Comma lists are supported exactly as with the environment
-variable; the filter then extracts only lines matching the *first* channel
+variable; the filters then extracts only lines matching the *first* channel
 (so ``rank,order`` runs both phases but diffs ``rank`` only — for order
 diffs, run a second time with ``order,rank``).
 

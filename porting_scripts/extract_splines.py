@@ -1,11 +1,11 @@
 """One-shot script: extract the Phase 4 (spline routing)
 methods from dot_layout.py into dotsplines.py as free functions.
 
-Same transformation rules as tools/extract_mincross.py.  See that
+Same transformation rules as filters/extract_mincross.py.  See that
 script's docstring for full details.
 
 Usage:
-    .venv/Scripts/python.exe tools/extract_splines.py
+    .venv/Scripts/python.exe filters/extract_splines.py
 """
 from __future__ import annotations
 

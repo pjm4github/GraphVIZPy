@@ -9,7 +9,7 @@ If no files are specified, stdin is used
 """
 from gvpy.grammar.gv_reader import read_gv, read_gv_file
 from gvpy.grammar.gv_writer import write_gv
-from gvpy.tools.ccomps import connected_components
+from gvpy.filters.ccomps import connected_components
 
 _COLORS = [
     "red", "blue", "green", "orange", "purple", "brown",

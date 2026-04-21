@@ -1,4 +1,4 @@
-"""bcomps — biconnected components filter.
+"""bcomps — biconnected components filters.
 
 Usage: gvtools.py bcomps [-stvx] [-o template] [files]
   -o template  output file template

@@ -1,11 +1,11 @@
 """One-shot script: extract the Phase 1 (rank assignment) methods
 from dot_layout.py into rank.py as free functions.
 
-Same transformation rules as tools/extract_mincross.py and
-tools/extract_splines.py.  See those scripts for details.
+Same transformation rules as filters/extract_mincross.py and
+filters/extract_splines.py.  See those porting_scripts for details.
 
 Usage:
-    .venv/Scripts/python.exe tools/extract_rank.py
+    .venv/Scripts/python.exe filters/extract_rank.py
 """
 from __future__ import annotations
 

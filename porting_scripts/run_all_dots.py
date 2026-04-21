@@ -1,7 +1,7 @@
 """Run DOT files through the Python layout engine and/or C dot.exe.
 
 Usage:
-    PYTHONPATH=. .venv/Scripts/python.exe tools/run_all_dots.py
+    PYTHONPATH=. .venv/Scripts/python.exe filters/run_all_dots.py
 
 Writes a markdown table to ``test_run.md`` with 9 columns:
 

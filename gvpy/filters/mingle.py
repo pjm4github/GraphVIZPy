@@ -31,7 +31,7 @@ Command-line usage::
 
 API usage::
 
-    from gvpy.tools.mingle import MingleBundler
+    from gvpy.filters.mingle import MingleBundler
     bundled = MingleBundler.bundle_result(layout_result)
     # or
     bundler = MingleBundler(graph)
