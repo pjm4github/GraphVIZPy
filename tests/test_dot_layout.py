@@ -1119,11 +1119,21 @@ class TestLabelSizing:
         nb = node_by_name(r, "b")
         assert na["height"] > nb["height"]
 
-    def test_explicit_width_overrides_label(self):
-        """Explicit width attribute overrides label-based sizing."""
+    def test_explicit_width_is_minimum_not_override(self):
+        """Explicit width is a MINIMUM — labels wider than it grow the node.
+
+        Matches C's shapes.c: poly_init @ ``sz.x = MAX(sz.x, INCH2PS(ND_width))``.
+        Use ``fixedsize=true`` to force exact user dimensions.
+        """
+        # Long label with small explicit width: node grows past the width.
         r = layout_dot('digraph G { a [label="Very long label", width="0.5", height="0.5"]; }')
         na = node_by_name(r, "a")
-        assert na["width"] == pytest.approx(36.0, abs=0.1)
+        assert na["width"] > 36.0, "label should be allowed to grow the node"
+
+        # fixedsize=true: user dimensions override label (exactly C's N_fixed).
+        r2 = layout_dot('digraph G { a [label="Very long label", width="0.5", height="0.5", fixedsize=true]; }')
+        na2 = node_by_name(r2, "a")
+        assert na2["width"] == pytest.approx(36.0, abs=0.1)
 
     def test_minimum_size_enforced(self):
         """Even with a tiny label, nodes have a minimum size."""

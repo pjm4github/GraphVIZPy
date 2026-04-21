@@ -752,17 +752,13 @@ class DotGraphInfo(LayoutEngine):
         fixedsize = attrs.get("fixedsize", "false").lower() in ("true", "1", "yes", "shape")
         explicit_w = attrs.get("width")
         explicit_h = attrs.get("height")
-        # fixedsize=true: use explicit dimensions exactly, ignore label
+        # fixedsize=true: use explicit dimensions exactly, ignore label.
+        # This is the only path that treats width/height as a hard cap;
+        # C's lib/common/shapes.c: poly_init @ 2034 does the same
+        # (``N_fixed`` → ``lw = rw = w/2; ht = h``, no label grow).
         if fixedsize:
             w = float(explicit_w) * 72.0 if explicit_w else self._MIN_WIDTH
             h = float(explicit_h) * 72.0 if explicit_h else self._MIN_HEIGHT
-            if self.rankdir in ("LR", "RL"):
-                w, h = h, w
-            return w, h
-        # Both explicit: use as-is (acts as minimum that label can expand)
-        if explicit_w and explicit_h:
-            w = float(explicit_w) * 72.0
-            h = float(explicit_h) * 72.0
             if self.rankdir in ("LR", "RL"):
                 w, h = h, w
             return w, h
@@ -794,11 +790,19 @@ class DotGraphInfo(LayoutEngine):
             w = text_w + self._H_PAD
             h = text_h + self._V_PAD
 
-        # Apply explicit overrides if only one dimension is set
+        # Explicit width/height act as MINIMUMS — the node grows to fit
+        # the label when the label is bigger.  Matches C's
+        # shapes.c: poly_init @ ``sz.x = MAX(sz.x, INCH2PS(ND_width))``
+        # behavior for non-fixedsize shapes.  Previously Python treated
+        # these as hard overrides, which capped long-label nodes at the
+        # ``node [width=2]`` default (144 pt) even when the label
+        # needed 300+ pt — visible on 2620.dot where 94 scheduler
+        # nodes with ~30-char labels were forced to 144 pt each,
+        # collapsing the rank-direction spacing.
         if explicit_w:
-            w = float(explicit_w) * 72.0
+            w = max(w, float(explicit_w) * 72.0)
         if explicit_h:
-            h = float(explicit_h) * 72.0
+            h = max(h, float(explicit_h) * 72.0)
 
         # Pre-swap node dimensions for LR/RL so the TB-internal layout
         # pipeline sees the user's height as the cross-rank (x) extent
