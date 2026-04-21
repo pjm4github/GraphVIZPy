@@ -756,10 +756,16 @@ class DotGraphInfo(LayoutEngine):
         if fixedsize:
             w = float(explicit_w) * 72.0 if explicit_w else self._MIN_WIDTH
             h = float(explicit_h) * 72.0 if explicit_h else self._MIN_HEIGHT
+            if self.rankdir in ("LR", "RL"):
+                w, h = h, w
             return w, h
         # Both explicit: use as-is (acts as minimum that label can expand)
         if explicit_w and explicit_h:
-            return float(explicit_w) * 72.0, float(explicit_h) * 72.0
+            w = float(explicit_w) * 72.0
+            h = float(explicit_h) * 72.0
+            if self.rankdir in ("LR", "RL"):
+                w, h = h, w
+            return w, h
 
         shape = attrs.get("shape", "ellipse")
         label = attrs.get("label", name)
@@ -794,19 +800,24 @@ class DotGraphInfo(LayoutEngine):
         if explicit_h:
             h = float(explicit_h) * 72.0
 
-        # Default-size clamp.  In TB-internal coordinates the cross-rank
-        # axis is X (ln.width) and the rank axis is Y (ln.height).  For
-        # LR/RL the role of width vs height swaps in the LR-final frame
-        # — and ``_record_size`` already pre-swaps record dimensions to
-        # TB-internal — so the per-axis MIN constants must also be
-        # swapped here so we don't undo the LR pre-swap by clamping the
-        # cross-rank extent up to the rank-axis default of 54pt.
+        # Pre-swap node dimensions for LR/RL so the TB-internal layout
+        # pipeline sees the user's height as the cross-rank (x) extent
+        # and the user's width as the rank (y) extent — matches C's
+        # ``gv_nodesize(n, GD_flip(g))`` in ``lib/dotgen/dotinit.c @ 49``.
+        # ``_apply_rankdir`` swaps positions AND (w, h) back at the end
+        # of phase 3, restoring the user's original dimensions in the
+        # LR-final output.  ``_record_size`` already pre-swaps record
+        # dimensions; this covers every other shape (box, ellipse,
+        # hexagon, octagon, diamond, …).  Pre-2026-04-21 Python stored
+        # regular-node dimensions unflipped and ``apply_rankdir`` then
+        # swapped them, producing LR output with w/h inverted from
+        # user intent — on 2620.dot this turned a 2 × 1 in box into a
+        # 1 × 2 in rendered box and gave the graph a 1 : 12.8 aspect
+        # instead of C's 1 : 1.7.
         if self.rankdir in ("LR", "RL"):
-            w = max(w, self._MIN_HEIGHT)
-            h = max(h, self._MIN_WIDTH)
-        else:
-            w = max(w, self._MIN_WIDTH)
-            h = max(h, self._MIN_HEIGHT)
+            w, h = h, w
+        w = max(w, self._MIN_WIDTH)
+        h = max(h, self._MIN_HEIGHT)
         return w, h
 
     def _record_size(self, label: str, fontsize: float, char_w: float) -> tuple[float, float]:
