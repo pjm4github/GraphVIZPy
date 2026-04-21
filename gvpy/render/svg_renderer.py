@@ -49,14 +49,196 @@ _STYLE_DASH = {
 _EDGE_LABEL_MARGIN = 3.0
 
 
+def _render_html_table(tbl, origin_x: float, origin_y: float,
+                       default_face: str, default_size: float,
+                       default_color: str | None) -> str:
+    """Render a parsed :class:`HtmlTable` as SVG.
+
+    ``origin_x``, ``origin_y`` are the top-left corner of the outer
+    border in absolute SVG coordinates.  The table's cells are already
+    placed at (cell.x, cell.y) relative to that origin by
+    :func:`html_label.size_html_table`.
+
+    Output order:
+
+    1. Outer ``<rect>`` for the table bgcolor + outermost border.
+    2. For each cell: a ``<rect>`` for the cell background / cell
+       border (when CELLBORDER / per-cell BORDER > 0).
+    3. For each cell: its text runs via :func:`_render_cell_paragraph`,
+       OR a recursively-rendered nested table.
+    """
+    parts: list[str] = []
+
+    # Outer frame: fill + border.
+    tw, th = tbl.width, tbl.height
+    fill = tbl.bgcolor or "none"
+    stroke = tbl.color or "black"
+    if tbl.border > 0 or tbl.bgcolor:
+        sw = f' stroke-width="{tbl.border}"' if tbl.border > 0 else ' stroke-width="0"'
+        stroke_attr = f' stroke="{stroke}"' if tbl.border > 0 else ' stroke="none"'
+        parts.append(
+            f'<rect x="{origin_x:.2f}" y="{origin_y:.2f}" '
+            f'width="{tw:.2f}" height="{th:.2f}" '
+            f'fill="{fill}"{stroke_attr}{sw}/>'
+        )
+
+    # Cells.
+    for row in tbl.rows:
+        for cell in row.cells:
+            cx0 = origin_x + cell.x
+            cy0 = origin_y + cell.y
+            # Cell fill + border.  Per-cell border override falls back
+            # to the table's CELLBORDER.
+            cb = cell.border if cell.border is not None else tbl.cellborder
+            c_fill = cell.bgcolor or "none"
+            c_stroke = cell.color or tbl.color or "black"
+            if cb > 0 or cell.bgcolor:
+                sw = (f' stroke-width="{cb}"' if cb > 0
+                      else ' stroke-width="0"')
+                sa = (f' stroke="{c_stroke}"' if cb > 0
+                      else ' stroke="none"')
+                parts.append(
+                    f'<rect x="{cx0:.2f}" y="{cy0:.2f}" '
+                    f'width="{cell.width:.2f}" height="{cell.height:.2f}" '
+                    f'fill="{c_fill}"{sa}{sw}/>'
+                )
+
+            # Cell content.
+            if cell.nested is not None:
+                # Nested tables: centre in the cell's inner area.
+                pad = (cell.cellpadding if cell.cellpadding is not None
+                       else tbl.cellpadding)
+                inner_x = cx0 + pad + (cell.width - 2 * pad - cell.nested.width) / 2
+                inner_y = cy0 + pad + (cell.height - 2 * pad - cell.nested.height) / 2
+                parts.append(_render_html_table(
+                    cell.nested, inner_x, inner_y,
+                    default_face=default_face,
+                    default_size=default_size,
+                    default_color=default_color,
+                ))
+            elif cell.lines:
+                pad = (cell.cellpadding if cell.cellpadding is not None
+                       else tbl.cellpadding)
+                parts.append(_render_cell_paragraph(
+                    cell, cx0, cy0, pad,
+                    default_face=default_face,
+                    default_size=default_size,
+                    default_color=default_color,
+                ))
+    return "".join(parts)
+
+
+def _render_cell_paragraph(cell, cx0: float, cy0: float, pad: float,
+                            default_face: str, default_size: float,
+                            default_color: str | None) -> str:
+    """Render the text content of one :class:`TableCell` as a single
+    ``<text>`` + ``<tspan>`` chain.  Horizontal placement follows the
+    cell's ``align`` (left / center / right); vertical placement follows
+    ``valign`` (top / middle / bottom)."""
+    from gvpy.grammar.html_label import _paragraph_size
+
+    content_w, content_h = _paragraph_size(cell.lines, 1.2)
+
+    # X position based on cell.align.
+    if cell.align == "left":
+        line_x = cx0 + pad
+        line_anchor = 'text-anchor="start"'
+    elif cell.align == "right":
+        line_x = cx0 + cell.width - pad
+        line_anchor = 'text-anchor="end"'
+    else:
+        line_x = cx0 + cell.width / 2.0
+        line_anchor = 'text-anchor="middle"'
+
+    # Line heights for dy offsets.
+    line_heights: list[float] = []
+    for line in cell.lines:
+        if not line.runs:
+            line_heights.append(default_size * 1.2)
+        else:
+            line_heights.append(max(r.font_size for r in line.runs) * 1.2)
+
+    # Vertical placement — first baseline.
+    if cell.valign == "top":
+        first_font = (cell.lines[0].runs[0].font_size
+                      if cell.lines[0].runs else default_size)
+        first_baseline_y = cy0 + pad + first_font * 0.85
+    elif cell.valign == "bottom":
+        last_runs = next((l.runs for l in reversed(cell.lines) if l.runs), None)
+        last_font = (max(r.font_size for r in last_runs)
+                     if last_runs else default_size)
+        last_descent = last_font * 0.2
+        last_baseline_y = cy0 + cell.height - pad - last_descent
+        first_baseline_y = last_baseline_y - sum(line_heights[1:])
+    else:  # middle
+        first_font = (cell.lines[0].runs[0].font_size
+                      if cell.lines[0].runs else default_size)
+        first_baseline_y = (cy0 + (cell.height - content_h) / 2
+                            + first_font * 0.85)
+
+    root = [
+        f'<text {line_anchor}',
+        f' font-family="{default_face}"',
+        f' font-size="{default_size}"',
+    ]
+    if default_color:
+        root.append(f' fill="{default_color}"')
+    root.append(">")
+    out: list[str] = [" ".join([x for x in ["".join(root)] if x])]
+
+    emitted_first = False
+    for i, line in enumerate(cell.lines):
+        if not line.runs:
+            continue
+        for j, run in enumerate(line.runs):
+            tattrs: list[str] = []
+            if j == 0:
+                tattrs.append(f'x="{line_x:.2f}"')
+                if not emitted_first:
+                    tattrs.append(f'y="{first_baseline_y:.2f}"')
+                    emitted_first = True
+                else:
+                    tattrs.append(f'dy="{line_heights[i]:.2f}"')
+            if run.font_size != default_size:
+                tattrs.append(f'font-size="{run.font_size}"')
+            if run.color and run.color != default_color:
+                tattrs.append(f'fill="{run.color}"')
+            if run.face and run.face != default_face:
+                tattrs.append(f'font-family="{run.face}"')
+            if run.bold:
+                tattrs.append('font-weight="bold"')
+            if run.italic:
+                tattrs.append('font-style="italic"')
+            if run.underline:
+                tattrs.append('text-decoration="underline"')
+            elif run.strike:
+                tattrs.append('text-decoration="line-through"')
+            if run.sub:
+                tattrs.append('baseline-shift="sub"')
+            elif run.sup:
+                tattrs.append('baseline-shift="super"')
+            text = escape(run.text)
+            out.append(
+                f'<tspan {" ".join(tattrs)}>{text}</tspan>'
+                if tattrs else f'<tspan>{text}</tspan>'
+            )
+    out.append("</text>")
+    return "".join(out)
+
+
 def _render_html_text(cx: float, cy: float, raw_label: str,
                       default_face: str, default_size: float,
                       default_color: str | None,
                       anchor: str = "middle",
                       italic: bool = False,
                       bottom_above_y: float | None = None) -> str:
-    """Render a Graphviz HTML-like label as an SVG ``<text>`` element
-    with per-run ``<tspan>`` children.
+    """Render a Graphviz HTML-like label as SVG.
+
+    Parses the label; if the label body is a ``<TABLE>`` the output is
+    a group of ``<rect>`` + ``<text>`` elements laid out as a grid
+    (see :func:`_render_html_table`).  Otherwise it's a single
+    ``<text>`` with per-run ``<tspan>`` children (see the branch
+    below).
 
     Position modes:
 
@@ -80,6 +262,25 @@ def _render_html_text(cx: float, cy: float, raw_label: str,
         default_color=default_color,
         default_face=default_face,
     )
+
+    # Table-labeled path: dispatch to the grid renderer.
+    if ast.table is not None:
+        # Compute table size + cell placements (fills cell.x/.y/.w/.h).
+        from gvpy.grammar.html_label import size_html_table
+        size_html_table(ast.table)
+        tw, th = ast.table.width, ast.table.height
+        if bottom_above_y is not None:
+            origin_x = cx - tw / 2.0
+            origin_y = bottom_above_y - _EDGE_LABEL_MARGIN - th
+        else:
+            origin_x = cx - tw / 2.0
+            origin_y = cy - th / 2.0
+        return _render_html_table(
+            ast.table, origin_x, origin_y,
+            default_face=default_face,
+            default_size=default_size,
+            default_color=default_color,
+        )
 
     # Per-line height = max(run.font_size) × 1.2; empty lines
     # (``<BR/><BR/>``) still contribute the default line height.

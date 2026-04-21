@@ -82,13 +82,91 @@ class HtmlLine:
     align: str = "center"  # "left" | "center" | "right"
 
 
+# ── Tables (Phase 4) ────────────────────────────────────────────────
+
+
+@dataclass
+class TableCell:
+    """One ``<TD>…</TD>`` cell.
+
+    A cell's content is either a list of text lines (``lines``) OR a
+    nested :class:`HtmlTable` (``nested``).  Mixing text + nested
+    tables in one cell is not yet supported; nested tables parse
+    correctly but any sibling text is ignored.
+
+    Attributes mirror the Graphviz TD-attribute set most graphs use.
+    Sizing and placement fill in the ``width``/``height``/``x``/``y``
+    fields during :func:`html_label_size`.
+    """
+    lines: list[HtmlLine] = field(default_factory=list)
+    nested: "Optional[HtmlTable]" = None
+    align: str = "center"      # ALIGN: left | center | right
+    valign: str = "middle"     # VALIGN: top | middle | bottom
+    bgcolor: Optional[str] = None
+    color: Optional[str] = None  # cell border color override
+    border: Optional[int] = None  # overrides table CELLBORDER
+    cellpadding: Optional[int] = None
+    cellspacing: Optional[int] = None
+    colspan: int = 1   # not yet honoured in layout; parsed for forward-compat
+    rowspan: int = 1
+    href: Optional[str] = None
+    # Computed during sizing:
+    width: float = 0.0
+    height: float = 0.0
+    # Computed during placement (absolute within the table's coord frame):
+    x: float = 0.0
+    y: float = 0.0
+
+
+@dataclass
+class TableRow:
+    cells: list[TableCell] = field(default_factory=list)
+    height: float = 0.0   # computed: max cell height
+
+
+@dataclass
+class HtmlTable:
+    """A ``<TABLE>`` element.
+
+    Layout: cells arranged in a grid.  Column widths = max cell width
+    per column.  Row heights = max cell height per row.  Total table
+    size = Σ col / Σ row + (N+1) × cellspacing where N is the count
+    on that axis.  COLSPAN / ROWSPAN are parsed onto the cell but
+    not yet applied in layout (Phase 4 follow-up).
+    """
+    rows: list[TableRow] = field(default_factory=list)
+    border: int = 1
+    cellborder: int = 0
+    cellpadding: int = 2
+    cellspacing: int = 2
+    bgcolor: Optional[str] = None
+    color: Optional[str] = None  # border color
+    align: str = "center"
+    valign: str = "middle"
+    href: Optional[str] = None
+    # Computed during sizing:
+    col_widths: list[float] = field(default_factory=list)
+    row_heights: list[float] = field(default_factory=list)
+    width: float = 0.0
+    height: float = 0.0
+
+
 @dataclass
 class HtmlLabel:
-    """Root of a parsed HTML-like label."""
+    """Root of a parsed HTML-like label.
+
+    Either ``table`` is set (the label is a table) or ``lines`` is
+    used (the label is a paragraph of runs).  ``table`` takes
+    precedence during sizing / rendering when both happen to be
+    non-empty.
+    """
     lines: list[HtmlLine] = field(default_factory=list)
+    table: Optional[HtmlTable] = None
 
     @property
     def is_empty(self) -> bool:
+        if self.table is not None and self.table.rows:
+            return False
         return all(not line.runs for line in self.lines)
 
 
@@ -147,14 +225,33 @@ def parse_html_label(
     return builder.label
 
 
+def _int_attr(val: str, default: int) -> int:
+    """Parse an integer-valued HTML attribute, swallowing junk."""
+    if val is None or val == "":
+        return default
+    try:
+        return int(float(val))
+    except (ValueError, TypeError):
+        return default
+
+
 class _LabelBuilder(HTMLParser):
     """HTMLParser subclass that builds an :class:`HtmlLabel` on the fly.
 
-    Maintains a style stack — pushed on every supported open tag,
-    popped on the matching close tag.  ``<BR/>`` flushes the current
-    line and starts a fresh one.  Inside ``<TABLE>``/``<TR>``/``<TD>``
-    the parser buffers a single placeholder run so the label renders
-    with legible text even though real table layout isn't done yet.
+    Maintains two stacks:
+
+    - ``_style_stack`` — cumulative text style for any run emitted at
+      the current point (pushed by ``<FONT>`` / ``<B>`` / etc.,
+      popped by the matching close tag).
+    - ``_container_stack`` — the current "text sink" where incoming
+      runs + line breaks land.  Normally this is the label's
+      ``lines`` list.  Inside a ``<TD>`` it becomes the cell's own
+      ``lines``.  Inside ``<TABLE>`` / ``<TR>`` but outside any
+      ``<TD>`` there is no active sink — stray text is ignored
+      (matches Graphviz's whitespace-between-tags behaviour).
+
+    Supports one level of nested ``<TABLE>`` inside a ``<TD>``; a
+    cell's nested table is stored on ``TableCell.nested``.
     """
 
     def __init__(self, default_font_size: float,
@@ -166,7 +263,7 @@ class _LabelBuilder(HTMLParser):
         self._current_line = HtmlLine()
         self.label.lines.append(self._current_line)
         # Style stack — last entry is the active style.
-        self._stack: list[dict] = [{
+        self._style_stack: list[dict] = [{
             "font_size": default_font_size,
             "color": default_color,
             "face": default_face,
@@ -177,36 +274,132 @@ class _LabelBuilder(HTMLParser):
             "sub": False,
             "sup": False,
         }]
-        self._in_table = 0
-        self._table_placeholder_emitted = False
+        # Container stack: each entry is a dict describing where the
+        # parser is currently writing:
+        #   {"kind": "label"|"table"|"tr"|"td", "obj": …}
+        # "label" has ``lines`` attr; "td" has ``lines`` attr.  "table"
+        # and "tr" are just navigational waypoints — text while in
+        # them but outside a TD is discarded.
+        self._container_stack: list[dict] = [
+            {"kind": "label", "obj": self.label}
+        ]
+
+    # ── Helpers ─────────────────────────────────────────────────────
 
     def _style(self) -> dict:
-        return self._stack[-1]
+        return self._style_stack[-1]
+
+    def _active_td(self) -> Optional[TableCell]:
+        """Return the innermost open TD, or None if we aren't in one."""
+        for frame in reversed(self._container_stack):
+            if frame["kind"] == "td":
+                return frame["obj"]
+        return None
+
+    def _active_tr(self) -> Optional[TableRow]:
+        for frame in reversed(self._container_stack):
+            if frame["kind"] == "tr":
+                return frame["obj"]
+        return None
+
+    def _active_table(self) -> Optional[HtmlTable]:
+        for frame in reversed(self._container_stack):
+            if frame["kind"] == "table":
+                return frame["obj"]
+        return None
+
+    def _text_sink_lines(self) -> Optional[list[HtmlLine]]:
+        """Return the ``lines`` list that should receive the next run,
+        or None if we're in TABLE/TR without a TD (stray text)."""
+        top = self._container_stack[-1]
+        if top["kind"] == "label":
+            return top["obj"].lines
+        if top["kind"] == "td":
+            return top["obj"].lines
+        return None
+
+    def _current_sink_line(self) -> Optional[HtmlLine]:
+        lines = self._text_sink_lines()
+        if lines is None:
+            return None
+        if not lines:
+            lines.append(HtmlLine())
+        return lines[-1]
+
+    # ── Tag handlers ────────────────────────────────────────────────
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
         tag_l = tag.lower()
         attrs_d = {k.lower(): (v or "") for k, v in attrs}
 
         if tag_l == "br":
-            align = attrs_d.get("align", "").lower() or "center"
-            self._current_line = HtmlLine(align=align)
-            self.label.lines.append(self._current_line)
+            sink = self._text_sink_lines()
+            if sink is not None:
+                align = attrs_d.get("align", "").lower() or "center"
+                new_line = HtmlLine(align=align)
+                sink.append(new_line)
+                # Update _current_line if this was the top-level label.
+                top = self._container_stack[-1]
+                if top["kind"] == "label":
+                    self._current_line = new_line
             return
 
-        if tag_l in ("table", "tr", "td"):
-            self._in_table += 1
-            if not self._table_placeholder_emitted:
-                # Emit one "[TABLE]" run so the label isn't empty.
-                s = self._style()
-                self._current_line.runs.append(TextRun(
-                    text="[TABLE]",
-                    font_size=s["font_size"],
-                    color=s["color"],
-                    face=s["face"],
-                ))
-                self._table_placeholder_emitted = True
+        if tag_l == "table":
+            table = HtmlTable(
+                border=_int_attr(attrs_d.get("border", ""), 1),
+                cellborder=_int_attr(attrs_d.get("cellborder", ""), 0),
+                cellpadding=_int_attr(attrs_d.get("cellpadding", ""), 2),
+                cellspacing=_int_attr(attrs_d.get("cellspacing", ""), 2),
+                bgcolor=attrs_d.get("bgcolor") or None,
+                color=attrs_d.get("color") or None,
+                align=(attrs_d.get("align") or "center").lower(),
+                valign=(attrs_d.get("valign") or "middle").lower(),
+                href=attrs_d.get("href") or None,
+            )
+            # Attach to the enclosing container.  Top-level → label.table.
+            # Inside a TD → TableCell.nested.
+            top = self._container_stack[-1]
+            if top["kind"] == "label":
+                # Label's .lines text is abandoned in favour of the
+                # table; if both exist the table wins in rendering.
+                self.label.table = table
+            elif top["kind"] == "td":
+                top["obj"].nested = table
+            # else: <TABLE> inside <TR> not in <TD> is invalid — attach
+            # to the first-met TD if any, otherwise ignore.
+            self._container_stack.append({"kind": "table", "obj": table})
             return
 
+        if tag_l == "tr":
+            tbl = self._active_table()
+            if tbl is None:
+                return
+            row = TableRow()
+            tbl.rows.append(row)
+            self._container_stack.append({"kind": "tr", "obj": row})
+            return
+
+        if tag_l == "td":
+            tr = self._active_tr()
+            if tr is None:
+                return
+            cell = TableCell(
+                align=(attrs_d.get("align") or "center").lower(),
+                valign=(attrs_d.get("valign") or "middle").lower(),
+                bgcolor=attrs_d.get("bgcolor") or None,
+                color=attrs_d.get("color") or None,
+                border=_int_attr(attrs_d.get("border", ""), -1) if attrs_d.get("border") else None,
+                cellpadding=_int_attr(attrs_d.get("cellpadding", ""), -1) if attrs_d.get("cellpadding") else None,
+                cellspacing=_int_attr(attrs_d.get("cellspacing", ""), -1) if attrs_d.get("cellspacing") else None,
+                colspan=_int_attr(attrs_d.get("colspan", ""), 1),
+                rowspan=_int_attr(attrs_d.get("rowspan", ""), 1),
+                href=attrs_d.get("href") or None,
+            )
+            tr.cells.append(cell)
+            self._container_stack.append({"kind": "td", "obj": cell})
+            return
+
+        # Style tags — push onto the style stack.
         parent = self._style()
         new = dict(parent)
         if tag_l == "font":
@@ -236,20 +429,23 @@ class _LabelBuilder(HTMLParser):
             # <O> is used by some tools as overline; treat as underline.
             new["underline"] = True
         # Unknown tags: still push a matching state so the end tag
-        # pops something.  This makes the parser forgiving of stray
-        # tags rather than desynchronising the stack.
-        self._stack.append(new)
+        # pops something, keeping the stack in sync.
+        self._style_stack.append(new)
 
     def handle_endtag(self, tag: str) -> None:
         tag_l = tag.lower()
         if tag_l == "br":
             return
         if tag_l in ("table", "tr", "td"):
-            if self._in_table > 0:
-                self._in_table -= 1
+            # Pop until we find the matching frame.  Normally it's the
+            # top of the stack; only ill-formed input needs the walk.
+            for i in range(len(self._container_stack) - 1, -1, -1):
+                if self._container_stack[i]["kind"] == tag_l:
+                    del self._container_stack[i:]
+                    break
             return
-        if len(self._stack) > 1:
-            self._stack.pop()
+        if len(self._style_stack) > 1:
+            self._style_stack.pop()
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
         # Self-closing tags: <BR/>, <IMG/>, etc.
@@ -258,12 +454,15 @@ class _LabelBuilder(HTMLParser):
             self.handle_starttag(tag, attrs)
 
     def handle_data(self, data: str) -> None:
-        if self._in_table > 0:
-            return
         if not data:
             return
+        line = self._current_sink_line()
+        if line is None:
+            # Inside <TABLE>/<TR> but not in a <TD> — stray whitespace
+            # between row/cell tags.  Silently discard (matches C).
+            return
         s = self._style()
-        self._current_line.runs.append(TextRun(
+        line.runs.append(TextRun(
             text=data,
             font_size=s["font_size"],
             color=s["color"],
@@ -283,17 +482,31 @@ class _LabelBuilder(HTMLParser):
 def html_label_size(lbl: HtmlLabel, line_height_factor: float = 1.2) -> tuple[float, float]:
     """Return ``(width, height)`` in points for a parsed HTML label.
 
-    Width = max line width = Σ ``text_width_times_roman(run.text,
-    run.font_size)`` over the line's runs.
-    Height = Σ line heights = max(run.font_size × line_height_factor)
-    per line.
+    For paragraph-style labels: width = max line width
+    (Σ ``text_width_times_roman(run.text, run.font_size)`` over the
+    line's runs); height = Σ line heights.
+
+    For table labels: delegates to :func:`size_html_table`, which
+    computes per-column / per-row dimensions and fills in the
+    ``width`` / ``height`` / ``x`` / ``y`` fields on every
+    :class:`TableCell` in the tree so the renderer can lay them out
+    directly.
     """
+    if lbl.table is not None:
+        size_html_table(lbl.table, line_height_factor=line_height_factor)
+        return lbl.table.width, lbl.table.height
+
+    return _paragraph_size(lbl.lines, line_height_factor)
+
+
+def _paragraph_size(lines: list["HtmlLine"], line_height_factor: float) -> tuple[float, float]:
+    """Return ``(width, height)`` in points for a list of paragraph
+    lines.  Shared by the top-level label path and per-cell content."""
     from gvpy.engines.layout.common.text import text_width_times_roman
     max_w = 0.0
     total_h = 0.0
-    for line in lbl.lines:
+    for line in lines:
         if not line.runs:
-            # Empty line — count its height as the default font size.
             line_w = 0.0
             line_font = _DEFAULT_FONT_SIZE
         else:
@@ -303,3 +516,85 @@ def html_label_size(lbl: HtmlLabel, line_height_factor: float = 1.2) -> tuple[fl
         max_w = max(max_w, line_w)
         total_h += line_font * line_height_factor
     return max_w, total_h
+
+
+def size_html_table(tbl: "HtmlTable", line_height_factor: float = 1.2) -> tuple[float, float]:
+    """Size an :class:`HtmlTable` tree in-place.
+
+    Algorithm:
+
+    1. For each cell, compute content dimensions (paragraph text or
+       recursed nested table) + ``2 × cellpadding`` for the cell's
+       padding border.
+    2. Column widths = max cell width per column.
+    3. Row heights = max cell height per row.
+    4. Cells are placed at ``(x, y)`` relative to the table's
+       top-left.  Table origin ``(0, 0)`` = top-left corner of the
+       outer border.
+
+    Table dimensions::
+
+        width  = 2·border + Σ col_widths + (ncols + 1) · cellspacing
+        height = 2·border + Σ row_heights + (nrows + 1) · cellspacing
+
+    ``cellspacing`` contributes the gap BETWEEN cells AND between
+    the outer border and the first/last cell — matching Graphviz
+    and classic HTML table box model.
+
+    COLSPAN / ROWSPAN are not yet applied here; cells with
+    ``colspan/rowspan > 1`` occupy a single grid slot for now.
+    """
+    if not tbl.rows:
+        tbl.width = tbl.height = 2 * tbl.border
+        return tbl.width, tbl.height
+
+    ncols = max(len(r.cells) for r in tbl.rows)
+
+    # Phase 1: natural cell dims.
+    for row in tbl.rows:
+        for cell in row.cells:
+            pad = cell.cellpadding if cell.cellpadding is not None else tbl.cellpadding
+            if cell.nested is not None:
+                cw, ch = size_html_table(cell.nested, line_height_factor)
+            else:
+                cw, ch = _paragraph_size(cell.lines, line_height_factor)
+            cell.width = cw + 2 * pad
+            cell.height = ch + 2 * pad
+
+    # Phase 2: column widths / row heights from grid maxima.
+    col_widths = [0.0] * ncols
+    row_heights = []
+    for row in tbl.rows:
+        row_h = 0.0
+        for ci, cell in enumerate(row.cells):
+            if ci < ncols:
+                col_widths[ci] = max(col_widths[ci], cell.width)
+            row_h = max(row_h, cell.height)
+        row.height = row_h
+        row_heights.append(row_h)
+    tbl.col_widths = col_widths
+    tbl.row_heights = row_heights
+
+    # Phase 3: place each cell.  Grid coords start at the top-left
+    # inside the outer border.  Cellspacing separates every cell from
+    # its neighbour AND from the border.
+    b = tbl.border
+    s = tbl.cellspacing
+    cur_y = b + s
+    for row, row_h in zip(tbl.rows, row_heights):
+        cur_x = b + s
+        for ci, cell in enumerate(row.cells):
+            if ci < ncols:
+                # Expand cell to its column / row slot so backgrounds
+                # fill the grid cleanly — content is placed within
+                # by the renderer using ALIGN / VALIGN.
+                cell.width = col_widths[ci]
+                cell.height = row_h
+                cell.x = cur_x
+                cell.y = cur_y
+                cur_x += col_widths[ci] + s
+        cur_y += row_h + s
+
+    tbl.width = 2 * b + sum(col_widths) + (ncols + 1) * s
+    tbl.height = 2 * b + sum(row_heights) + (len(tbl.rows) + 1) * s
+    return tbl.width, tbl.height
