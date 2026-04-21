@@ -737,6 +737,62 @@ class DotGraphInfo(LayoutEngine):
         """
         return {"TB": 0, "LR": 1, "BT": 2, "RL": 3}.get(self.rankdir, 0)
 
+    # Shape geometry table — mirrors the ``polygon_t`` builtins in
+    # C's ``lib/common/shapes.c`` (``p_box``, ``p_ellipse``,
+    # ``p_hexagon``, etc.).  Each entry is
+    # ``(sides, orientation_deg, distortion, skew)``.  ``sides == 1``
+    # means "ellipse-family" in C's padding branch (full SQRT2 stretch
+    # without the 1/cos(π/n) post-scale).  ``sides == 4`` with all
+    # zeros is ``isBox`` (exact label fit, no extra shape pad).
+    _SHAPE_GEOM: "dict[str, tuple[int, float, float, float]]" = {
+        "box":            (4,   0.0,  0.0,  0.0),
+        "rect":           (4,   0.0,  0.0,  0.0),
+        "rectangle":      (4,   0.0,  0.0,  0.0),
+        "square":         (4,   0.0,  0.0,  0.0),
+        "plaintext":      (4,   0.0,  0.0,  0.0),
+        "plain":          (4,   0.0,  0.0,  0.0),
+        "none":           (4,   0.0,  0.0,  0.0),
+        "note":           (4,   0.0,  0.0,  0.0),
+        "tab":            (4,   0.0,  0.0,  0.0),
+        "folder":         (4,   0.0,  0.0,  0.0),
+        "box3d":          (4,   0.0,  0.0,  0.0),
+        "component":      (4,   0.0,  0.0,  0.0),
+        "cds":            (4,   0.0,  0.0,  0.0),
+        "ellipse":        (1,   0.0,  0.0,  0.0),
+        "oval":           (1,   0.0,  0.0,  0.0),
+        "circle":         (1,   0.0,  0.0,  0.0),
+        "doublecircle":   (1,   0.0,  0.0,  0.0),
+        "Mcircle":        (1,   0.0,  0.0,  0.0),
+        "point":          (1,   0.0,  0.0,  0.0),
+        "egg":            (1,   0.0, -0.3,  0.0),
+        "diamond":        (4,  45.0,  0.0,  0.0),
+        "Mdiamond":       (4,  45.0,  0.0,  0.0),
+        "Msquare":        (4,   0.0,  0.0,  0.0),
+        "trapezium":      (4,   0.0, -0.4,  0.0),
+        "invtrapezium":   (4, 180.0, -0.4,  0.0),
+        "parallelogram":  (4,   0.0,  0.0,  0.6),
+        "triangle":       (3,   0.0,  0.0,  0.0),
+        "invtriangle":    (3, 180.0,  0.0,  0.0),
+        "house":          (5,   0.0, -0.64, 0.0),
+        "invhouse":       (5, 180.0, -0.64, 0.0),
+        "pentagon":       (5,   0.0,  0.0,  0.0),
+        "hexagon":        (6,   0.0,  0.0,  0.0),
+        "septagon":       (7,   0.0,  0.0,  0.0),
+        "octagon":        (8,   0.0,  0.0,  0.0),
+        "doubleoctagon":  (8,   0.0,  0.0,  0.0),
+        "tripleoctagon":  (8,   0.0,  0.0,  0.0),
+        "cylinder":       (19,  0.0,  0.0,  0.0),
+        "star":           (10,  0.0,  0.0,  0.0),
+    }
+
+    def _shape_geometry(self, shape: str) -> tuple[int, float, float, float]:
+        """Return ``(sides, orientation, distortion, skew)`` for a shape.
+
+        Unknown shapes fall back to ellipse geometry (matches
+        C's ``shapes.c``: ``Shapes`` table default).
+        """
+        return self._SHAPE_GEOM.get(shape, (1, 0.0, 0.0, 0.0))
+
     def _compute_node_size(self, name: str, node) -> tuple[float, float]:
         """Compute node dimensions from label text, shape, and explicit width/height.
 
@@ -782,15 +838,8 @@ class DotGraphInfo(LayoutEngine):
                 import re
                 label = re.sub(r"<[^>]+>", "", label)
 
-            # Per-glyph Times-Roman AFM widths.  Matches what C's
-            # ``lib/common/labels.c: make_label()`` computes via the
-            # ``textspan`` callback — GDI+ on Windows, FreeType on
-            # Linux, both backed by the Adobe Times-Roman AFM table
-            # for the default font.  The prior ``len × fontsize*0.52``
-            # estimate over-estimated narrow letters (i, l, t, …) by
-            # ~21 % and under-estimated wide letters (m, w, M, W, …)
-            # by ~15 %, tilting node widths away from C's on any
-            # label with non-average glyph frequency.
+            # Per-glyph Times-Roman AFM widths — matches C's
+            # ``lib/common/labels.c: make_label()`` textspan callback.
             from gvpy.engines.layout.common.text import (
                 text_width_times_roman,
             )
@@ -801,8 +850,49 @@ class DotGraphInfo(LayoutEngine):
             text_w = max(text_width_times_roman(line, fontsize)
                          for line in lines)
             text_h = num_lines * fontsize * 1.2
-            w = text_w + self._H_PAD
-            h = text_h + self._V_PAD
+
+            # C's ``poly_init`` at ``lib/common/shapes.c @ 1934``:
+            # 1. ``dimen`` = (text_w + XPAD, text_h + YPAD) where
+            #    XPAD = 4 × GAP = 16 pt and YPAD = 2 × GAP = 8 pt
+            #    (``lib/common/const.h: GAP = 4``,
+            #    ``macros.h: XPAD/YPAD``).  Python previously used
+            #    ``_H_PAD=36`` / ``_V_PAD=18`` which over-padded every
+            #    label by ~20 pt in each axis.
+            # 2. For non-``isBox`` shapes (sides ≠ 4, or with
+            #    orientation / distortion / skew), scale ``bb`` to the
+            #    smallest ellipse containing the label, then scale up
+            #    further by ``1 / cos(π / sides)`` so an N-gon
+            #    circumscribes that ellipse.  This is what gives
+            #    hexagons / octagons / diamonds their visible "pointy
+            #    end" padding beyond the label.  On 2620.dot the
+            #    scheduler hexagon was 222 pt under Python's prior
+            #    unpadded path vs 322.7 pt in C; with this block it
+            #    matches C to <0.1 %.
+            bb_x = text_w + 16.0
+            bb_y = text_h + 8.0
+            sides, orient, disto, skew = self._shape_geometry(shape)
+            is_box = (sides == 4 and abs(orient % 90) < 0.5
+                      and disto == 0 and skew == 0)
+            if not is_box and sides > 0:
+                # User's declared height in points (explicit or MIN).
+                user_h = (float(explicit_h) * 72.0 if explicit_h
+                          else self._MIN_HEIGHT)
+                import math as _m
+                temp = bb_y * _m.sqrt(2.0)
+                if user_h > temp:
+                    # valign=center (default) branch: stretch x only.
+                    ratio = bb_y / user_h
+                    bb_x *= _m.sqrt(1.0 / max(1.0 - ratio * ratio, 1e-9))
+                else:
+                    bb_x *= _m.sqrt(2.0)
+                    bb_y = temp
+                if sides > 2:
+                    k = _m.cos(_m.pi / sides)
+                    if k > 1e-9:
+                        bb_x /= k
+                        bb_y /= k
+            w = bb_x
+            h = bb_y
 
         # Explicit width/height act as MINIMUMS — the node grows to fit
         # the label when the label is bigger.  Matches C's
