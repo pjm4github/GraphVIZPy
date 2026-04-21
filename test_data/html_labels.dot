@@ -1,0 +1,79 @@
+// Comprehensive test fixture for HTML-like label support.
+//
+// Every node and every edge label below exercises a specific HTML tag
+// or combination that ``gvpy.grammar.html_label`` currently parses.
+// Used by tests/test_html_label.py for automated regression checks
+// and by humans for visual inspection (``dot.py html_labels.dot
+// -Tsvg -o out.svg`` vs C's ``dot.exe`` on the same file).
+//
+// Supported (Phase 1-3):
+//   <FONT POINT-SIZE=… COLOR=… FACE=…>…</FONT>
+//   <B>…</B>  <I>…</I>  <U>…</U>  <S>…</S>
+//   <SUB>…</SUB>  <SUP>…</SUP>
+//   <BR/>  <BR ALIGN="LEFT|CENTER|RIGHT"/>
+//   HTML entities: &lt; &gt; &amp; &quot; &apos; &#NNN;
+//
+// Not yet supported (Phase 4, renders as "[TABLE]" placeholder):
+//   <TABLE> … <TR><TD>…</TD></TR> … </TABLE>
+digraph html_labels {
+    rankdir=LR;
+    fontname="Times-Roman";
+    fontsize=14;
+    node [shape=box, style="filled", fillcolor="#f0f0f0",
+          fontname="Times-Roman", fontsize=14];
+    edge [fontname="Times-Roman", fontsize=12, color="#666666"];
+
+    // ── FONT attribute overrides ─────────────────────────────────────
+    n_size      [label=<<FONT POINT-SIZE="20">size=20</FONT>>];
+    n_color     [label=<<FONT COLOR="#cc0000">red text</FONT>>];
+    n_face      [label=<<FONT FACE="Courier">monospace</FONT>>];
+    n_combined  [label=<<FONT POINT-SIZE="18" COLOR="#006600" FACE="Helvetica">all three</FONT>>];
+
+    // ── Emphasis tags ─────────────────────────────────────────────────
+    n_bold      [label=<<B>BOLD</B>>];
+    n_italic    [label=<<I>italic</I>>];
+    n_underline [label=<<U>underline</U>>];
+    n_strike    [label=<<S>strike</S>>];
+
+    // ── Sub- and super-script ────────────────────────────────────────
+    n_sub       [label=<H<SUB>2</SUB>O>];
+    n_sup       [label=<x<SUP>2</SUP> + y<SUP>2</SUP> = z<SUP>2</SUP>>];
+
+    // ── Nesting + inheritance ────────────────────────────────────────
+    n_nested    [label=<<B><I>bold+italic</I></B>>];
+    n_mixed     [label=<plain <B>bold</B> plain <I>italic</I> plain>];
+    n_innerfont [label=<<FONT POINT-SIZE="10">small <FONT POINT-SIZE="22">BIG</FONT> small</FONT>>];
+
+    // ── Line breaks + per-line alignment ─────────────────────────────
+    n_breaks    [label=<line 1<BR/>line 2<BR/>line 3>];
+    n_align     [label=<centered<BR ALIGN="LEFT"/>left-aligned<BR ALIGN="RIGHT"/>right-aligned>];
+
+    // ── HTML character entities ──────────────────────────────────────
+    n_entity    [label=<&lt;tag&gt; &amp; &quot;quote&quot; A=&#65;>];
+
+    // ── Compound: title/body/footer with mixed styles ────────────────
+    n_complex   [label=<<FONT POINT-SIZE="16" COLOR="#0066cc"><B>Title</B></FONT><BR/><FONT POINT-SIZE="10">subtitle line</FONT><BR/><I>note: <U>emphasised</U></I>>];
+
+    // ── Edges with HTML labels ───────────────────────────────────────
+    // Each edge demonstrates a different HTML feature too.
+    n_size -> n_color        [label=<<FONT POINT-SIZE="16" COLOR="#ff6600">sized+coloured</FONT>>];
+    n_color -> n_face        [label=<<B>bold edge</B>>];
+    n_face -> n_combined     [label=<<I>italic edge</I>>];
+    n_combined -> n_bold     [label=<<U>underlined</U>>];
+    n_bold -> n_italic       [label=<<S>struck</S>>];
+    n_italic -> n_underline  [label=<E = mc<SUP>2</SUP>>];
+    n_underline -> n_strike  [label=<a<SUB>i</SUB> + b<SUB>j</SUB>>];
+    n_strike -> n_sub        [label=<<B><I>bold italic</I></B>>];
+    n_sub -> n_sup           [label=<line 1<BR/>line 2>];
+    n_sup -> n_nested        [label=<L<BR ALIGN="LEFT"/>C<BR ALIGN="CENTER"/>R<BR ALIGN="RIGHT"/>>];
+    n_nested -> n_mixed      [label=<entity: &amp; &lt; &gt;>];
+    n_mixed -> n_innerfont   [label=<<FONT POINT-SIZE="10">s<FONT POINT-SIZE="18">M</FONT>s</FONT>>];
+    n_innerfont -> n_breaks  [label=<<FONT COLOR="#9932cc"><B>purple bold</B></FONT>>];
+    n_breaks -> n_align;
+    n_align -> n_entity      [label=<<FONT FACE="Courier">code</FONT>>];
+    n_entity -> n_complex    [label=<<FONT POINT-SIZE="14"><B>final edge</B></FONT>>];
+
+    // A fan-in to show edge labels rendering side-by-side on the same node.
+    n_bold -> n_complex      [label=<<I>short</I>>, color="#4682b4"];
+    n_sub -> n_complex       [label=<<B>cut</B>>, color="#228b22"];
+}

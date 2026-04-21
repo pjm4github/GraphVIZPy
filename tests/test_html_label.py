@@ -319,6 +319,214 @@ class TestSvgHtmlRendering:
 # ── End-to-end: 2592.dot ────────────────────────────────────────────
 
 
+# ── End-to-end: comprehensive html_labels.dot ──────────────────────
+
+
+@pytest.mark.skipif(
+    not (Path(__file__).resolve().parents[1] / "test_data" / "html_labels.dot").exists(),
+    reason="html_labels.dot fixture missing",
+)
+class TestEndToEndHtmlLabels:
+    """Render ``test_data/html_labels.dot`` and assert each HTML tag
+    lands in the output SVG with the expected attributes.  The fixture
+    demonstrates every supported tag on both a node and an edge, so
+    regressions on any single tag will fail a focused test here."""
+
+    @pytest.fixture(scope="class")
+    def svg(self) -> str:
+        from gvpy.grammar.gv_reader import read_dot_file
+        from gvpy.engines.layout.dot.dot_layout import DotLayout
+        from gvpy.render.svg_renderer import render_svg
+        path = Path(__file__).resolve().parents[1] / "test_data" / "html_labels.dot"
+        g = read_dot_file(str(path))
+        return render_svg(DotLayout(g).layout())
+
+    def _node_window(self, svg: str, node_id: str, before: int = 400) -> str:
+        """Return the slice of SVG covering a named node's ``<g>`` block
+        (up to the following ``</g>``).  Used for per-tag assertions so
+        we don't match text in unrelated nodes."""
+        open_idx = svg.find(f'id="{node_id}"')
+        assert open_idx >= 0, f"node {node_id} missing from SVG"
+        close_idx = svg.find("</g>", open_idx)
+        assert close_idx > open_idx
+        return svg[open_idx:close_idx]
+
+    # ── FONT attribute overrides ────────────────────────────────────
+
+    def test_font_point_size(self, svg):
+        win = self._node_window(svg, "node_n_size")
+        assert 'font-size="20' in win
+        assert ">size=20<" in win
+
+    def test_font_color(self, svg):
+        win = self._node_window(svg, "node_n_color")
+        assert 'fill="#cc0000"' in win
+        assert ">red text<" in win
+
+    def test_font_face(self, svg):
+        win = self._node_window(svg, "node_n_face")
+        assert 'font-family="Courier"' in win
+        assert ">monospace<" in win
+
+    def test_font_combined(self, svg):
+        win = self._node_window(svg, "node_n_combined")
+        assert 'font-size="18' in win
+        assert 'fill="#006600"' in win
+        assert 'font-family="Helvetica"' in win
+
+    # ── Emphasis tags ───────────────────────────────────────────────
+
+    def test_bold(self, svg):
+        win = self._node_window(svg, "node_n_bold")
+        assert 'font-weight="bold"' in win
+        assert ">BOLD<" in win
+
+    def test_italic(self, svg):
+        win = self._node_window(svg, "node_n_italic")
+        assert 'font-style="italic"' in win
+        assert ">italic<" in win
+
+    def test_underline(self, svg):
+        win = self._node_window(svg, "node_n_underline")
+        assert 'text-decoration="underline"' in win
+
+    def test_strike(self, svg):
+        win = self._node_window(svg, "node_n_strike")
+        assert 'text-decoration="line-through"' in win
+
+    # ── Sub / super ─────────────────────────────────────────────────
+
+    def test_subscript(self, svg):
+        win = self._node_window(svg, "node_n_sub")
+        assert 'baseline-shift="sub"' in win
+        # H then subscript-2 then O ⇒ all three text runs present.
+        assert ">H<" in win and ">2<" in win and ">O<" in win
+
+    def test_superscript(self, svg):
+        win = self._node_window(svg, "node_n_sup")
+        assert 'baseline-shift="super"' in win
+
+    # ── Nesting ─────────────────────────────────────────────────────
+
+    def test_nested_bold_italic(self, svg):
+        win = self._node_window(svg, "node_n_nested")
+        assert 'font-weight="bold"' in win
+        assert 'font-style="italic"' in win
+        assert ">bold+italic<" in win
+
+    def test_mixed_runs(self, svg):
+        """``plain <B>bold</B> plain <I>italic</I> plain`` should split
+        into five runs: ``plain ``, ``bold``, `` plain ``, ``italic``,
+        `` plain``.  Bold and italic attrs must only appear on the
+        respective middle runs."""
+        win = self._node_window(svg, "node_n_mixed")
+        assert ">bold<" in win
+        assert ">italic<" in win
+        # Count tspans: five runs → five tspans.
+        assert win.count("<tspan") == 5
+
+    def test_inner_font_overrides_outer(self, svg):
+        """small(10) BIG(22) small(10) — three separate tspans, only
+        the middle one carries ``font-size="22``."""
+        win = self._node_window(svg, "node_n_innerfont")
+        assert win.count("<tspan") == 3
+        assert 'font-size="22' in win
+        assert 'font-size="10' in win
+
+    # ── Line breaks + alignment ─────────────────────────────────────
+
+    def test_line_breaks(self, svg):
+        win = self._node_window(svg, "node_n_breaks")
+        # Three lines → first tspan gets y, next two get dy.
+        assert win.count("<tspan") == 3
+        assert win.count("dy=") == 2
+
+    def test_br_align_carries_through(self, svg):
+        # The fixture has <BR ALIGN="LEFT"/> and <BR ALIGN="RIGHT"/>.
+        # Current renderer emits each run as its own tspan but does not
+        # yet emit per-line text-anchor changes — the important check
+        # is that the runs themselves survived parsing.
+        win = self._node_window(svg, "node_n_align")
+        assert ">centered<" in win
+        assert ">left-aligned<" in win
+        assert ">right-aligned<" in win
+
+    # ── Entities ────────────────────────────────────────────────────
+
+    def test_html_entities(self, svg):
+        win = self._node_window(svg, "node_n_entity")
+        # &lt; / &gt; / &amp; / &quot; decode during parsing then get
+        # re-escaped by the SVG text escaper, so they should reappear
+        # as the standard XML entities in the output.
+        assert "&lt;tag&gt;" in win
+        assert "&amp;" in win
+        # &#65; → "A" (the only numeric entity the fixture uses).
+        assert "A=A" in win
+
+    # ── Compound label ──────────────────────────────────────────────
+
+    def test_complex_label_has_all_runs(self, svg):
+        win = self._node_window(svg, "node_n_complex")
+        # Title: font-size=16, bold, color=#0066cc
+        assert 'font-size="16' in win
+        assert 'font-weight="bold"' in win
+        assert 'fill="#0066cc"' in win
+        # Subtitle: font-size=10
+        assert 'font-size="10' in win
+        # "emphasised" should be underlined and inside an italic run.
+        assert 'text-decoration="underline"' in win
+        assert 'font-style="italic"' in win
+
+    # ── Edge labels ─────────────────────────────────────────────────
+
+    def test_edge_has_html_label(self, svg):
+        # n_size -> n_color edge has <FONT POINT-SIZE="16" COLOR="#ff6600">sized+coloured</FONT>.
+        # Edge labels aren't wrapped in an id'd <g>, so search the
+        # whole SVG for the unique text.
+        idx = svg.find(">sized+coloured<")
+        assert idx > 0
+        window = svg[max(0, idx - 400): idx + 20]
+        assert 'font-size="16' in window
+        assert 'fill="#ff6600"' in window
+
+    def test_edge_bold(self, svg):
+        idx = svg.find(">bold edge<")
+        assert idx > 0
+        window = svg[max(0, idx - 400): idx + 20]
+        assert 'font-weight="bold"' in window
+
+    def test_edge_sup_equation(self, svg):
+        # "E = mc²" — the run before the <SUP> is "E = mc" (ends the
+        # tspan with the label text, not a ``>mc<`` boundary).
+        idx = svg.find("E = mc</tspan>")
+        assert idx > 0
+        text_end = svg.find("</text>", idx)
+        window = svg[idx: text_end + 8]
+        # A superscript tspan for the exponent should follow.
+        assert 'baseline-shift="super"' in window
+        assert ">2<" in window
+
+    def test_edge_multiline(self, svg):
+        # "line 1<BR/>line 2" on the n_sub -> n_sup edge.
+        idx = svg.find(">line 1<")
+        assert idx > 0
+        text_end = svg.find("</text>", idx)
+        window = svg[idx: text_end + 8]
+        assert ">line 2<" in window
+        assert "dy=" in window
+
+    def test_edge_inner_font(self, svg):
+        # n_mixed -> n_innerfont: <FONT size=10>s<FONT size=18>M</FONT>s</FONT>
+        # Three runs inside one edge label.
+        idx = svg.find(">M<")
+        assert idx > 0
+        text_start = svg.rfind("<text ", 0, idx)
+        text_end = svg.find("</text>", idx)
+        window = svg[text_start: text_end + 8]
+        assert window.count("<tspan") >= 3
+        assert 'font-size="18' in window
+
+
 @pytest.mark.skipif(
     not (Path(__file__).resolve().parents[1] / "test_data" / "2592.dot").exists(),
     reason="2592.dot fixture missing",
