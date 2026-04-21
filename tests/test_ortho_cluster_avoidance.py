@@ -5,7 +5,7 @@ Ortho output is a right-angle polyline.  Before:
   - ``splines.ortho_route`` always emitted ``p_start → (p_start.x,
     mid_y) → (p_end.x, mid_y) → p_end`` regardless of whether the
     horizontal leg at ``mid_y`` crossed foreign clusters.
-  - ``tools/count_cluster_crossings`` mistakenly classified 4-point
+  - ``filters/count_cluster_crossings`` mistakenly classified 4-point
     polylines as cubic beziers and sampled a curve through the
     control polygon, flagging phantom crossings.
 
@@ -52,7 +52,7 @@ def test_polyline_not_misinterpreted_as_bezier_by_audit():
     # checks.  The bbox below sits inside the "notch" of the Z — the
     # polyline never enters it, but the cubic bezier through the
     # same 4 control points bulges into it.
-    from tools.count_cluster_crossings import _segments_cross_bbox
+    from porting_scripts.count_cluster_crossings import _segments_cross_bbox
 
     pts = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
     # bbox in the center of the Z's open side — no polyline segment

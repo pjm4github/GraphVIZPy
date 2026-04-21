@@ -1,6 +1,6 @@
 """Regression test: duplicate cluster names must not trigger infinite recursion.
 
-Found via tools/visual_audit.py: test_data/1902.dot has two nested
+Found via filters/visual_audit.py: test_data/1902.dot has two nested
 subgraphs both literally named ``cluster``.  The dedup logic's
 ``tree_parent`` map set ``cluster → cluster`` (self-parent), which
 made ``_desc_nodes`` recurse forever and raise RecursionError.

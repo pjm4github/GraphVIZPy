@@ -1,7 +1,7 @@
 """Parity tests for gvpy.engines.layout.ortho.partition (Phase 4 port).
 
 Compares Python's decomposition against the C harness in
-``tools/partition_harness/``.  Rectangles are sorted lexicographically
+``filters/partition_harness/``.  Rectangles are sorted lexicographically
 on both sides before comparison because the two code paths use
 different segment-insertion orders (C uses ``srand48(173)`` +
 ``drand48()``; Python uses identity) — the final rectangle set is
@@ -24,7 +24,7 @@ from gvpy.engines.layout.ortho.partition import (
 
 FIXTURE_DIR = (
     Path(__file__).parent.parent
-    / "tools" / "partition_harness" / "fixtures"
+    / "filters" / "partition_harness" / "fixtures"
 )
 EXPECTED_DIR = Path(__file__).parent / "fixtures" / "partition"
 

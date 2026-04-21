@@ -4,7 +4,7 @@ Implements the block / port / connection model from PyCBD as
 described in:
 
     Van Tendeloo, Y. and Vangheluwe, H.  *An evaluation of DEVS
-    simulation tools.*  Simulation, 2018.  (And the companion
+    simulation filters.*  Simulation, 2018.  (And the companion
     PyCBD paper that introduces the three-phase Mealy semantics
     used by :mod:`gvpy.engines.sim.solver`.)
 

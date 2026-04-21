@@ -10,7 +10,7 @@ settings = {
     "INCLUDE_FILE_PATH":                        ["./inputs", "./includes"],
     # These are the STD lib search location locations.
     "STDLIB":   [r"C:/Users/pmora/AppData/Local/Cygwin64/usr/include/sys/",
-                 r"C:/Users/pmora/AppData/Local/Cygwin64/usr/local/etc/ghc/ghc-6.10.3/gcc-lib/install-tools/include/"],
+                 r"C:/Users/pmora/AppData/Local/Cygwin64/usr/local/etc/ghc/ghc-6.10.3/gcc-lib/install-filters/include/"],
     "RECURSIVE_INCLUDE":                        False,
     "SEQUENCE_FILE_PATH":                       "./sequences",
     "LOG_FILE_PATH":                            "./logs",

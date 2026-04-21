@@ -2,7 +2,7 @@
 """
 gvcli.py — Unified CLI for all GraphvizPy layout engines.
 
-A pure-Python equivalent of the Graphviz command-line tools.  In Graphviz,
+A pure-Python equivalent of the Graphviz command-line filters.  In Graphviz,
 ``dot``, ``neato``, ``circo``, ``fdp``, ``sfdp``, ``twopi``, ``osage``,
 and ``patchwork`` are all the same binary dispatched by program name.
 
@@ -160,7 +160,7 @@ def layout_and_render(graph, fmt, engine_name="dot",
 
     # Edge bundling (mingle post-processor)
     if bundle:
-        from gvpy.tools.mingle import MingleBundler
+        from gvpy.filters.mingle import MingleBundler
         result = MingleBundler.bundle_result(result)
 
     # Post-process

@@ -15,7 +15,7 @@ permutation for segment insertion order.  The Python port uses the
 2. The final rectangle set is a canonical decomposition of the input
    geometry, invariant under permutation.  Only internal trapezoid
    numbering differs.
-3. The C harness (``tools/partition_harness/``) sorts its output
+3. The C harness (``filters/partition_harness/``) sorts its output
    rectangles lexicographically so parity tests compare by set
    membership rather than ordering.
 
@@ -785,7 +785,7 @@ def _emit_exit_trace(rects: list[Boxf]) -> None:
 
 
 def format_partition(ncells: int, rects: list[Boxf]) -> str:
-    """Format output matching ``tools/partition_harness/harness.c``.
+    """Format output matching ``filters/partition_harness/harness.c``.
 
     Rectangles are sorted lexicographically so Python vs C output
     compares as sets modulo order.
@@ -804,7 +804,7 @@ def format_partition(ncells: int, rects: list[Boxf]) -> str:
 
 
 def load_fixture(path: str) -> tuple[list[Cell], int, Boxf]:
-    """Read a ``tools/partition_harness/fixtures/*.in`` file."""
+    """Read a ``filters/partition_harness/fixtures/*.in`` file."""
     with open(path, "r", encoding="utf-8") as f:
         tokens = f.read().split()
     it = iter(tokens)

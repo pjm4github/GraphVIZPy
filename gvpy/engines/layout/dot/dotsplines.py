@@ -387,7 +387,7 @@ def _phase4_routing_body(layout):
     # ``maximal_bbox`` has no live caller on the Python side yet — the
     # existing route_regular_edge heuristic doesn't use it, and the
     # ported-C make_regular_edge lands in Phase D.  To give the
-    # ``spline_path`` channel observable output for ``tools/diff_phases.py``,
+    # ``spline_path`` channel observable output for ``filters/diff_phases.py``,
     # walk every real node and call maximal_bbox with ``ie=oe=None``.
     # The equivalent C emission lives inside maximal_bbox itself, so on
     # the C side each (ie, oe) combination fires once per
@@ -1084,7 +1084,7 @@ from gvpy.engines.layout.common.shapes import self_loop_points  # noqa: F401
 #
 # None of them are wired into a live caller yet — they are prerequisites
 # for the make_regular_edge port in Phase D.  They can be exercised
-# directly from tests and from tools/diff_phases.py with GV_TRACE=spline_path.
+# directly from tests and from filters/diff_phases.py with GV_TRACE=spline_path.
 
 
 def _node_out_edges(layout, ln: "LayoutNode") -> list["LayoutEdge"]:

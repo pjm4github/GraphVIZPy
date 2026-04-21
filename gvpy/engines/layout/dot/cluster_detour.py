@@ -29,7 +29,7 @@ The reshape is advisory — if it can't eliminate a crossing in the
 cap, it returns its best effort and logs one trace line.  The
 routing is monotonically better than the pre-patch behaviour:
 sampling is the same geometry the crossings counter uses, so any
-fix measured there is also a win for the :mod:`tools.visual_audit`
+fix measured there is also a win for the :mod:`filters.visual_audit`
 baseline.
 """
 

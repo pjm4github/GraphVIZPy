@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-gvtools.py — Graph utility tools (analysis, transformation, generation).
+gvtools.py — Graph utility filters (analysis, transformation, generation).
 
 Python equivalents of the Graphviz standalone commands.
 
@@ -15,7 +15,7 @@ Usage::
 """
 import sys
 
-from gvpy.tools import TOOLS, get_tool
+from gvpy.filters import TOOLS, get_tool
 
 # Short flags that take a value argument (next arg is the value)
 _VALUE_FLAGS = {"o", "l", "c", "X", "n", "N", "a", "i", "k", "K", "m", "p", "r", "T"}
@@ -134,7 +134,7 @@ def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("--help", "-h", "--list", "-?"):
         print("gvtools — GraphvizPy graph utilities\n")
         print("Usage: python gvtools.py <tool> [options] [file]\n")
-        print("Available tools:")
+        print("Available filters:")
         for name, (_, _, desc) in sorted(TOOLS.items()):
             print(f"  {name:12s} — {desc}")
         print()

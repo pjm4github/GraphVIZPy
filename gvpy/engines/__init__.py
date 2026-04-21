@@ -35,7 +35,7 @@ _ENGINES: dict[str, tuple[str, str, str]] = {
     "twopi":     ("gvpy.engines.layout.twopi",     "TwopiLayout",     "implemented"),
     "osage":     ("gvpy.engines.layout.osage",     "OsageLayout",     "implemented"),
     "patchwork": ("gvpy.engines.layout.patchwork", "PatchworkLayout", "implemented"),
-    # mingle moved to gvpy.tools.mingle (it's a post-processor, not a layout engine)
+    # mingle moved to gvpy.filters.mingle (it's a post-processor, not a layout engine)
 }
 
 

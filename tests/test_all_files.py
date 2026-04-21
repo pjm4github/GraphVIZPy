@@ -63,7 +63,7 @@ KNOWN_LAYOUT_TIMEOUTS = {
     "2854.dot",     # Large/complex layout
 }
 
-# Files that are not graph formats (gvpr scripts, GML, etc.)
+# Files that are not graph formats (gvpr porting_scripts, GML, etc.)
 NON_GRAPH_EXTENSIONS = {
     ".gvpr", ".gml", ".py", ".bat", ".sh", ".txt", ".md",
     ".jpg", ".jpeg", ".png", ".svg", ".pdf", ".eps", ".ps", ".gif", ".bmp",

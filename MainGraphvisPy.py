@@ -20,7 +20,7 @@ def gen_uuid():
 
 
 # --- SnapFilter ---
-# This filter will intercept mouse release events for items and snap them to grid.
+# This filters will intercept mouse release events for items and snap them to grid.
 from PyQt6.QtWidgets import QGraphicsObject
 
 
@@ -70,7 +70,7 @@ class ConnectorItem(QGraphicsEllipseItem):
         super().__init__(rect, parent)
         self.setBrush(QBrush(color))
         self.edges = []
-        # Snapping will be handled by the event filter.
+        # Snapping will be handled by the event filters.
         self.setFlags(QGraphicsEllipseItem.GraphicsItemFlag.ItemIsMovable |
                       QGraphicsEllipseItem.GraphicsItemFlag.ItemIsSelectable |
                       QGraphicsEllipseItem.GraphicsItemFlag.ItemSendsScenePositionChanges)
@@ -124,7 +124,7 @@ class NodeItem(QGraphicsRectItem):
         connector = ConnectorItem(QRectF(-radius, -radius, radius * 2, radius * 2), self, color=color)
         connector.setPos(pos)
         self.connectors.append(connector)
-        # Install the snap filter on the connector.
+        # Install the snap filters on the connector.
         self.scene().snap_filter.installSceneEventFilter(connector)
         return connector
 
@@ -207,7 +207,7 @@ class GraphicsScene(QGraphicsScene):
             except Exception as e:
                 QMessageBox.warning(None, "Load Preferences", f"Error loading preferences: {str(e)}")
 
-    # We no longer override addItem; instead, we explicitly install the snap filter in NodeItem.add_connector
+    # We no longer override addItem; instead, we explicitly install the snap filters in NodeItem.add_connector
 
     def drawBackground(self, painter, rect):
         if self.snap_enabled:

@@ -815,7 +815,7 @@ svg = render_svg(result)
 
 ```bash
 python gvtools.py <tool> [options] [file]
-python gvtools.py --list              # list all tools
+python gvtools.py --list              # list all filters
 ```
 
 ### Available Tools
@@ -1000,14 +1000,14 @@ python gvcli.py -Kneato input.gv -Tsvg --bundle -o bundled.svg
 ### Python API
 
 ```python
-from gvpy.tools.gc import graph_stats
-from gvpy.tools.ccomps import connected_components
-from gvpy.tools.bcomps import biconnected_components
-from gvpy.tools.sccmap import strongly_connected_components
-from gvpy.tools.gvgen import generate_complete, generate_petersen, generate_grid
-from gvpy.tools.gvcolor import color_by_component, color_by_degree
-from gvpy.tools.edgepaint import edgepaint
-from gvpy.tools.mingle import MingleBundler
+from gvpy.filters.gc import graph_stats
+from gvpy.filters.ccomps import connected_components
+from gvpy.filters.bcomps import biconnected_components
+from gvpy.filters.sccmap import strongly_connected_components
+from gvpy.filters.gvgen import generate_complete, generate_petersen, generate_grid
+from gvpy.filters.gvcolor import color_by_component, color_by_degree
+from gvpy.filters.edgepaint import edgepaint
+from gvpy.filters.mingle import MingleBundler
 ```
 
 ## Project Structure

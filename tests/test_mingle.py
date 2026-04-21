@@ -4,8 +4,8 @@ Tests for the mingle edge bundling post-processor.
 import math
 import pytest
 
-from gvpy.tools.mingle import MingleBundler
-from gvpy.tools.mingle import (
+from gvpy.filters.mingle import MingleBundler
+from gvpy.filters.mingle import (
     _Edge, _edge_compatibility, _angle_compat, _scale_compat,
     _position_compat, _ink_single, _ink_bundled, _agglomerative_bundle,
 )

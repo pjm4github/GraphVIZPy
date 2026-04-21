@@ -15,7 +15,7 @@ Semantics track the C verbatim:
   disambiguates unset / explicitly-invalid indices.
 - **DBL_MAX sentinels** for the topmost / bottommost trapezoid corners
   are represented as :data:`math.inf` / :data:`-math.inf`.  The C
-  harness in ``tools/trapezoid_harness/`` emits literal ``INF`` /
+  harness in ``filters/trapezoid_harness/`` emits literal ``INF`` /
   ``-INF`` for these, so Python's ``float("inf")`` matches on repr.
 - **Float tolerance** ``C_EPS = 1e-7`` governs collinearity and
   left/right-of-segment decisions — decrease if inputs are very close
@@ -901,7 +901,7 @@ def format_traps(tr: list[Trap]) -> str:
     """Format ``tr`` exactly the way the C harness does, for diff testing.
 
     Output begins with ``trapezoids ntraps=<n>`` then one ``trap ...``
-    line per valid trapezoid.  Matches ``tools/trapezoid_harness/
+    line per valid trapezoid.  Matches ``filters/trapezoid_harness/
     harness.c`` byte-for-byte modulo the fixed ``.6f`` coordinate format.
     """
     lines = [f"trapezoids ntraps={len(tr)}"]
@@ -925,7 +925,7 @@ def format_traps(tr: list[Trap]) -> str:
 
 
 def load_fixture(path: str) -> tuple[int, list[TrapSegment], list[int]]:
-    """Read a ``tools/trapezoid_harness/fixtures/*.in`` file.
+    """Read a ``filters/trapezoid_harness/fixtures/*.in`` file.
 
     Returns ``(nseg, seg, permute)`` ready to hand to
     :func:`construct_trapezoids`.

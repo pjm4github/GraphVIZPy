@@ -953,7 +953,7 @@ class LayoutWizard(QMainWindow):
         # Edge bundling
         if self._out_bundle.isChecked():
             self._status(f"[{self._engine_name}] Bundling edges...", 65)
-            from gvpy.tools.mingle import MingleBundler
+            from gvpy.filters.mingle import MingleBundler
             result = MingleBundler.bundle_result(result)
 
         # Scale

@@ -1,7 +1,7 @@
 """Parity tests for gvpy.engines.layout.ortho.trapezoid (Phase 3 port).
 
-Each fixture under ``tools/trapezoid_harness/fixtures/*.in`` is fed
-through both the C harness (``tools/trapezoid_harness/harness.exe``)
+Each fixture under ``filters/trapezoid_harness/fixtures/*.in`` is fed
+through both the C harness (``filters/trapezoid_harness/harness.exe``)
 and the Python port.  The Python output must match the C harness's
 saved expected output exactly.
 
@@ -25,7 +25,7 @@ from gvpy.engines.layout.ortho.trapezoid import (
 
 FIXTURE_DIR = (
     Path(__file__).parent.parent
-    / "tools" / "trapezoid_harness" / "fixtures"
+    / "filters" / "trapezoid_harness" / "fixtures"
 )
 EXPECTED_DIR = Path(__file__).parent / "fixtures" / "trapezoid"
 
