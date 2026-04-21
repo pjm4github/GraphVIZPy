@@ -345,9 +345,17 @@ class _LabelBuilder(HTMLParser):
             return
 
         if tag_l == "table":
+            border = _int_attr(attrs_d.get("border", ""), 1)
+            # CELLBORDER defaults to BORDER (Graphviz docs:
+            # https://graphviz.org/doc/info/shapes.html#html — "If
+            # not specified, the value of BORDER is used").  Without
+            # this inheritance a default-styled TABLE rendered as
+            # only the outer frame, missing the grid lines that C
+            # draws between cells.
+            cellborder = _int_attr(attrs_d.get("cellborder", ""), border)
             table = HtmlTable(
-                border=_int_attr(attrs_d.get("border", ""), 1),
-                cellborder=_int_attr(attrs_d.get("cellborder", ""), 0),
+                border=border,
+                cellborder=cellborder,
                 cellpadding=_int_attr(attrs_d.get("cellpadding", ""), 2),
                 cellspacing=_int_attr(attrs_d.get("cellspacing", ""), 2),
                 bgcolor=attrs_d.get("bgcolor") or None,

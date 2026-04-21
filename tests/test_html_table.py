@@ -51,9 +51,32 @@ class TestParseTable:
         lbl = parse_html_label("<<TABLE><TR><TD>x</TD></TR></TABLE>>")
         t = lbl.table
         assert t.border == 1
-        assert t.cellborder == 0
+        # CELLBORDER defaults to BORDER when unspecified (Graphviz
+        # convention, gives the default "double line grid" look).
+        assert t.cellborder == 1
         assert t.cellpadding == 2
         assert t.cellspacing == 2
+
+    def test_cellborder_inherits_border(self):
+        lbl = parse_html_label(
+            '<<TABLE BORDER="3"><TR><TD>x</TD></TR></TABLE>>'
+        )
+        assert lbl.table.border == 3
+        assert lbl.table.cellborder == 3  # inherited
+
+    def test_cellborder_explicit_overrides(self):
+        lbl = parse_html_label(
+            '<<TABLE BORDER="3" CELLBORDER="1"><TR><TD>x</TD></TR></TABLE>>'
+        )
+        assert lbl.table.border == 3
+        assert lbl.table.cellborder == 1  # explicit wins
+
+    def test_cellborder_explicit_zero(self):
+        lbl = parse_html_label(
+            '<<TABLE BORDER="2" CELLBORDER="0"><TR><TD>x</TD></TR></TABLE>>'
+        )
+        assert lbl.table.border == 2
+        assert lbl.table.cellborder == 0  # explicit 0 wins over inherit
 
     def test_table_attrs_parsed(self):
         lbl = parse_html_label(
