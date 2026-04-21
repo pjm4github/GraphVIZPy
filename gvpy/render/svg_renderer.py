@@ -40,6 +40,99 @@ _STYLE_DASH = {
 }
 
 
+# ── HTML label rendering ────────────────────────────────────────────
+
+
+def _render_html_text(cx: float, cy: float, raw_label: str,
+                      default_face: str, default_size: float,
+                      default_color: str | None,
+                      anchor: str = "middle",
+                      italic: bool = False) -> str:
+    """Render a Graphviz HTML-like label at ``(cx, cy)`` as an SVG
+    ``<text>`` with ``<tspan>`` children for inline style changes.
+
+    ``raw_label`` is still wrapped in outer ``<...>`` — :func:`parse_html_label`
+    strips those brackets internally.  Each run becomes one ``<tspan>``;
+    ``<BR/>`` starts a new line with the first tspan carrying an ``x=``
+    reset and a ``dy=`` offset.  Vertical centering places the first
+    line's baseline at ``cy - total_h/2 + first_font * 0.85`` so the
+    whole label ends up visually centered on ``(cx, cy)``.
+    """
+    from gvpy.grammar.html_label import parse_html_label
+
+    ast = parse_html_label(
+        raw_label,
+        default_font_size=default_size,
+        default_color=default_color,
+        default_face=default_face,
+    )
+
+    # Per-line height = max(run.font_size) × 1.2.  Empty lines (e.g.
+    # ``<BR/><BR/>``) still contribute the default line height.
+    line_heights: list[float] = []
+    for line in ast.lines:
+        if not line.runs:
+            line_heights.append(default_size * 1.2)
+        else:
+            line_heights.append(max(run.font_size for run in line.runs) * 1.2)
+    total_h = sum(line_heights)
+    first_runs = next((l.runs for l in ast.lines if l.runs), None)
+    first_font = first_runs[0].font_size if first_runs else default_size
+    first_baseline_y = cy - total_h / 2 + first_font * 0.85
+
+    root_attrs = [
+        f'text-anchor="{anchor}"',
+        f'font-family="{default_face}"',
+        f'font-size="{default_size}"',
+    ]
+    if default_color:
+        root_attrs.append(f'fill="{default_color}"')
+    if italic:
+        root_attrs.append('font-style="italic"')
+    out = [f'<text {" ".join(root_attrs)}>']
+
+    emitted_first_line = False
+    for i, line in enumerate(ast.lines):
+        if not line.runs:
+            continue
+        # Per-line anchor override (LEFT/RIGHT in a <BR ALIGN=…>).
+        # Default SVG text-anchor already applies unless overridden.
+        for j, run in enumerate(line.runs):
+            tattrs: list[str] = []
+            if j == 0:
+                tattrs.append(f'x="{cx:.2f}"')
+                if not emitted_first_line:
+                    tattrs.append(f'y="{first_baseline_y:.2f}"')
+                    emitted_first_line = True
+                else:
+                    tattrs.append(f'dy="{line_heights[i]:.2f}"')
+            if run.font_size != default_size:
+                tattrs.append(f'font-size="{run.font_size}"')
+            if run.color and run.color != default_color:
+                tattrs.append(f'fill="{run.color}"')
+            if run.face and run.face != default_face:
+                tattrs.append(f'font-family="{run.face}"')
+            if run.bold:
+                tattrs.append('font-weight="bold"')
+            if run.italic:
+                tattrs.append('font-style="italic"')
+            if run.underline:
+                tattrs.append('text-decoration="underline"')
+            elif run.strike:
+                tattrs.append('text-decoration="line-through"')
+            if run.sub:
+                tattrs.append('baseline-shift="sub"')
+            elif run.sup:
+                tattrs.append('baseline-shift="super"')
+            text = escape(run.text)
+            if tattrs:
+                out.append(f'<tspan {" ".join(tattrs)}>{text}</tspan>')
+            else:
+                out.append(f'<tspan>{text}</tspan>')
+    out.append("</text>")
+    return "".join(out)
+
+
 def _node_attrs(node: dict) -> tuple[str, str, str, float, str, float]:
     """Extract (fill, stroke, font_family, font_size, font_color, penwidth) from node dict."""
     style = node.get("style", "")
@@ -285,11 +378,22 @@ def _render_cluster(cl: dict) -> str:
             tx = x + w / 2
             anchor = "middle"
 
-        lines.append(
-            f'<text x="{tx:.2f}" y="{ty:.2f}" text-anchor="{anchor}" '
-            f'font-family="{font_family}" font-size="{font_size}" '
-            f'fill="{font_color}">{label}</text>'
-        )
+        from gvpy.grammar.html_label import is_html_label as _is_html
+        raw_label = cl.get("label", "")
+        if _is_html(raw_label):
+            lines.append(_render_html_text(
+                tx, ty, raw_label,
+                default_face=font_family,
+                default_size=font_size,
+                default_color=font_color,
+                anchor=anchor,
+            ))
+        else:
+            lines.append(
+                f'<text x="{tx:.2f}" y="{ty:.2f}" text-anchor="{anchor}" '
+                f'font-family="{font_family}" font-size="{font_size}" '
+                f'fill="{font_color}">{label}</text>'
+            )
     lines.append(f"</g>{url_close}")
     return "\n".join(lines) + "\n"
 
@@ -677,23 +781,49 @@ def _render_node(node: dict) -> str:
 
     # Label (skip for record shapes — text already rendered by field renderer)
     if shape not in ("point", "record", "Mrecord"):
-        label = escape(node.get("label", name))
-        lines.append(
-            f'<text x="{x:.2f}" y="{y + font_size * 0.35:.2f}" '
-            f'text-anchor="middle" font-family="{font_family}" '
-            f'font-size="{font_size}" fill="{font_color}">{label}</text>'
-        )
+        raw_label = node.get("label", name)
+        from gvpy.grammar.html_label import is_html_label
+        if is_html_label(raw_label):
+            lines.append(_render_html_text(
+                x, y, raw_label,
+                default_face=font_family,
+                default_size=font_size,
+                default_color=font_color,
+                anchor="middle",
+            ))
+        else:
+            label = escape(raw_label)
+            lines.append(
+                f'<text x="{x:.2f}" y="{y + font_size * 0.35:.2f}" '
+                f'text-anchor="middle" font-family="{font_family}" '
+                f'font-size="{font_size}" fill="{font_color}">{label}</text>'
+            )
     # External label (xlabel) — positioned by collision-aware placement
     xlabel = node.get("xlabel", "")
     xlabel_x = node.get("_xlabel_pos_x", "")
     xlabel_y = node.get("_xlabel_pos_y", "")
     if xlabel and xlabel_x and xlabel_y:
-        lines.append(
-            f'<text x="{xlabel_x}" y="{xlabel_y}" '
-            f'text-anchor="middle" font-family="{font_family}" '
-            f'font-size="{font_size}" fill="{font_color}" '
-            f'font-style="italic">{escape(xlabel)}</text>'
-        )
+        from gvpy.grammar.html_label import is_html_label as _is_html
+        try:
+            xl_x = float(xlabel_x); xl_y = float(xlabel_y)
+        except (TypeError, ValueError):
+            xl_x = xl_y = None
+        if _is_html(xlabel) and xl_x is not None:
+            lines.append(_render_html_text(
+                xl_x, xl_y, xlabel,
+                default_face=font_family,
+                default_size=font_size,
+                default_color=font_color,
+                anchor="middle",
+                italic=True,
+            ))
+        else:
+            lines.append(
+                f'<text x="{xlabel_x}" y="{xlabel_y}" '
+                f'text-anchor="middle" font-family="{font_family}" '
+                f'font-size="{font_size}" fill="{font_color}" '
+                f'font-style="italic">{escape(xlabel)}</text>'
+            )
 
     lines.append(f"</g>{url_close}")
     return "\n".join(lines) + "\n"
@@ -780,14 +910,26 @@ def _render_edge(edge: dict, directed: bool) -> str:
         label_target = edge.get("labeltarget", "_blank")
         label_tooltip = edge.get("labeltooltip", "")
 
-        label_svg = (
-            f'<text x="{label_pos[0]:.2f}" y="{label_pos[1]:.2f}" '
-            f'text-anchor="middle" font-family="{font_family}" '
-            f'font-size="{font_size}" fill="{font_color}">'
-        )
-        if label_tooltip:
-            label_svg += f'<title>{escape(label_tooltip)}</title>'
-        label_svg += f'{escape(label)}</text>'
+        from gvpy.grammar.html_label import is_html_label as _is_html
+        if _is_html(label):
+            label_svg = _render_html_text(
+                label_pos[0], label_pos[1], label,
+                default_face=font_family,
+                default_size=font_size,
+                default_color=font_color,
+                anchor="middle",
+            )
+            # html_text path doesn't carry a <title> tooltip — for now
+            # the tooltip is only applied to plain labels.
+        else:
+            label_svg = (
+                f'<text x="{label_pos[0]:.2f}" y="{label_pos[1]:.2f}" '
+                f'text-anchor="middle" font-family="{font_family}" '
+                f'font-size="{font_size}" fill="{font_color}">'
+            )
+            if label_tooltip:
+                label_svg += f'<title>{escape(label_tooltip)}</title>'
+            label_svg += f'{escape(label)}</text>'
 
         if label_url:
             label_svg = (f'<a xlink:href="{escape(label_url)}" '

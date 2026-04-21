@@ -833,23 +833,36 @@ class DotGraphInfo(LayoutEngine):
         if shape in ("record", "Mrecord"):
             w, h = self._record_size(label, fontsize, char_w)
         else:
-            # Strip HTML tags for sizing
-            if label.startswith("<") and label.endswith(">"):
-                import re
-                label = re.sub(r"<[^>]+>", "", label)
-
-            # Per-glyph Times-Roman AFM widths — matches C's
-            # ``lib/common/labels.c: make_label()`` textspan callback.
-            from gvpy.engines.layout.common.text import (
-                text_width_times_roman,
+            # HTML-like label: parse into AST, size with per-run font
+            # sizes.  Matches C's ``lib/common/htmltable.c`` sizing,
+            # narrower scope (no tables).  Plain labels fall through to
+            # the AFM text path below.
+            from gvpy.grammar.html_label import (
+                is_html_label, parse_html_label, html_label_size,
             )
-            lines = label.replace("\\n", "\n").split("\n")
-            if not lines:
-                lines = [name]
-            num_lines = len(lines)
-            text_w = max(text_width_times_roman(line, fontsize)
-                         for line in lines)
-            text_h = num_lines * fontsize * 1.2
+            if is_html_label(label):
+                default_face = attrs.get("fontname", "Times-Roman")
+                html_ast = parse_html_label(
+                    label,
+                    default_font_size=fontsize,
+                    default_color=attrs.get("fontcolor"),
+                    default_face=default_face,
+                )
+                text_w, text_h = html_label_size(html_ast)
+                num_lines = max(1, len(html_ast.lines))
+            else:
+                # Per-glyph Times-Roman AFM widths — matches C's
+                # ``lib/common/labels.c: make_label()`` textspan callback.
+                from gvpy.engines.layout.common.text import (
+                    text_width_times_roman,
+                )
+                lines = label.replace("\\n", "\n").split("\n")
+                if not lines:
+                    lines = [name]
+                num_lines = len(lines)
+                text_w = max(text_width_times_roman(line, fontsize)
+                             for line in lines)
+                text_h = num_lines * fontsize * 1.2
 
             # C's ``poly_init`` at ``lib/common/shapes.c @ 1934``:
             # 1. ``dimen`` = (text_w + XPAD, text_h + YPAD) where
