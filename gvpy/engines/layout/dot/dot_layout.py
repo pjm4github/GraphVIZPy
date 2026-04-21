@@ -2200,8 +2200,15 @@ class DotGraphInfo(LayoutEngine):
                 max_x = max(max_x, cx2)
                 max_y = max(max_y, cy2)
 
-        # Expand bb to include edge routing points and arrowheads
-        for le in self.ledges:
+        # Expand bb to include edge routing points and arrowheads.
+        # Chain edges live in ``self._chain_edges`` (multi-rank edges
+        # split by ``rank.insert_virtual_chains``) — their control
+        # points aren't in ``ledges`` but we still render them, so
+        # exclude them from bb and the routed spline gets clipped by
+        # the viewBox.  Observed on 2734.dot where the back-edge
+        # ``node13->node14`` (dir=back, tailport=n, headport=s) routes
+        # to x=-33 while the node-only bb starts at x=34.
+        for le in list(self.ledges) + list(self._chain_edges):
             if le.points:
                 for px, py in le.points:
                     min_x = min(min_x, px)
@@ -2210,7 +2217,7 @@ class DotGraphInfo(LayoutEngine):
                     max_y = max(max_y, py)
 
         # Expand bb to include xlabel / label positions
-        for le in self.ledges:
+        for le in list(self.ledges) + list(self._chain_edges):
             if le.label_pos:
                 lx, ly = le.label_pos
                 # Rough estimate for label extent
