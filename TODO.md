@@ -5,7 +5,7 @@ Pending work.  For shipped work see `DONE.md`.
 Authoritative reference for C-side comparison:
 `C:\Users\pmora\OneDrive\Documents\Git\GitHub\graphviz\lib\`.
 
-Last updated: 2026-04-19.
+Last updated: 2026-04-21.
 
 ---
 
@@ -375,3 +375,76 @@ diagram UI; 6–9 add simulation.
   costs the full triangulation and then routes to a straight fallback;
   fixing whatever makes ``Pshortestpath`` fail could cut those
   triangulations entirely.
+
+---
+
+## 9. HTML-like Labels — Phase 4+ follow-ups
+
+Phase 1-3 (text styling: ``<FONT>`` / ``<B>`` / ``<I>`` / ``<U>`` /
+``<S>`` / ``<SUB>`` / ``<SUP>`` / ``<BR ALIGN>``) shipped in commit
+`1c75d86`.  Phase 4 (``<TABLE>`` / ``<TR>`` / ``<TD>`` with BORDER,
+CELLBORDER, CELLPADDING, CELLSPACING, BGCOLOR, ALIGN, VALIGN,
+HREF, COLSPAN, ROWSPAN) shipped in commits `092a54a`, `f5732fc`,
+`376d463`.  Test coverage: `tests/test_html_label.py` (59 cases)
+and `tests/test_html_table.py` (46 cases).
+
+Deferred — each is self-contained, ship order is flexible.
+
+1. **`<IMG SRC="…" SCALE="…"/>` inside cells** — not parsed.  Need
+   image loading (file vs URL), size probing, SCALE modes
+   (``BOTH`` / ``WIDTH`` / ``HEIGHT`` / ``TRUE`` / ``FALSE``),
+   and SVG ``<image>`` emission.  C source:
+   ``lib/common/htmltable.c: emit_html_img`` +
+   ``lib/common/usershape.c``.  Scope ~200 LoC + depends on having
+   image files in the test fixtures dir.
+
+2. **`STYLE="rounded"` and `STYLE="radial"`** — currently ignored.
+   ``rounded`` needs cell/table rects converted to ``<rect rx="…"
+   ry="…"/>`` (easy, ~20 LoC).  ``radial`` needs SVG
+   ``<linearGradient>`` / ``<radialGradient>`` defs (~60 LoC).
+
+3. **`GRADIENTANGLE=…`** — angle for the radial/linear gradient
+   when ``STYLE`` implies one.  Needs the gradient defs from #2.
+
+4. **Mixed text + nested table in one cell** — currently the
+   nested table wins and any sibling text runs are ignored.  Real
+   fix: give ``TableCell.content`` an ordered list of fragments
+   (``TextBlock`` | ``HtmlTable``) so a cell can hold "caption +
+   subtable" layouts.  Very few real-world graphs use this, but
+   Graphviz allows it.
+
+5. **`SIDES="LTRB"` on TD** — partial cell borders.  Currently we
+   always stroke the full rect.  Needs emitting four separate
+   line segments instead of a rect when any side is missing.
+   ~40 LoC.
+
+6. **`PORT="…"` on TD** — ties HTML cells to the record-port
+   system so edges can target individual cells as endpoints.
+   This one is the most involved: the layout engine's port
+   resolution currently uses :class:`~gvpy.core.node.RecordField`,
+   which comes from the record-label parser, not the HTML
+   table parser.  To make ``<TD PORT="in0">`` work, the HTML
+   sizer needs to publish cell bounding boxes in a form compatible
+   with record-port lookup.  C source: ``lib/common/htmltable.c``
+   sets ``ND_label``'s cell list; ``lib/common/shapes.c::html_port``
+   finds the cell by name.  Scope ~150 LoC, plus test graphs that
+   actually reference cell ports.
+
+7. **ALIGN="TEXT" and BALIGN** — row-level alignment of multi-line
+   text.  ``BALIGN="LEFT"`` means ``<BR/>`` within the cell
+   defaults to ``ALIGN="LEFT"``.  Currently ignored.  ~20 LoC.
+
+8. **``<HR/>`` inside cells** — horizontal rule between text
+   blocks.  Currently passes through ``HtmlLine`` machinery but
+   renders as a blank line.  Needs an actual stroked line in the
+   renderer.  ~30 LoC.
+
+9. **Entity coverage beyond the big five** — currently
+   ``html.parser.HTMLParser`` with ``convert_charrefs=True``
+   handles every named HTML5 entity, so we get ``&rarr;`` etc.
+   for free.  No action needed, just noting for completeness.
+
+10. **COLSPAN / ROWSPAN extra proportional-growth modes** — the
+    current spanner distributes extra width / height evenly across
+    spanned columns / rows.  C weights by existing column widths
+    (so narrow columns stay narrow).  Low-impact refinement.
