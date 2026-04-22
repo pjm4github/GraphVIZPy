@@ -309,6 +309,14 @@ class Node(Agobj):   # from core/core.c
         # relative to the node center.
         self.record_fields = None  # Optional[RecordField]
 
+        # Parsed HTML-like label (``<TABLE>…</TABLE>`` form) — set by
+        # the layout engine when ``is_html_label(label)`` returns True
+        # so downstream code (mincross, splines) can resolve PORT
+        # references inside the table.  Default None for plain and
+        # record labels.  Carries a sized :class:`HtmlTable` (width,
+        # height, col_widths, row_y filled in).
+        self.html_table = None  # Optional[HtmlTable]
+
         # "Compound node" data
         self.compound_node_data: CompoundNode = CompoundNode()  # was cmp_mode_data
         self.collapsed: bool = False  # Indicates if this node is a collapsed subgraph

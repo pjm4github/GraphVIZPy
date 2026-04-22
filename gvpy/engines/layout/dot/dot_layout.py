@@ -489,6 +489,19 @@ class DotGraphInfo(LayoutEngine):
         ``_find_components``/``_pack_components`` short-circuit that was
         removed in favour of this C-aligned flow.
         """
+        # Honour graph-level ``imagepath`` so HTML-label IMG probes
+        # (run inside ``_init_from_graph`` when each node's size is
+        # computed) can locate relative SRC files.  Matches C
+        # ``lib/common/usershape.c: imagepath``.
+        from gvpy.grammar.html_label import set_image_search_paths
+        imagepath_raw = self.graph.get_graph_attr("imagepath") or ""
+        # Accept Windows (``;``) or Unix (``:``) separators; always
+        # prepend ``.`` so CWD resolves first.
+        import re as _re_imagepath
+        parts = [p.strip() for p in _re_imagepath.split(r"[;:]", imagepath_raw)
+                 if p.strip()]
+        set_image_search_paths(["."] + parts)
+
         self._init_from_graph()
 
         trace("rank", f"begin layout: nodes={len(self.lnodes)} edges={len(self.ledges)} clusters={len(self._clusters)}")
@@ -850,6 +863,13 @@ class DotGraphInfo(LayoutEngine):
                 )
                 text_w, text_h = html_label_size(html_ast)
                 num_lines = max(1, len(html_ast.lines))
+                # Stash the sized table onto the Node so mincross /
+                # splines can resolve ``<TD PORT="…">`` references
+                # without re-parsing on every call.
+                if html_ast.table is not None:
+                    node_obj = self.graph.nodes.get(name)
+                    if node_obj is not None:
+                        node_obj.html_table = html_ast.table
             else:
                 # Per-glyph Times-Roman AFM widths — matches C's
                 # ``lib/common/labels.c: make_label()`` textspan callback.
@@ -2382,6 +2402,7 @@ class DotGraphInfo(LayoutEngine):
                      "fontname", "fontsize", "fontcolor", "stylesheet",
                      "tooltip", "URL", "href", "target", "id", "class",
                      "comment", "colorscheme", "gradientangle",
+                     "imagepath",
                      "_label_pos_x", "_label_pos_y"):
             val = self.graph.get_graph_attr(attr)
             if val:

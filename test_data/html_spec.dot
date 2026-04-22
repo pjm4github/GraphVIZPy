@@ -1,0 +1,109 @@
+// Test fixture for HTML-like-label spec items #1 (O = overline),
+// #2 (VR / ROWS="*" / COLUMNS="*" / inter-row HR), #5 (WIDTH /
+// HEIGHT / FIXEDSIZE), #7 (SIDES on TABLE), #8 (ALIGN="TEXT"
+// per-line preservation), and #11 (weighted COLSPAN growth).
+//
+// Every node exercises one feature so the tests can pin behaviour
+// without cross-coupling between fixtures.
+digraph html_spec {
+    rankdir=LR;
+    fontname="Times-Roman";
+    fontsize=14;
+    node [shape=plaintext, fontname="Times-Roman"];
+
+    // ── <O> = overline (separate from <U> underline) ─────────────────
+    t_overline [label=<
+        <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+            <TR>
+                <TD><U>under</U></TD>
+                <TD><O>over</O></TD>
+                <TD><O><U>both</U></O></TD>
+            </TR>
+        </TABLE>
+    >];
+
+    // ── <VR/> between cells + <HR/> between rows ─────────────────────
+    t_rules [label=<
+        <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="4" CELLPADDING="6">
+            <TR><TD>a</TD><VR/><TD>b</TD><VR/><TD>c</TD></TR>
+            <HR/>
+            <TR><TD>d</TD><VR/><TD>e</TD><VR/><TD>f</TD></TR>
+        </TABLE>
+    >];
+
+    // ── ROWS="*" + COLUMNS="*" (auto rules between all rows/cells) ──
+    t_starstar [label=<
+        <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="4" CELLPADDING="6"
+               ROWS="*" COLUMNS="*">
+            <TR><TD>1</TD><TD>2</TD><TD>3</TD></TR>
+            <TR><TD>4</TD><TD>5</TD><TD>6</TD></TR>
+            <TR><TD>7</TD><TD>8</TD><TD>9</TD></TR>
+        </TABLE>
+    >];
+
+    // ── WIDTH / HEIGHT minimum on a TD ──────────────────────────────
+    t_minsize [label=<
+        <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4">
+            <TR>
+                <TD WIDTH="80" HEIGHT="40">big</TD>
+                <TD>x</TD>
+            </TR>
+        </TABLE>
+    >];
+
+    // ── FIXEDSIZE=TRUE on a TD (clamps regardless of content) ───────
+    t_fixed [label=<
+        <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="2">
+            <TR>
+                <TD WIDTH="50" HEIGHT="30" FIXEDSIZE="TRUE">wider-than-50pt-content</TD>
+                <TD>normal</TD>
+            </TR>
+        </TABLE>
+    >];
+
+    // ── SIDES on TABLE: only top+bottom outer borders ────────────────
+    t_outer_sides [label=<
+        <TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6"
+               SIDES="TB">
+            <TR><TD>one</TD><TD>two</TD></TR>
+        </TABLE>
+    >];
+
+    // ── ALIGN="TEXT" on TD: per-line alignment preserved ─────────────
+    // cell.align is TEXT, so each BR-aligned line keeps its own align
+    // (no forced centring of lines that lack ALIGN).
+    t_align_text [label=<
+        <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+            <TR><TD ALIGN="TEXT">
+                default<BR ALIGN="LEFT"/>left line<BR ALIGN="RIGHT"/>right line
+            </TD></TR>
+        </TABLE>
+    >];
+
+    // ── Weighted COLSPAN growth ──────────────────────────────────────
+    // First row has a COLSPAN=2 cell much wider than the cells below;
+    // extra width should distribute ~proportional to existing col
+    // widths (narrow left col stays narrow).
+    t_weighted [label=<
+        <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4">
+            <TR>
+                <TD COLSPAN="2">
+                    this is a much wider spanning header than the cells below
+                </TD>
+            </TR>
+            <TR>
+                <TD>x</TD>
+                <TD>much longer second column content</TD>
+            </TR>
+        </TABLE>
+    >];
+
+    // Chain for layout connectivity.
+    t_overline -> t_rules;
+    t_rules -> t_starstar;
+    t_starstar -> t_minsize;
+    t_minsize -> t_fixed;
+    t_fixed -> t_outer_sides;
+    t_outer_sides -> t_align_text;
+    t_align_text -> t_weighted;
+}

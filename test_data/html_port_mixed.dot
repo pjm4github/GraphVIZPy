@@ -1,0 +1,63 @@
+// Test fixture for HTML-label PORT attribute + mixed-content cells.
+//
+// TODO §9 item #6 (PORT on TD/TABLE) and item #4 (mixed text +
+// nested table in one cell).
+//
+// Node ``form`` carries a TABLE with named PORT cells; the other
+// nodes (``src1`` / ``src2`` / ``sink``) connect to the form via
+// ``form:<port>`` endpoints.  The ``card`` node demonstrates a
+// single cell that mixes a caption (text) with a sub-table and
+// a footer (more text) in that order.
+digraph html_port_mixed {
+    rankdir=LR;
+    fontname="Times-Roman";
+    fontsize=14;
+    node [shape=plaintext, fontname="Times-Roman"];
+
+    // ── Form with named ports ────────────────────────────────────────
+    form [label=<
+        <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+            <TR>
+                <TD PORT="in_name" BGCOLOR="#f0fdf4">name</TD>
+                <TD PORT="in_age" BGCOLOR="#eff6ff">age</TD>
+            </TR>
+            <TR>
+                <TD PORT="out_ok" BGCOLOR="#fef3c7" COLSPAN="2">submit</TD>
+            </TR>
+        </TABLE>
+    >];
+
+    src1 [label="Name input"];
+    src2 [label="Age input"];
+    sink [label="Handler"];
+
+    // Edges targeting individual cells through :port syntax.
+    src1 -> form:in_name;
+    src2 -> form:in_age;
+    form:out_ok -> sink;
+
+    // ── Caption + sub-table + footer stacked as three rows ──────────
+    // A TD under Graphviz's strict HTML grammar holds either text OR
+    // a nested <TABLE>, not both.  We stack caption / table / footer
+    // as three rows of the outer table so the layout is valid for
+    // both ``dot.exe`` and our Python renderer.  (Our Python parser
+    // also accepts text + nested table in a single TD as an extension
+    // — covered by unit tests in ``tests/test_html_port_mixed.py``
+    // but not in this fixture, which aims for C parity.)
+    card [label=<
+        <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8"
+               BGCOLOR="#fafafa">
+            <TR><TD ALIGN="LEFT"><B>Project Status</B></TD></TR>
+            <TR><TD>
+                <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4">
+                    <TR><TD>Task</TD><TD>State</TD></TR>
+                    <TR><TD>design</TD><TD BGCOLOR="#dcfce7">done</TD></TR>
+                    <TR><TD>review</TD><TD BGCOLOR="#fef3c7">wip</TD></TR>
+                </TABLE>
+            </TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="10" COLOR="#6b7280">updated 2026-04-22</FONT></TD></TR>
+        </TABLE>
+    >];
+
+    sink -> card;
+}

@@ -1,0 +1,108 @@
+// Test fixture for HTML-table STYLE / SIDES / BALIGN / HR support
+// (TODO §9 items #2, #5, #7, #8).
+//
+// Each node demonstrates one feature in isolation so the test suite
+// can pin the individual rendering behaviour.  Nodes are chained so
+// the layout stays connected.
+digraph html_style {
+    rankdir=LR;
+    fontname="Times-Roman";
+    fontsize=14;
+    node [shape=plaintext, fontname="Times-Roman"];
+
+    // ── STYLE="rounded" on TABLE and TD ───────────────────────────────
+    t_rounded [label=<
+        <TABLE STYLE="rounded" BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+            <TR><TD>plain</TD><TD STYLE="rounded">rounded-cell</TD></TR>
+        </TABLE>
+    >];
+
+    // ── STYLE="radial" with single BGCOLOR (fades to white) ──────────
+    t_radial [label=<
+        <TABLE STYLE="radial" BGCOLOR="#1e40af" BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8">
+            <TR><TD><FONT COLOR="white">radial</FONT></TD></TR>
+        </TABLE>
+    >];
+
+    // ── BGCOLOR pair → linear gradient with GRADIENTANGLE ────────────
+    t_linear [label=<
+        <TABLE BGCOLOR="#fde68a:#f97316" GRADIENTANGLE="90" BORDER="1" CELLBORDER="0" CELLPADDING="8">
+            <TR><TD>linear-90</TD></TR>
+        </TABLE>
+    >];
+
+    // ── Per-cell radial with colour pair ─────────────────────────────
+    t_cell_radial [label=<
+        <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="2" CELLPADDING="6">
+            <TR>
+                <TD STYLE="radial" BGCOLOR="#bae6fd:#0ea5e9">ra</TD>
+                <TD>plain</TD>
+            </TR>
+        </TABLE>
+    >];
+
+    // ── SIDES: partial cell borders (LTRB subset) ────────────────────
+    // Row 1: full | top+bottom only | right only
+    // Row 2: left only | no borders | bottom only
+    t_sides [label=<
+        <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+            <TR>
+                <TD>full</TD>
+                <TD SIDES="TB">TB</TD>
+                <TD SIDES="R">R</TD>
+            </TR>
+            <TR>
+                <TD SIDES="L">L</TD>
+                <TD SIDES="">none</TD>
+                <TD SIDES="B">B</TD>
+            </TR>
+        </TABLE>
+    >];
+
+    // ── BALIGN: default line-break alignment within cell ─────────────
+    t_balign [label=<
+        <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+            <TR>
+                <TD BALIGN="LEFT">row1<BR/>row2<BR/>row3</TD>
+                <TD BALIGN="RIGHT">A<BR/>BB<BR/>CCC</TD>
+            </TR>
+            <TR>
+                <TD ALIGN="RIGHT" BALIGN="LEFT">wins<BR/>left<BR/>per BR</TD>
+                <TD>mixed<BR ALIGN="LEFT"/>left<BR ALIGN="RIGHT"/>right</TD>
+            </TR>
+        </TABLE>
+    >];
+
+    // ── HR: horizontal rule inside a cell ────────────────────────────
+    t_hr [label=<
+        <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6">
+            <TR>
+                <TD><B>Heading</B><BR/><HR/>body line 1<BR/>body line 2</TD>
+            </TR>
+            <TR>
+                <TD>Footer<HR/><FONT POINT-SIZE="10">fine print</FONT></TD>
+            </TR>
+        </TABLE>
+    >];
+
+    // ── Combined: rounded + SIDES + BALIGN + HR in one cell ─────────
+    t_combo [label=<
+        <TABLE STYLE="rounded" BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="8" BGCOLOR="#f0fdf4">
+            <TR>
+                <TD SIDES="B" BALIGN="LEFT"><B>Title</B><BR/><HR/>item 1<BR/>item 2</TD>
+            </TR>
+            <TR>
+                <TD STYLE="rounded" BGCOLOR="#dcfce7">rounded-cell</TD>
+            </TR>
+        </TABLE>
+    >];
+
+    // Chain for layout connectivity.
+    t_rounded -> t_radial;
+    t_radial -> t_linear;
+    t_linear -> t_cell_radial;
+    t_cell_radial -> t_sides;
+    t_sides -> t_balign;
+    t_balign -> t_hr;
+    t_hr -> t_combo;
+}

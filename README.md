@@ -807,6 +807,114 @@ result = DotLayout(graph).layout()
 svg = render_svg(result)
 ```
 
+## HTML-like Labels
+
+Node, edge, cluster, and graph labels support Graphviz's HTML-like
+syntax (the ``label=<...>`` form).  The table below summarises which
+tags and attributes the DOT parser accepts and which are honoured by
+the SVG renderer.  End-to-end fixtures live in ``test_data/`` and
+are covered by the ``tests/test_html_*.py`` suites.
+
+### Text-level tags
+
+| Tag | Attributes | Status | Notes |
+|-----|-----------|--------|-------|
+| `<BR/>` | ALIGN | ✅ | Per-line alignment ("left" / "center" / "right") |
+| `<FONT>` | COLOR, FACE, POINT-SIZE | ✅ | Inline font overrides cascade into nested runs |
+| `<B>` / `<I>` / `<U>` / `<S>` | — | ✅ | Bold / italic / underline / strike-through |
+| `<O>` | — | ✅ | Overline (distinct from `<U>` underline) |
+| `<SUB>` / `<SUP>` | — | ✅ | Subscript / superscript via SVG `baseline-shift` |
+
+### Table-structure tags
+
+| Tag | Attributes | Status | Notes |
+|-----|-----------|--------|-------|
+| `<TABLE>` | see TABLE matrix below | ✅ (partial) | STYLE rounded / radial; SIDES outer border |
+| `<TR>` | — | ✅ | |
+| `<TD>` | see TD matrix below | ✅ (partial) | |
+| `<HR/>` (inside TD) | — | ✅ | Horizontal rule between paragraph blocks |
+| `<HR/>` (between TRs) | — | ✅ | Horizontal rule between rows |
+| `<VR/>` | — | ✅ | Vertical rule between cells in a row |
+
+### Special content
+
+| Tag | Attributes | Status | Notes |
+|-----|-----------|--------|-------|
+| `<IMG/>` | SRC, SCALE | ✅ | SCALE modes FALSE / TRUE / BOTH / WIDTH / HEIGHT; PNG / JPEG / GIF dimensions probed via stdlib |
+
+### TABLE attribute matrix
+
+| Attribute | Status | Notes |
+|-----------|--------|-------|
+| ALIGN | ⚠️ stored | Table-as-block positioning not applied yet |
+| BGCOLOR (single) | ✅ | |
+| BGCOLOR (`c1:c2`) | ✅ | Linear or radial gradient (depending on STYLE) |
+| BORDER | ✅ | |
+| CELLBORDER | ✅ | Inherits BORDER when unspecified |
+| CELLPADDING | ✅ | |
+| CELLSPACING | ✅ | |
+| COLOR | ✅ | Stroke colour |
+| COLUMNS (`"*"`) | ✅ | Auto VR between every cell |
+| FIXEDSIZE | ✅ | Clamps to exact WIDTH × HEIGHT |
+| GRADIENTANGLE | ✅ | Angle for linear gradient |
+| HEIGHT | ✅ | Minimum; expands with content unless FIXEDSIZE |
+| HREF | ✅ | Wraps in `<a xlink:href>`; text auto-styles blue + underline |
+| ID | ✅ | Emits `<g id="…">` wrapper |
+| imagepath (graph-level) | ✅ | Search path for IMG SRC resolution |
+| PORT | ❌ | Table-level port not wired (TD PORT is) |
+| ROWS (`"*"`) | ✅ | Auto HR between every row |
+| SIDES | ✅ | Partial outer border |
+| STYLE (ROUNDED / RADIAL) | ✅ | |
+| TARGET | ✅ | Hyperlink target frame |
+| TITLE / TOOLTIP | ✅ | Emits SVG `<title>` child |
+| VALIGN | ⚠️ stored | Not applied at table level |
+| WIDTH | ✅ | Minimum; expands with content unless FIXEDSIZE |
+
+### TD attribute matrix
+
+| Attribute | Status | Notes |
+|-----------|--------|-------|
+| ALIGN (L / C / R / TEXT) | ✅ | TEXT preserves per-line alignment |
+| BALIGN | ✅ | Default `<BR/>` alignment inside the cell |
+| BGCOLOR (single / `c1:c2`) | ✅ | |
+| BORDER | ✅ | Overrides CELLBORDER |
+| CELLPADDING | ✅ | |
+| CELLSPACING | ⚠️ stored | Per-cell override not applied |
+| COLOR | ✅ | |
+| COLSPAN | ✅ | |
+| FIXEDSIZE | ✅ | Clamps to exact WIDTH × HEIGHT |
+| GRADIENTANGLE | ✅ | |
+| HEIGHT | ✅ | |
+| HREF | ✅ | Link-styled text (blue + underline) by default |
+| ID | ✅ | |
+| PORT | ✅ | Cells addressable as `node:port`; mincross port-order via compass fraction |
+| ROWSPAN | ✅ | |
+| SIDES | ✅ | |
+| STYLE (ROUNDED / RADIAL) | ✅ | |
+| TARGET | ✅ | |
+| TITLE / TOOLTIP | ✅ | |
+| VALIGN | ✅ | Top / middle / bottom |
+| WIDTH | ✅ | |
+
+### Python extension: mixed cell content
+
+Graphviz's strict BNF says a `<TD>` holds *either* text *or* a
+nested `<TABLE>`.  Our Python parser additionally accepts cells
+that mix text, tables, and images in any order (caption + sub-table
++ footer, etc.) via an ordered ``TableCell.blocks`` list.  This
+extension is Python-only — a DOT file relying on it will fail to
+parse under `dot.exe`.  For cross-engine fixtures, stack caption /
+sub-table / footer as separate rows of the outer table instead.
+
+### Remaining gaps
+
+See TODO §9 for the current unimplemented or partial items:
+
+- TABLE-level `ALIGN` / `VALIGN` (parsed but not applied)
+- TD `CELLSPACING` per-cell override
+- Remote-URL / SVG-source IMG probing
+- `GV_FILE_PATH` environment variable for image resolution
+
 ## Graph Tools (`gvtools.py`)
 
 `gvtools.py` provides graph analysis, transformation, and generation utilities — the Python equivalents of Graphviz standalone commands like `acyclic`, `tred`, `gc`, `gvgen`, etc.

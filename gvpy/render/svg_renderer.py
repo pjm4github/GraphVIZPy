@@ -7,6 +7,7 @@ Supports node shapes, colors, fill styles, fonts, edge colors, and styles.
 from __future__ import annotations
 
 import math
+import re
 from pathlib import Path
 from typing import Union
 from xml.sax.saxutils import escape
@@ -15,10 +16,24 @@ from xml.sax.saxutils import escape
 _SVG_HEADER = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="{w}pt" height="{h}pt" viewBox="{vx:.2f} {vy:.2f} {vw:.2f} {vh:.2f}"
-     xmlns="http://www.w3.org/2000/svg">
+     xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink">
+<style type="text/css"><![CDATA[
+a {{ cursor: pointer; }}
+a text, a tspan {{ text-decoration: underline; }}
+]]></style>
 <g id="graph0" class="graph">
 <title>{title}</title>
 """
+
+# Default colour applied to text inside an ``<a xlink:href>`` wrapper
+# when the author didn't set an explicit ``<FONT COLOR="…">``.  Matches
+# common browser / editor conventions for hyperlinks.  The `<style>`
+# block above contributes the underline via ``text-decoration``
+# inheritance; this constant provides the colour via the HTML-label
+# renderer passing it down as ``default_color`` for any cell with
+# ``HREF``.
+_LINK_COLOR = "#0066cc"
 
 _SVG_FOOTER = "</g>\n</svg>\n"
 
@@ -48,10 +63,249 @@ _STYLE_DASH = {
 # few points above the edge so the stroke doesn't cut through text.
 _EDGE_LABEL_MARGIN = 3.0
 
+# Corner radius applied when STYLE="rounded" is set on a TABLE or TD.
+_HTML_ROUNDED_R = 4.0
+
+# Global gradient counter — reset at the start of each ``render_svg``
+# call so IDs stay stable across identical inputs while remaining
+# unique across nodes within a single SVG document.
+_GRADIENT_COUNTER: list[int] = [0]
+
+
+def _next_gradient_id() -> str:
+    gid = f"gvpyg{_GRADIENT_COUNTER[0]}"
+    _GRADIENT_COUNTER[0] += 1
+    return gid
+
+
+def _apply_imagepath(raw: str) -> None:
+    """Parse a graph-level ``imagepath`` attribute and hand it to the
+    HTML-label image probe.
+
+    Accepts Windows (``;``) or Unix (``:``) separators; empty tokens
+    are dropped.  ``"."`` is always included at the front so CWD
+    resolves without the user having to list it explicitly — matches
+    C ``lib/common/usershape.c``'s search order.
+    """
+    from gvpy.grammar.html_label import set_image_search_paths
+    parts = [p.strip() for p in re.split(r"[;:]", raw or "") if p.strip()]
+    set_image_search_paths(["."] + parts)
+
+
+def _parse_bgcolor_pair(bg: str | None) -> tuple[str | None, str | None]:
+    """Split a Graphviz-style ``c1:c2`` colour pair.
+
+    Returns ``(c1, c2)`` when ``bg`` contains a colon, otherwise
+    ``(bg, None)``.  Empty strings are normalised to ``None``.
+    """
+    if not bg:
+        return None, None
+    if ":" in bg:
+        a, b = bg.split(":", 1)
+        return (a.strip() or None), (b.strip() or None)
+    return bg, None
+
+
+def _gradient_def(gid: str, c1: str, c2: str, style: str,
+                  angle: float) -> str:
+    """Build a ``<linearGradient>`` or ``<radialGradient>`` ``<defs>``.
+
+    ``style == "radial"`` emits a radial gradient centered on the shape
+    (approximated by bounding-box coordinates 0..1).  Any other style
+    emits a linear gradient along ``angle`` degrees, measured
+    counter-clockwise from the positive X axis (matches Graphviz's
+    GRADIENTANGLE convention).
+    """
+    if style == "radial":
+        return (f'<radialGradient id="{gid}" cx="0.5" cy="0.5" r="0.5">'
+                f'<stop offset="0%" stop-color="{c1}"/>'
+                f'<stop offset="100%" stop-color="{c2}"/>'
+                f'</radialGradient>')
+    a = math.radians(angle)
+    x1 = 0.5 - 0.5 * math.cos(a)
+    y1 = 0.5 + 0.5 * math.sin(a)
+    x2 = 0.5 + 0.5 * math.cos(a)
+    y2 = 0.5 - 0.5 * math.sin(a)
+    return (f'<linearGradient id="{gid}" '
+            f'x1="{x1:.3f}" y1="{y1:.3f}" '
+            f'x2="{x2:.3f}" y2="{y2:.3f}">'
+            f'<stop offset="0%" stop-color="{c1}"/>'
+            f'<stop offset="100%" stop-color="{c2}"/>'
+            f'</linearGradient>')
+
+
+def _resolve_fill(bgcolor: str | None, style: str | None,
+                  gradientangle: float,
+                  ctx: dict) -> tuple[str, str | None]:
+    """Return ``(fill_attr_value, gradient_defs_str_or_None)``.
+
+    Plain colour: returns the colour, no defs.  Colon-pair or
+    ``style in {"radial"}`` with a single colour: fabricates a
+    gradient and registers it in ``ctx["defs"]`` via a unique id.
+    """
+    if not bgcolor:
+        return "none", None
+    c1, c2 = _parse_bgcolor_pair(bgcolor)
+    is_gradient = (style == "radial") or (c2 is not None)
+    if not is_gradient:
+        return c1 or "none", None
+    if c2 is None:
+        # STYLE="radial" with a single colour — fade to white.
+        c2 = "white"
+    gid = _next_gradient_id()
+    return f"url(#{gid})", _gradient_def(gid, c1, c2, style or "", gradientangle)
+
+
+def _render_cell_rect(cx0: float, cy0: float, w: float, h: float,
+                      sides: str, rounded: bool, fill: str,
+                      stroke: str, stroke_width: float) -> str:
+    """Emit the cell background + border geometry.
+
+    When ``sides == "LTRB"`` (all four borders) we emit a single
+    ``<rect>``; otherwise the rect has ``stroke="none"`` (for fill
+    only) and each border segment present in ``sides`` is emitted as
+    its own ``<line>``.  ``rounded`` only applies to the full-rect
+    case — partial borders don't attempt rounded corners.
+    """
+    # Emit integral stroke widths as ints (``stroke-width="3"`` not
+    # ``"3.0"``) — some downstream test assertions compare literals.
+    if stroke_width == int(stroke_width):
+        sw_attr = f' stroke-width="{int(stroke_width)}"'
+    else:
+        sw_attr = f' stroke-width="{stroke_width}"'
+    rx_attr = (f' rx="{_HTML_ROUNDED_R}" ry="{_HTML_ROUNDED_R}"'
+               if rounded else "")
+    if stroke_width <= 0:
+        stroke = "none"
+    full = (sides == "LTRB") or not sides
+    if full:
+        return (f'<rect x="{cx0:.2f}" y="{cy0:.2f}" '
+                f'width="{w:.2f}" height="{h:.2f}"{rx_attr} '
+                f'fill="{fill}" stroke="{stroke}"{sw_attr}/>')
+    # Partial sides: fill rect with no stroke + per-side lines.
+    out = [
+        f'<rect x="{cx0:.2f}" y="{cy0:.2f}" '
+        f'width="{w:.2f}" height="{h:.2f}" '
+        f'fill="{fill}" stroke="none"/>'
+    ]
+    if stroke == "none" or stroke_width <= 0:
+        return out[0]
+    x1, y1, x2, y2 = cx0, cy0, cx0 + w, cy0 + h
+    seg_attrs = f'stroke="{stroke}"{sw_attr}'
+    if "T" in sides:
+        out.append(f'<line x1="{x1:.2f}" y1="{y1:.2f}" '
+                   f'x2="{x2:.2f}" y2="{y1:.2f}" {seg_attrs}/>')
+    if "B" in sides:
+        out.append(f'<line x1="{x1:.2f}" y1="{y2:.2f}" '
+                   f'x2="{x2:.2f}" y2="{y2:.2f}" {seg_attrs}/>')
+    if "L" in sides:
+        out.append(f'<line x1="{x1:.2f}" y1="{y1:.2f}" '
+                   f'x2="{x1:.2f}" y2="{y2:.2f}" {seg_attrs}/>')
+    if "R" in sides:
+        out.append(f'<line x1="{x2:.2f}" y1="{y1:.2f}" '
+                   f'x2="{x2:.2f}" y2="{y2:.2f}" {seg_attrs}/>')
+    return "".join(out)
+
+
+def _wrap_link_title_id(body: str, href: str | None, target: str | None,
+                         title: str | None, element_id: str | None) -> str:
+    """Wrap ``body`` in the interactive-attribute envelope used by
+    HTML-label TABLE / TD.
+
+    Adds, in order (innermost to outermost):
+
+    1. A ``<title>`` child when ``title`` is set.  Graphviz treats
+       ``TITLE`` and ``TOOLTIP`` as aliases for the same hover hint.
+    2. An ``<a xlink:href="…" target="…">`` wrapper when ``href`` is
+       set.  ``target`` only applies when ``href`` is present.
+    3. A ``<g id="…">`` wrapper when ``element_id`` is set so the
+       id propagates even without a hyperlink.
+    """
+    out = body
+    if title:
+        out = f'<title>{escape(title)}</title>' + out
+    if href:
+        target_attr = (f' target="{escape(target)}"'
+                       if target else "")
+        out = (f'<a xlink:href="{escape(href)}"{target_attr}>'
+               + out + "</a>")
+    if element_id:
+        out = f'<g id="{escape(element_id)}">' + out + "</g>"
+    return out
+
+
+def _render_image(img, inner_x: float, inner_y: float,
+                   inner_w: float, inner_h: float) -> str:
+    """Emit an SVG ``<image>`` element sized per Graphviz's SCALE mode.
+
+    - ``false`` (default) — use the image's natural pixel size,
+      centred in the cell's inner area.
+    - ``true`` — scale preserving aspect ratio to fit the cell.
+    - ``both`` — stretch to fill the cell (no aspect ratio).
+    - ``width`` — scale so width fills the cell; height proportional.
+    - ``height`` — scale so height fills the cell; width proportional.
+    """
+    scale = (img.scale or "false").lower()
+    src_attr = f'xlink:href="{escape(img.src)}"'
+    nw = img.natural_w
+    nh = img.natural_h
+    if scale == "both":
+        return (f'<image x="{inner_x:.2f}" y="{inner_y:.2f}" '
+                f'width="{inner_w:.2f}" height="{inner_h:.2f}" '
+                f'preserveAspectRatio="none" {src_attr}/>')
+    if scale == "true":
+        return (f'<image x="{inner_x:.2f}" y="{inner_y:.2f}" '
+                f'width="{inner_w:.2f}" height="{inner_h:.2f}" '
+                f'preserveAspectRatio="xMidYMid meet" {src_attr}/>')
+    if scale == "width":
+        # Fit width to the cell; scale height proportionally.  If the
+        # proportional height would exceed the cell's inner height,
+        # fall back to fitting the height instead (preserves aspect
+        # ratio and guarantees the image never spills past the cell
+        # bounds — matches dot.exe's behaviour on cells whose aspect
+        # ratio forces the chosen axis to overflow).
+        if nw > 0 and nh > 0:
+            ratio = inner_w / nw
+            if nh * ratio > inner_h:
+                ratio = inner_h / nh
+            sw = nw * ratio
+            sh = nh * ratio
+        else:
+            sw, sh = inner_w, inner_h
+        x = inner_x + (inner_w - sw) / 2
+        y = inner_y + (inner_h - sh) / 2
+        return (f'<image x="{x:.2f}" y="{y:.2f}" '
+                f'width="{sw:.2f}" height="{sh:.2f}" '
+                f'{src_attr}/>')
+    if scale == "height":
+        # Symmetric to the width branch.
+        if nw > 0 and nh > 0:
+            ratio = inner_h / nh
+            if nw * ratio > inner_w:
+                ratio = inner_w / nw
+            sw = nw * ratio
+            sh = nh * ratio
+        else:
+            sw, sh = inner_w, inner_h
+        x = inner_x + (inner_w - sw) / 2
+        y = inner_y + (inner_h - sh) / 2
+        return (f'<image x="{x:.2f}" y="{y:.2f}" '
+                f'width="{sw:.2f}" height="{sh:.2f}" '
+                f'{src_attr}/>')
+    # scale == "false": use natural size, centre in cell.
+    use_w = nw if nw > 0 else inner_w
+    use_h = nh if nh > 0 else inner_h
+    x = inner_x + (inner_w - use_w) / 2
+    y = inner_y + (inner_h - use_h) / 2
+    return (f'<image x="{x:.2f}" y="{y:.2f}" '
+            f'width="{use_w:.2f}" height="{use_h:.2f}" '
+            f'{src_attr}/>')
+
 
 def _render_html_table(tbl, origin_x: float, origin_y: float,
                        default_face: str, default_size: float,
-                       default_color: str | None) -> str:
+                       default_color: str | None,
+                       _gradient_ctx: dict | None = None) -> str:
     """Render a parsed :class:`HtmlTable` as SVG.
 
     ``origin_x``, ``origin_y`` are the top-left corner of the outer
@@ -66,21 +320,42 @@ def _render_html_table(tbl, origin_x: float, origin_y: float,
        border (when CELLBORDER / per-cell BORDER > 0).
     3. For each cell: its text runs via :func:`_render_cell_paragraph`,
        OR a recursively-rendered nested table.
+
+    Gradient fills produced by ``STYLE="radial"`` or ``BGCOLOR="c1:c2"``
+    share a single ``<defs>`` block prepended at the outermost call —
+    nested-table recursion threads a ``_gradient_ctx`` dict so all
+    gradient definitions collect into one place.
     """
+    is_root = _gradient_ctx is None
+    if is_root:
+        _gradient_ctx = {"defs": []}
+
+    # Table-level HREF: cells inherit the link colour by default so
+    # anchor-wrapped text shows as blue without needing every author
+    # to wrap content in ``<FONT COLOR="#0066cc">``.  Cell-level HREF
+    # overrides per-cell below.  Explicit ``<FONT COLOR>`` inside the
+    # cell still wins — we only override the cell's default.
+    eff_default_color = (_LINK_COLOR if tbl.href else default_color)
+
     parts: list[str] = []
 
     # Outer frame: fill + border.
     tw, th = tbl.width, tbl.height
-    fill = tbl.bgcolor or "none"
-    stroke = tbl.color or "black"
+    t_fill, t_grad = _resolve_fill(
+        tbl.bgcolor, tbl.style, tbl.gradientangle, _gradient_ctx)
+    if t_grad:
+        _gradient_ctx["defs"].append(t_grad)
+    t_stroke = tbl.color or "black"
+    t_rounded = (tbl.style == "rounded")
+    t_sides = tbl.sides or "LTRB"
     if tbl.border > 0 or tbl.bgcolor:
-        sw = f' stroke-width="{tbl.border}"' if tbl.border > 0 else ' stroke-width="0"'
-        stroke_attr = f' stroke="{stroke}"' if tbl.border > 0 else ' stroke="none"'
-        parts.append(
-            f'<rect x="{origin_x:.2f}" y="{origin_y:.2f}" '
-            f'width="{tw:.2f}" height="{th:.2f}" '
-            f'fill="{fill}"{stroke_attr}{sw}/>'
-        )
+        parts.append(_render_cell_rect(
+            origin_x, origin_y, tw, th,
+            sides=t_sides, rounded=t_rounded,
+            fill=t_fill,
+            stroke=t_stroke if tbl.border > 0 else "none",
+            stroke_width=float(tbl.border) if tbl.border > 0 else 0.0,
+        ))
 
     # Cells.
     for row in tbl.rows:
@@ -90,115 +365,290 @@ def _render_html_table(tbl, origin_x: float, origin_y: float,
             # Cell fill + border.  Per-cell border override falls back
             # to the table's CELLBORDER.
             cb = cell.border if cell.border is not None else tbl.cellborder
-            c_fill = cell.bgcolor or "none"
+            c_fill, c_grad = _resolve_fill(
+                cell.bgcolor, cell.style, cell.gradientangle, _gradient_ctx)
+            if c_grad:
+                _gradient_ctx["defs"].append(c_grad)
             c_stroke = cell.color or tbl.color or "black"
+            c_rounded = (cell.style == "rounded")
+            # Collect this cell's rendered parts into a local buffer so
+            # we can wrap them in the interactive-attribute envelope
+            # (<a xlink:href>, <title>, <g id="">) as a unit.
+            cell_buf: list[str] = []
             if cb > 0 or cell.bgcolor:
-                sw = (f' stroke-width="{cb}"' if cb > 0
-                      else ' stroke-width="0"')
-                sa = (f' stroke="{c_stroke}"' if cb > 0
-                      else ' stroke="none"')
-                parts.append(
-                    f'<rect x="{cx0:.2f}" y="{cy0:.2f}" '
-                    f'width="{cell.width:.2f}" height="{cell.height:.2f}" '
-                    f'fill="{c_fill}"{sa}{sw}/>'
-                )
+                cell_buf.append(_render_cell_rect(
+                    cx0, cy0, cell.width, cell.height,
+                    sides=cell.sides, rounded=c_rounded,
+                    fill=c_fill,
+                    stroke=c_stroke if cb > 0 else "none",
+                    stroke_width=float(cb) if cb > 0 else 0.0,
+                ))
 
             # Cell content.
-            if cell.nested is not None:
-                # Nested tables: centre in the cell's inner area.
-                pad = (cell.cellpadding if cell.cellpadding is not None
-                       else tbl.cellpadding)
-                inner_x = cx0 + pad + (cell.width - 2 * pad - cell.nested.width) / 2
-                inner_y = cy0 + pad + (cell.height - 2 * pad - cell.nested.height) / 2
-                parts.append(_render_html_table(
-                    cell.nested, inner_x, inner_y,
-                    default_face=default_face,
-                    default_size=default_size,
-                    default_color=default_color,
-                ))
-            elif cell.lines:
-                pad = (cell.cellpadding if cell.cellpadding is not None
-                       else tbl.cellpadding)
-                parts.append(_render_cell_paragraph(
+            pad = (cell.cellpadding if cell.cellpadding is not None
+                   else tbl.cellpadding)
+            # Cell-level HREF promotes the default text color to link
+            # blue; falls back to the table-level default computed
+            # above (which honours table-level HREF).
+            cell_default_color = (
+                _LINK_COLOR if cell.href else eff_default_color)
+            from gvpy.grammar.html_label import _cell_is_mixed
+            if _cell_is_mixed(cell):
+                cell_buf.append(_render_cell_mixed(
                     cell, cx0, cy0, pad,
                     default_face=default_face,
                     default_size=default_size,
-                    default_color=default_color,
+                    default_color=cell_default_color,
+                    _gradient_ctx=_gradient_ctx,
                 ))
+            elif cell.image is not None:
+                cell_buf.append(_render_image(
+                    cell.image,
+                    cx0 + pad, cy0 + pad,
+                    cell.width - 2 * pad, cell.height - 2 * pad,
+                ))
+            elif cell.nested is not None:
+                # Nested tables: centre in the cell's inner area.
+                inner_x = cx0 + pad + (cell.width - 2 * pad - cell.nested.width) / 2
+                inner_y = cy0 + pad + (cell.height - 2 * pad - cell.nested.height) / 2
+                cell_buf.append(_render_html_table(
+                    cell.nested, inner_x, inner_y,
+                    default_face=default_face,
+                    default_size=default_size,
+                    default_color=cell_default_color,
+                    _gradient_ctx=_gradient_ctx,
+                ))
+            elif cell.lines:
+                cell_buf.append(_render_cell_paragraph(
+                    cell, cx0, cy0, pad,
+                    default_face=default_face,
+                    default_size=default_size,
+                    default_color=cell_default_color,
+                ))
+            parts.append(_wrap_link_title_id(
+                "".join(cell_buf),
+                cell.href, cell.target, cell.title, cell.element_id,
+            ))
+    # ── Rules: VR between cells, HR between rows ────────────────────
+    # Per-cell ``vr_after`` or table-level ``columns_rule`` triggers
+    # a vertical rule centred in the cellspacing gap at the cell's
+    # right edge.  Per-row ``hr_before`` or ``rows_rule`` triggers a
+    # horizontal rule above the row, stroked from the left outer
+    # border to the right.  Skipped for the first row (nothing
+    # above) regardless of flags.
+    s = tbl.cellspacing
+    rule_stroke = tbl.color or "black"
+    for row in tbl.rows:
+        if not row.cells:
+            continue
+        last_cell = row.cells[-1]
+        for cell in row.cells:
+            is_last = (cell is last_cell)
+            draw_vr = cell.vr_after or (
+                tbl.columns_rule and not is_last)
+            if not draw_vr:
+                continue
+            vx = origin_x + cell.x + cell.width + s / 2.0
+            y1 = origin_y + cell.y
+            y2 = y1 + cell.height
+            parts.append(
+                f'<line x1="{vx:.2f}" y1="{y1:.2f}" '
+                f'x2="{vx:.2f}" y2="{y2:.2f}" '
+                f'stroke="{rule_stroke}" stroke-width="1"/>'
+            )
+    if tbl.row_y:
+        hr_x1 = origin_x + tbl.border
+        hr_x2 = origin_x + tbl.width - tbl.border
+        for i in range(1, len(tbl.rows)):
+            row = tbl.rows[i]
+            draw_hr = row.hr_before or tbl.rows_rule
+            if not draw_hr:
+                continue
+            hy = origin_y + tbl.row_y[i] - s / 2.0
+            parts.append(
+                f'<line x1="{hr_x1:.2f}" y1="{hy:.2f}" '
+                f'x2="{hr_x2:.2f}" y2="{hy:.2f}" '
+                f'stroke="{rule_stroke}" stroke-width="1"/>'
+            )
+
+    body = "".join(parts)
+    body = _wrap_link_title_id(
+        body, tbl.href, tbl.target, tbl.title, tbl.element_id)
+    if is_root and _gradient_ctx["defs"]:
+        return "<defs>" + "".join(_gradient_ctx["defs"]) + "</defs>" + body
+    return body
+
+
+def _render_cell_mixed(cell, cx0: float, cy0: float, pad: float,
+                        default_face: str, default_size: float,
+                        default_color: str | None,
+                        _gradient_ctx: dict) -> str:
+    """Render a cell whose ``blocks`` list mixes paragraphs with
+    nested tables and/or images.
+
+    Blocks stack vertically from the top of the cell's inner area.
+    Each paragraph fragment renders with its own in-line valign/align
+    logic inside a ``(block_w, block_h)`` sub-rectangle; nested
+    tables render centred horizontally; images honour SCALE.  We
+    skip cell-level VALIGN for mixed cells — matches Graphviz's
+    behaviour where mixed content is always top-anchored.
+    """
+    from gvpy.grammar.html_label import (
+        _iter_paragraph_groups, _paragraph_size, size_html_table,
+    )
+
+    inner_w = cell.width - 2 * pad
+    cursor_y = cy0 + pad
+    parts: list[str] = []
+
+    for kind, obj in _iter_paragraph_groups(cell.blocks):
+        if kind == "paragraph":
+            lines: list = obj  # type: ignore[assignment]
+            _, h = _paragraph_size(lines, 1.2)
+            # Build a lightweight fragment cell so we can reuse
+            # ``_render_cell_paragraph``'s line-walking logic with
+            # this paragraph's lines only, placed at cursor_y.
+            class _Frag:
+                pass
+            frag = _Frag()
+            frag.lines = lines
+            frag.width = cell.width
+            frag.height = h + 2 * pad
+            frag.align = cell.align
+            frag.valign = "top"
+            parts.append(_render_cell_paragraph(
+                frag, cx0, cursor_y - pad, pad,
+                default_face=default_face,
+                default_size=default_size,
+                default_color=default_color,
+            ))
+            cursor_y += h
+        elif kind == "table":
+            sub = obj  # type: ignore[assignment]
+            size_html_table(sub)
+            # Centre horizontally within the cell's inner width.
+            inner_x = cx0 + pad + (inner_w - sub.width) / 2
+            parts.append(_render_html_table(
+                sub, inner_x, cursor_y,
+                default_face=default_face,
+                default_size=default_size,
+                default_color=default_color,
+                _gradient_ctx=_gradient_ctx,
+            ))
+            cursor_y += sub.height
+        elif kind == "image":
+            img = obj  # type: ignore[assignment]
+            from gvpy.grammar.html_label import _image_natural_size
+            iw, ih = _image_natural_size(img)
+            # Fit image into the cell's inner width while keeping
+            # aspect; stack below previous block.
+            scale_ratio = (inner_w / iw) if iw > 0 and iw > inner_w else 1.0
+            draw_w = iw * scale_ratio
+            draw_h = ih * scale_ratio
+            inner_x = cx0 + pad + (inner_w - draw_w) / 2
+            parts.append(_render_image(
+                img, inner_x, cursor_y, draw_w, draw_h,
+            ))
+            cursor_y += draw_h
     return "".join(parts)
 
 
 def _render_cell_paragraph(cell, cx0: float, cy0: float, pad: float,
                             default_face: str, default_size: float,
                             default_color: str | None) -> str:
-    """Render the text content of one :class:`TableCell` as a single
-    ``<text>`` + ``<tspan>`` chain.  Horizontal placement follows the
-    cell's ``align`` (left / center / right); vertical placement follows
-    ``valign`` (top / middle / bottom)."""
+    """Render the text content of one :class:`TableCell` as a mix of
+    ``<text>`` and ``<line>`` elements.
+
+    Horizontal placement per line follows ``line.align`` when explicitly
+    set (via ``<BR ALIGN="…"/>`` or cell ``BALIGN``); otherwise the
+    cell-wide ``ALIGN`` governs.  Vertical placement follows
+    ``VALIGN`` (top / middle / bottom).  ``<HR/>`` lines render as a
+    thin horizontal rule spanning the cell's inner width.
+    """
     from gvpy.grammar.html_label import _paragraph_size
 
-    content_w, content_h = _paragraph_size(cell.lines, 1.2)
+    _, content_h = _paragraph_size(cell.lines, 1.2)
 
-    # X position based on cell.align.
-    if cell.align == "left":
-        line_x = cx0 + pad
-        line_anchor = 'text-anchor="start"'
-    elif cell.align == "right":
-        line_x = cx0 + cell.width - pad
-        line_anchor = 'text-anchor="end"'
-    else:
-        line_x = cx0 + cell.width / 2.0
-        line_anchor = 'text-anchor="middle"'
-
-    # Line heights for dy offsets.
+    # Per-line heights.  HR lines have a fixed stored height; text
+    # lines scale with the tallest run's font size.
     line_heights: list[float] = []
     for line in cell.lines:
-        if not line.runs:
+        if line.is_hr:
+            line_heights.append(line.height)
+        elif not line.runs:
             line_heights.append(default_size * 1.2)
         else:
             line_heights.append(max(r.font_size for r in line.runs) * 1.2)
 
-    # Vertical placement — first baseline.
+    # ``strip_y`` [i] = top of line i's vertical strip (before any
+    # ascent shift for baseline).
     if cell.valign == "top":
-        first_font = (cell.lines[0].runs[0].font_size
-                      if cell.lines[0].runs else default_size)
-        first_baseline_y = cy0 + pad + first_font * 0.85
+        strip0 = cy0 + pad
     elif cell.valign == "bottom":
-        last_runs = next((l.runs for l in reversed(cell.lines) if l.runs), None)
-        last_font = (max(r.font_size for r in last_runs)
-                     if last_runs else default_size)
-        last_descent = last_font * 0.2
-        last_baseline_y = cy0 + cell.height - pad - last_descent
-        first_baseline_y = last_baseline_y - sum(line_heights[1:])
+        strip0 = cy0 + cell.height - pad - content_h
     else:  # middle
-        first_font = (cell.lines[0].runs[0].font_size
-                      if cell.lines[0].runs else default_size)
-        first_baseline_y = (cy0 + (cell.height - content_h) / 2
-                            + first_font * 0.85)
+        strip0 = cy0 + (cell.height - content_h) / 2
 
-    root = [
-        f'<text {line_anchor}',
-        f' font-family="{default_face}"',
-        f' font-size="{default_size}"',
-    ]
-    if default_color:
-        root.append(f' fill="{default_color}"')
-    root.append(">")
-    out: list[str] = [" ".join([x for x in ["".join(root)] if x])]
+    # Resolve each line's anchor x + text-anchor.  The cell-wide
+    # ALIGN governs lines whose own align is ``center`` (the
+    # implicit default) EXCEPT when cell.align is ``text``, which
+    # tells the renderer "preserve each line's own alignment"
+    # (i.e. don't override center).  Per-line alignment from
+    # ``<BR ALIGN=…/>`` / BALIGN always wins over cell.align.
+    cell_block_align = (cell.align or "center").lower()
 
-    emitted_first = False
+    def _align_x(line_align: str) -> tuple[float, str]:
+        if cell_block_align == "text":
+            eff = (line_align or "center").lower()
+        else:
+            eff = (line_align if line_align != "center"
+                   else cell_block_align)
+            eff = (eff or "center").lower()
+        if eff == "left":
+            return cx0 + pad, "start"
+        if eff == "right":
+            return cx0 + cell.width - pad, "end"
+        # center / unknown → centre
+        return cx0 + cell.width / 2.0, "middle"
+
+    out: list[str] = []
+    cursor_y = strip0
     for i, line in enumerate(cell.lines):
-        if not line.runs:
+        lh = line_heights[i]
+        if line.is_hr:
+            x1 = cx0 + pad
+            x2 = cx0 + cell.width - pad
+            y = cursor_y + lh / 2.0
+            out.append(
+                f'<line x1="{x1:.2f}" y1="{y:.2f}" '
+                f'x2="{x2:.2f}" y2="{y:.2f}" '
+                f'stroke="{default_color or "black"}" stroke-width="1"/>'
+            )
+            cursor_y += lh
             continue
+
+        if not line.runs:
+            cursor_y += lh
+            continue
+
+        line_font = max(r.font_size for r in line.runs)
+        baseline_y = cursor_y + line_font * 0.85
+        line_x, line_anchor = _align_x(line.align)
+
+        root = [
+            f'<text text-anchor="{line_anchor}"',
+            f' font-family="{default_face}"',
+            f' font-size="{default_size}"',
+        ]
+        if default_color:
+            root.append(f' fill="{default_color}"')
+        root.append(">")
+        out.append("".join(root))
         for j, run in enumerate(line.runs):
             tattrs: list[str] = []
             if j == 0:
                 tattrs.append(f'x="{line_x:.2f}"')
-                if not emitted_first:
-                    tattrs.append(f'y="{first_baseline_y:.2f}"')
-                    emitted_first = True
-                else:
-                    tattrs.append(f'dy="{line_heights[i]:.2f}"')
+                tattrs.append(f'y="{baseline_y:.2f}"')
             if run.font_size != default_size:
                 tattrs.append(f'font-size="{run.font_size}"')
             if run.color and run.color != default_color:
@@ -209,10 +659,15 @@ def _render_cell_paragraph(cell, cx0: float, cy0: float, pad: float,
                 tattrs.append('font-weight="bold"')
             if run.italic:
                 tattrs.append('font-style="italic"')
+            deco: list[str] = []
             if run.underline:
-                tattrs.append('text-decoration="underline"')
-            elif run.strike:
-                tattrs.append('text-decoration="line-through"')
+                deco.append("underline")
+            if run.overline:
+                deco.append("overline")
+            if run.strike:
+                deco.append("line-through")
+            if deco:
+                tattrs.append(f'text-decoration="{" ".join(deco)}"')
             if run.sub:
                 tattrs.append('baseline-shift="sub"')
             elif run.sup:
@@ -222,7 +677,9 @@ def _render_cell_paragraph(cell, cx0: float, cy0: float, pad: float,
                 f'<tspan {" ".join(tattrs)}>{text}</tspan>'
                 if tattrs else f'<tspan>{text}</tspan>'
             )
-    out.append("</text>")
+        out.append("</text>")
+        cursor_y += lh
+
     return "".join(out)
 
 
@@ -374,10 +831,15 @@ def _render_html_text(cx: float, cy: float, raw_label: str,
                 tattrs.append('font-weight="bold"')
             if run.italic:
                 tattrs.append('font-style="italic"')
+            deco: list[str] = []
             if run.underline:
-                tattrs.append('text-decoration="underline"')
-            elif run.strike:
-                tattrs.append('text-decoration="line-through"')
+                deco.append("underline")
+            if run.overline:
+                deco.append("overline")
+            if run.strike:
+                deco.append("line-through")
+            if deco:
+                tattrs.append(f'text-decoration="{" ".join(deco)}"')
             if run.sub:
                 tattrs.append('baseline-shift="sub"')
             elif run.sup:
@@ -504,6 +966,16 @@ def render_svg(layout: dict) -> str:
     vh = bb[3] - bb[1] + 2 * pad
     title = escape(graph.get("name", ""))
     directed = graph.get("directed", True)
+
+    # Gradient IDs within one render must be globally unique.  Reset
+    # the module-level counter so IDs stay deterministic across runs.
+    _GRADIENT_COUNTER[0] = 0
+
+    # Install graph-level imagepath so the HTML IMG probe can find
+    # relative SRCs.  Graphviz allows ``;`` (Windows) or ``:`` (Unix)
+    # separators; we accept either and always include ``"."`` so CWD
+    # is searched first — matches C's behaviour.
+    _apply_imagepath(graph.get("imagepath", ""))
 
     parts = [_SVG_HEADER.format(
         w=round(vw), h=round(vh), vx=vx, vy=vy, vw=vw, vh=vh, title=title,

@@ -1808,12 +1808,21 @@ def mval_edge(layout, node_name: str, port_name: str) -> int:
     if cache_key in layout._port_order_cache:
         return layout._MC_SCALE * order + layout._port_order_cache[cache_key]
 
-    # Look up port fraction from Node.record_fields
-    # (parsed at DOT load, sized at layout start)
+    # Look up port fraction from Node.record_fields (parsed at DOT
+    # load, sized at layout start).  For HTML-label nodes fall back
+    # to the parsed HtmlTable's cell-centre → fraction computation.
     port_order = layout._MC_SCALE // 2  # default center
     if ln.node and ln.node.record_fields is not None:
         frac = ln.node.record_fields.port_fraction(
             port_name, rankdir=layout._rankdir_int())
+        if frac is not None:
+            port_order = int(frac * layout._MC_SCALE)
+    elif ln.node and getattr(ln.node, "html_table", None) is not None:
+        from gvpy.grammar.html_label import html_port_fraction
+        frac = html_port_fraction(
+            ln.node.html_table, port_name,
+            rankdir=layout._rankdir_int(),
+        )
         if frac is not None:
             port_order = int(frac * layout._MC_SCALE)
 

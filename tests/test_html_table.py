@@ -329,11 +329,23 @@ class TestTableRender:
         )
         assert 'font-weight="bold"' in out
 
-    def test_multi_line_cell_uses_dy(self):
+    def test_multi_line_cell_places_lines_at_distinct_y(self):
+        """A cell with ``one<BR/>two`` emits both lines with distinct
+        ``y=`` values — each line gets its own ``<text>`` since HR
+        support (#52) made dy stacking awkward when HRs intermix."""
         out = self._render(
             "<<TABLE><TR><TD>one<BR/>two</TD></TR></TABLE>>"
         )
-        assert "dy=" in out
+        assert ">one<" in out and ">two<" in out
+        import re
+        ys = [float(m.group(1)) for m
+              in re.finditer(r'y="(-?\d+\.\d+)"', out)]
+        # At least two distinct y coordinates (line 1 baseline and
+        # line 2 baseline).  The rect origins are also at discrete ys
+        # but those belong to rects; filter to tspan ys.
+        tspan_ys = [float(m.group(1)) for m
+                    in re.finditer(r'<tspan[^>]*?y="(-?\d+\.\d+)"', out)]
+        assert len(set(tspan_ys)) >= 2
 
 
 # ── COLSPAN / ROWSPAN ───────────────────────────────────────────────
