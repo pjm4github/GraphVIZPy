@@ -936,10 +936,30 @@ class DotGraphInfo(LayoutEngine):
         # needed 300+ pt — visible on 2620.dot where 94 scheduler
         # nodes with ~30-char labels were forced to 144 pt each,
         # collapsing the rank-direction spacing.
-        if explicit_w:
-            w = max(w, float(explicit_w) * 72.0)
-        if explicit_h:
-            h = max(h, float(explicit_h) * 72.0)
+        #
+        # EXCEPTION: shape=none / plaintext / plain.  C's ``shape=none``
+        # doesn't draw a bounding box — the label renders as a free-
+        # floating element and the node's logical bbox (used for edge
+        # routing) comes from explicit WIDTH / HEIGHT when set, not
+        # from the label.  HTML tables on these shapes can visually
+        # overflow the bbox without affecting layout.  Python
+        # previously grew the bbox to the full label, which on
+        # 1879.dot produced 205-pt-tall family-tree nodes instead of
+        # C's 36-pt — that ballooned every cluster bbox, collapsed
+        # the routing channels between siblings, and drove the
+        # 145-crossing audit regression.  Match C by treating
+        # explicit dims as hard values for these shapes.
+        _label_free_shapes = ("none", "plaintext", "plain")
+        if shape in _label_free_shapes and (explicit_w or explicit_h):
+            if explicit_w:
+                w = float(explicit_w) * 72.0
+            if explicit_h:
+                h = float(explicit_h) * 72.0
+        else:
+            if explicit_w:
+                w = max(w, float(explicit_w) * 72.0)
+            if explicit_h:
+                h = max(h, float(explicit_h) * 72.0)
 
         # Default-size floor: apply ``_MIN_WIDTH`` / ``_MIN_HEIGHT`` in
         # the user's frame (before any LR pre-swap) so a node with a

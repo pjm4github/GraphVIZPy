@@ -114,6 +114,7 @@ def phase2_ordering(layout):
     # → mincross_clust expand_cluster → mincross per cluster.
     if layout._clusters:
         layout._skeleton_mincross()
+        d5_stage_crossings(layout, "after_skeleton_mincross")
         # Final remincross on full expanded graph (C: mincross(g, 2))
         # C mincross.c:381-398: runs mincross on the fully expanded
         # graph with ReMincross=true.  Uses VAL with port.order from
@@ -121,6 +122,7 @@ def phase2_ordering(layout):
         if layout.remincross:
             layout._mark_low_clusters()
             layout._remincross_full()
+            d5_stage_crossings(layout, "after_remincross_full")
     else:
         layout._run_mincross()
 
@@ -139,6 +141,253 @@ def phase2_ordering(layout):
                 parts.append(f"{n}({layout.lnodes[n].order})")
         if parts:
             trace("order", f"rank {r}: {' '.join(parts)}")
+
+    # D5 diagnostic — measure multi-rank-edge sides relative to
+    # non-member clusters.  Gated on ``GV_TRACE=d5`` so the cost is
+    # zero in normal runs.
+    from gvpy.engines.layout.dot.trace import trace_on as _d5_on
+    if _d5_on("d5"):
+        _trace_d5_sides(layout, stage="final")
+
+
+def d5_stage_crossings(layout, stage: str) -> int:
+    """Count current cluster-straddle crossings (same metric
+    as :func:`_trace_d5_sides`) and emit a single summary line.
+
+    Used to pinpoint which pipeline stage introduces the bulk of
+    the D5 crossings when debugging the skeleton / expand flow.
+    """
+    from gvpy.engines.layout.dot.trace import trace, trace_on
+    if not trace_on("d5"):
+        return 0
+    crosses = _count_d5_crosses(layout)
+    trace("d5", f"stage={stage} cluster_pair_crosses={crosses}")
+    return crosses
+
+
+def _count_d5_crosses(layout) -> int:
+    """Return the number of edge × non-member-cluster pairs whose
+    sides string contains both ``L`` and ``R``, or any ``T`` — the
+    same classification used by :func:`_trace_d5_sides`."""
+    if not layout.ranks:
+        return 0
+    cluster_orders: dict[str, dict[int, tuple[int, int]]] = {}
+    cluster_members: dict[str, set[str]] = {}
+    for cl in layout._clusters:
+        member_set = set(cl.nodes)
+        cluster_members[cl.name] = member_set
+        per_rank: dict[int, tuple[int, int]] = {}
+        for r, rank_nodes in layout.ranks.items():
+            orders = [i for i, n in enumerate(rank_nodes) if n in member_set]
+            if orders:
+                per_rank[r] = (min(orders), max(orders))
+        cluster_orders[cl.name] = per_rank
+
+    chains = getattr(layout, "_vnode_chains", {}) or {}
+    seen: set[tuple[str, str]] = set()
+    reports: list[tuple[str, str, list[tuple[int, str]]]] = []
+    for (tail_name, head_name), chain in chains.items():
+        seq: list[tuple[int, str]] = []
+        if tail_name in layout.lnodes:
+            seq.append((layout.lnodes[tail_name].rank, tail_name))
+        seq.extend((layout.lnodes[v].rank, v) for v in chain
+                   if v in layout.lnodes)
+        if head_name in layout.lnodes:
+            seq.append((layout.lnodes[head_name].rank, head_name))
+        if len(seq) >= 2:
+            reports.append((tail_name, head_name, seq))
+            seen.add((tail_name, head_name))
+    for le in layout.ledges:
+        if le.virtual:
+            continue
+        pair = (le.tail_name, le.head_name)
+        if pair in seen:
+            continue
+        if le.tail_name not in layout.lnodes or le.head_name not in layout.lnodes:
+            continue
+        tr = layout.lnodes[le.tail_name].rank
+        hr = layout.lnodes[le.head_name].rank
+        reports.append((le.tail_name, le.head_name,
+                        [(tr, le.tail_name), (hr, le.head_name)]))
+
+    crosses = 0
+    for tail_name, head_name, seq in reports:
+        for cl in layout._clusters:
+            member_set = cluster_members[cl.name]
+            if tail_name in member_set or head_name in member_set:
+                continue
+            per_rank = cluster_orders[cl.name]
+            if not per_rank:
+                continue
+            sides: list[str] = []
+            for r, node_name in seq:
+                if r not in per_rank:
+                    sides.append("-")
+                    continue
+                cl_min, cl_max = per_rank[r]
+                try:
+                    n_order = layout.ranks[r].index(node_name)
+                except ValueError:
+                    continue
+                if n_order < cl_min:
+                    sides.append("L")
+                elif n_order > cl_max:
+                    sides.append("R")
+                else:
+                    sides.append("T")
+            meaningful = {s for s in sides if s in ("L", "R", "T")}
+            if not meaningful:
+                continue
+            if ("L" in meaningful and "R" in meaningful) or "T" in meaningful:
+                crosses += 1
+    return crosses
+
+
+def _trace_d5_sides(layout, stage: str = "final") -> None:
+    """Emit per-edge, per-non-member-cluster "side" classifications
+    at mincross-exit.
+
+    For every real edge (tail, head — spanning ≥ 1 rank), we walk the
+    full rank sequence [tail_rank .. head_rank] and at each rank
+    classify the edge's touching node (tail / virtual / head) relative
+    to every non-member cluster's order range in that rank::
+
+        L  — node_order < min(cluster member orders)
+        R  — node_order > max(cluster member orders)
+        T  — node_order lies within the range (threading through)
+        -  — cluster has no members at this rank
+
+    A "clean" edge (``LLL`` or ``RRR``) hugs one side of the cluster
+    throughout.  A flipping edge (``LLR`` or ``RLL``) geometrically
+    crosses the cluster — the same cluster-corner-grazing that D4
+    fights post-hoc at the splines layer.  This pass only **measures**
+    — it does not modify ordering.  Divergence from C at this level
+    points to the mincross stage as the root cause.
+
+    Emitted line format (greppable)::
+
+        [TRACE d5] edge=<tail>-><head> ranks=r0-rN span=<N>
+                   cluster=<name> sides=<string> crosses=<True|False>
+                   members_preview=<csv>
+    """
+    if not layout.ranks:
+        trace("d5", "no ranks to classify")
+        return
+
+    # Precompute order ranges for every cluster at every rank it
+    # touches.  Uses the cluster's ``nodes`` list (post-expansion,
+    # includes virtual members from the rank insertion pass).
+    cluster_orders: dict[str, dict[int, tuple[int, int]]] = {}
+    cluster_members: dict[str, set[str]] = {}
+    for cl in layout._clusters:
+        member_set = set(cl.nodes)
+        cluster_members[cl.name] = member_set
+        per_rank: dict[int, tuple[int, int]] = {}
+        for r, rank_nodes in layout.ranks.items():
+            orders = [i for i, n in enumerate(rank_nodes) if n in member_set]
+            if orders:
+                per_rank[r] = (min(orders), max(orders))
+        cluster_orders[cl.name] = per_rank
+
+    chains = getattr(layout, "_vnode_chains", {}) or {}
+
+    # Walk every ORIGINAL edge — both multi-rank (via chain) and
+    # short (direct tail→head).  For multi-rank edges we thread
+    # through the intermediate virtuals; for short edges we sample
+    # just the two endpoints.
+    visited_pairs: set[tuple[str, str]] = set()
+    edge_reports: list[tuple[str, str, list[tuple[int, str]]]] = []
+
+    for (tail_name, head_name), chain in chains.items():
+        seq: list[tuple[int, str]] = []
+        if tail_name in layout.lnodes:
+            seq.append((layout.lnodes[tail_name].rank, tail_name))
+        seq.extend((layout.lnodes[v].rank, v) for v in chain
+                   if v in layout.lnodes)
+        if head_name in layout.lnodes:
+            seq.append((layout.lnodes[head_name].rank, head_name))
+        if len(seq) >= 2:
+            edge_reports.append((tail_name, head_name, seq))
+            visited_pairs.add((tail_name, head_name))
+
+    # Now add short (adjacent / flat) real edges not already covered
+    # by a chain entry.  ledges includes virtual edges, so filter.
+    for le in layout.ledges:
+        if le.virtual:
+            continue
+        pair = (le.tail_name, le.head_name)
+        if pair in visited_pairs:
+            continue
+        if le.tail_name not in layout.lnodes or le.head_name not in layout.lnodes:
+            continue
+        tr = layout.lnodes[le.tail_name].rank
+        hr = layout.lnodes[le.head_name].rank
+        seq = [(tr, le.tail_name), (hr, le.head_name)]
+        edge_reports.append((le.tail_name, le.head_name, seq))
+
+    # Summary counters
+    total_edges = len(edge_reports)
+    crosses = 0
+    edges_with_relevant_cluster = 0
+
+    for tail_name, head_name, seq in edge_reports:
+        r0 = seq[0][0]
+        rN = seq[-1][0]
+        span = abs(rN - r0) + 1
+        any_relevant = False
+        for cl in layout._clusters:
+            member_set = cluster_members[cl.name]
+            if tail_name in member_set or head_name in member_set:
+                continue
+            per_rank = cluster_orders[cl.name]
+            if not per_rank:
+                continue
+            any_overlap = any(r in per_rank for r, _ in seq)
+            if not any_overlap:
+                continue
+            any_relevant = True
+            sides: list[str] = []
+            for r, node_name in seq:
+                if r not in per_rank:
+                    sides.append("-")
+                    continue
+                cl_min, cl_max = per_rank[r]
+                rank_nodes = layout.ranks.get(r, [])
+                try:
+                    n_order = rank_nodes.index(node_name)
+                except ValueError:
+                    sides.append("?")
+                    continue
+                if n_order < cl_min:
+                    sides.append("L")
+                elif n_order > cl_max:
+                    sides.append("R")
+                else:
+                    sides.append("T")
+            meaningful = {s for s in sides if s in ("L", "R", "T")}
+            crosses_this = ("L" in meaningful and "R" in meaningful) \
+                or ("T" in meaningful)
+            if crosses_this:
+                crosses += 1
+            members_in = ",".join(sorted(member_set))[:60]
+            trace(
+                "d5",
+                f"edge={tail_name}->{head_name} "
+                f"ranks={r0}-{rN} span={span} "
+                f"cluster={cl.name} "
+                f"sides={''.join(sides)} "
+                f"crosses={crosses_this} "
+                f"members_preview={members_in}"
+            )
+        if any_relevant:
+            edges_with_relevant_cluster += 1
+
+    trace(
+        "d5",
+        f"summary total_edges={total_edges} "
+        f"edges_vs_nonmember_cluster={edges_with_relevant_cluster} "
+        f"edge_cluster_pair_crosses={crosses}"
+    )
 
 
 def run_mincross(layout):
@@ -267,18 +516,21 @@ def remincross_full(layout):
                     layout._cluster_medians(
                         r, r - 1, all_nodes, fg_out, fg_in)
                     layout._cluster_reorder(
-                        r, all_nodes, node_cl, reverse)
+                        r, all_nodes, node_cl, reverse,
+                        remincross_phase=True)
         else:
             for r in range(max_rank - 1, min_rank - 1, -1):
                 if r in layout.ranks:
                     layout._cluster_medians(
                         r, r + 1, all_nodes, fg_out, fg_in)
                     layout._cluster_reorder(
-                        r, all_nodes, node_cl, reverse)
+                        r, all_nodes, node_cl, reverse,
+                        remincross_phase=True)
         # Single transpose (mincross.c:1553)
         for r in range(min_rank, max_rank + 1):
             if r in layout.ranks:
-                layout._cluster_transpose(r, all_nodes, node_cl)
+                layout._cluster_transpose(
+                    r, all_nodes, node_cl, remincross_phase=True)
 
         cur_cross = layout._count_all_crossings()
         if cur_cross <= best_cross:
@@ -522,6 +774,7 @@ def skeleton_mincross(layout):
 
     # ── Run mincross on fully collapsed graph ──
     layout._run_mincross()
+    d5_stage_crossings(layout, "post_collapsed_mincross")
 
     # Trace skeleton ordering (just skeleton node positions)
     for r in sorted(layout.ranks.keys()):
@@ -833,6 +1086,7 @@ def skeleton_mincross(layout):
                         best_order = layout._save_ordering()
 
                 layout._restore_ordering(best_order)
+                d5_stage_crossings(layout, f"post_expand_{cl_name}")
 
     # ── Clean up skeleton nodes, chain nodes, and edges ──
     for cl_name, rank_leaders in skeleton_nodes.items():
@@ -1001,13 +1255,23 @@ def cluster_medians(layout, rank: int, adj_rank: int,
 
 def cluster_reorder(layout, rank: int, cl_nodes: set[str],
                       child_cl_map: dict[str, str] | None = None,
-                      reverse: bool = False):
+                      reverse: bool = False,
+                      remincross_phase: bool = False):
     """Bubble-sort reorder matching C mincross.c:1476-1526 reorder().
 
     Compares nodes by mval (from _cluster_medians).  Skips nodes
     with mval < 0 (no neighbors).  Respects left2right (blocks
     swaps between different child clusters).  The sawclust logic
     allows jumping over a single cluster group.
+
+    ``remincross_phase`` mirrors C's ``ReMincross`` flag.  When
+    set, :func:`_left2right_blocks` uses the stricter rule —
+    a swap is blocked whenever the two nodes belong to different
+    clusters, including the non-member-vs-cluster-member case.
+    That prevents non-cluster nodes from drifting *past* cluster
+    members during the final expansion pass — which was the root
+    cause of the D5 ``RL``-flip storm on 2796 (TODO §1 D5,
+    Docs/D5_measurement_findings.md).
     """
     nodes = layout.ranks.get(rank, [])
     n = len(nodes)
@@ -1016,6 +1280,18 @@ def cluster_reorder(layout, rank: int, cl_nodes: set[str],
 
     mval = layout._node_mval
     ep = n  # shrinking endpoint (C: ep = vlist + n)
+
+    # [TRACE d5_step] — emit the rank's state at reorder entry.  Uses
+    # one-line format: `[TRACE d5_step] reorder_enter rank=R reverse=<bool>
+    # rmx=<bool> nodes=<name:ord:mval ...>`.  Matching C emission at
+    # mincross.c: start of reorder() for line-for-line diff.
+    from gvpy.engines.layout.dot.trace import trace as _trace, trace_on as _on
+    if _on("d5_step"):
+        _ns = " ".join(
+            f"{nm}:{i}:{mval.get(nm, -1):.2f}" for i, nm in enumerate(nodes))
+        _trace("d5_step",
+               f"reorder_enter rank={rank} reverse={1 if reverse else 0} "
+               f"rmx={1 if remincross_phase else 0} nodes=[{_ns}]")
 
     for nelt in range(n - 1, -1, -1):  # C: nelt = n-1 downto 0
         li = 0
@@ -1038,9 +1314,17 @@ def cluster_reorder(layout, rank: int, cl_nodes: set[str],
                 if sawclust and r_cl:
                     ri += 1
                     continue
-                # left2right check (C mincross.c:1496-1498)
+                # left2right check (C mincross.c:1496-1498).  In the
+                # remincross phase, the block fires whenever clusters
+                # differ — including None vs a cluster — and has no
+                # skeleton/virtual escape hatch (C: only the
+                # non-ReMincross branch includes the virtual bypass).
                 l_cl = (child_cl_map or {}).get(nodes[li])
-                if l_cl and r_cl and l_cl != r_cl:
+                if remincross_phase:
+                    if l_cl != r_cl:
+                        muststay = True
+                        break
+                elif l_cl and r_cl and l_cl != r_cl:
                     # Check if either is virtual/skeleton (can swap)
                     lv = nodes[li] in layout.lnodes and layout.lnodes[nodes[li]].virtual
                     rv = rn in layout.lnodes and layout.lnodes[rn].virtual
@@ -1058,15 +1342,27 @@ def cluster_reorder(layout, rank: int, cl_nodes: set[str],
             if ri >= ep:
                 break
 
+            _l_name = nodes[li]
+            _r_name = nodes[ri]
             if not muststay:
                 p1 = mval.get(nodes[li], -1)
                 p2 = mval.get(nodes[ri], -1)
                 # C mincross.c:1510: swap if p1>p2 or tie+reverse
-                if p1 > p2 or (p1 >= p2 and reverse):
+                _swapped = p1 > p2 or (p1 >= p2 and reverse)
+                if _on("d5_step"):
+                    _trace("d5_step",
+                           f"reorder_cmp rank={rank} l={_l_name}@{li} "
+                           f"r={_r_name}@{ri} p1={p1:.2f} p2={p2:.2f} "
+                           f"swapped={1 if _swapped else 0}")
+                if _swapped:
                     # exchange (swap positions)
                     nodes[li], nodes[ri] = nodes[ri], nodes[li]
                     layout.lnodes[nodes[li]].order = li
                     layout.lnodes[nodes[ri]].order = ri
+            elif _on("d5_step"):
+                _trace("d5_step",
+                       f"reorder_block rank={rank} l={_l_name}@{li} "
+                       f"r={_r_name}@{ri}")
 
             li = ri
 
@@ -1076,7 +1372,8 @@ def cluster_reorder(layout, rank: int, cl_nodes: set[str],
 
 
 def cluster_transpose(layout, rank: int, cl_nodes: set[str],
-                       child_cl_map: dict[str, str] | None = None):
+                       child_cl_map: dict[str, str] | None = None,
+                       remincross_phase: bool = False):
     """Adjacent-swap transpose restricted to cluster nodes.
 
     See: /lib/dotgen/mincross.c @ 685
@@ -1086,6 +1383,12 @@ def cluster_transpose(layout, rank: int, cl_nodes: set[str],
     nodes in different child clusters UNLESS at least one is a
     cluster-skeleton virtual node, preserving cluster grouping
     while letting the skeleton nodes float freely.
+
+    ``remincross_phase`` mirrors C's ``ReMincross`` flag — when set,
+    the block fires whenever clusters differ (including a
+    non-cluster node drifting past a cluster member) and virtuals
+    are NOT exempt.  Fixes the D5 ``RL``-flip pattern identified on
+    2796 (see ``Docs/D5_measurement_findings.md``).
     """
     nodes = layout.ranks.get(rank, [])
     if len(nodes) < 2:
@@ -1097,14 +1400,18 @@ def cluster_transpose(layout, rank: int, cl_nodes: set[str],
             v, w = nodes[i], nodes[i + 1]
             if v not in cl_nodes or w not in cl_nodes:
                 continue
-            # left2right check: block swaps between different
-            # child clusters unless one is a skeleton/virtual node
-            if child_cl_map:
+            # left2right check
+            if child_cl_map is not None:
                 v_cl = child_cl_map.get(v)
                 w_cl = child_cl_map.get(w)
-                if v_cl and w_cl and v_cl != w_cl:
-                    # Both in different child clusters — check if
-                    # either is a virtual/skeleton node (can swap)
+                if remincross_phase:
+                    # C ReMincross branch: any cluster mismatch blocks,
+                    # no virtual escape hatch.
+                    if v_cl != w_cl:
+                        continue
+                elif v_cl and w_cl and v_cl != w_cl:
+                    # Both in different non-null clusters — check if
+                    # either is a virtual/skeleton node (can swap).
                     v_virt = v in layout.lnodes and layout.lnodes[v].virtual
                     w_virt = w in layout.lnodes and layout.lnodes[w].virtual
                     if not v_virt and not w_virt:

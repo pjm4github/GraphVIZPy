@@ -846,7 +846,7 @@ are covered by the ``tests/test_html_*.py`` suites.
 
 | Attribute | Status | Notes |
 |-----------|--------|-------|
-| ALIGN | ⚠️ stored | Table-as-block positioning not applied yet |
+| ALIGN | ✅ | Cascades to TDs that don't set their own ALIGN |
 | BGCOLOR (single) | ✅ | |
 | BGCOLOR (`c1:c2`) | ✅ | Linear or radial gradient (depending on STYLE) |
 | BORDER | ✅ | |
@@ -867,7 +867,7 @@ are covered by the ``tests/test_html_*.py`` suites.
 | STYLE (ROUNDED / RADIAL) | ✅ | |
 | TARGET | ✅ | Hyperlink target frame |
 | TITLE / TOOLTIP | ✅ | Emits SVG `<title>` child |
-| VALIGN | ⚠️ stored | Not applied at table level |
+| VALIGN | ✅ | Cascades to TDs that don't set their own VALIGN |
 | WIDTH | ✅ | Minimum; expands with content unless FIXEDSIZE |
 
 ### TD attribute matrix
@@ -879,7 +879,7 @@ are covered by the ``tests/test_html_*.py`` suites.
 | BGCOLOR (single / `c1:c2`) | ✅ | |
 | BORDER | ✅ | Overrides CELLBORDER |
 | CELLPADDING | ✅ | |
-| CELLSPACING | ⚠️ stored | Per-cell override not applied |
+| CELLSPACING | ✅ | Overrides nested TABLE's CELLSPACING when unspecified there |
 | COLOR | ✅ | |
 | COLSPAN | ✅ | |
 | FIXEDSIZE | ✅ | Clamps to exact WIDTH × HEIGHT |
@@ -896,6 +896,56 @@ are covered by the ``tests/test_html_*.py`` suites.
 | VALIGN | ✅ | Top / middle / bottom |
 | WIDTH | ✅ | |
 
+### Image path resolution
+
+When an `<IMG SRC="…"/>` uses a **relative** path, both `dot.exe` and
+the Python renderer walk a list of directories to find the file.
+GraphvizPy matches Graphviz's resolution order exactly — the first
+match wins:
+
+1. **Absolute SRC** — used as-is, no search.
+2. **`imagepath` graph attribute** — semicolon- or colon-separated
+   directory list set on the graph:
+
+   ```dot
+   digraph G {
+       imagepath="assets;.;/usr/local/share/graphviz-images";
+       n [label=<<TABLE><TR><TD><IMG SRC="logo.png"/></TD></TR></TABLE>>];
+   }
+   ```
+
+   The same attribute is honored for rendering (emitted into the
+   output SVG) and for sizing (read by the image-dimension probe
+   when the layout computes the node box).
+
+3. **`GV_FILE_PATH` environment variable** — same syntax and
+   semantics as `imagepath`, but set outside the DOT source.  Useful
+   when multiple graphs share a common image library:
+
+   ```powershell
+   # PowerShell (Windows)
+   $env:GV_FILE_PATH = "C:\assets\graphviz-images;C:\shared\icons"
+   .venv\Scripts\python.exe dot.py graph.dot -Tsvg -o out.svg
+
+   # bash (Unix)
+   export GV_FILE_PATH="/usr/share/graphviz-images:/opt/icons"
+   ./dot.py graph.dot -Tsvg -o out.svg
+   ```
+
+   Separator is `;` on Windows and `:` on Unix (GraphvizPy accepts
+   either on any platform).  `GV_FILE_PATH` is checked **after**
+   `imagepath` so per-graph configuration takes precedence over the
+   shell-level default.
+
+4. **Current working directory (CWD)** — final fallback, so a DOT
+   file that lives next to its images and is invoked from that
+   directory continues to work with no configuration.
+
+If the image isn't found the probe returns `(0, 0)` and the cell
+falls back to a 50 × 50 placeholder — the rendered SVG still emits
+the `<image xlink:href="…"/>` element so browsers can resolve the
+path themselves when the SVG is viewed from a different CWD.
+
 ### Python extension: mixed cell content
 
 Graphviz's strict BNF says a `<TD>` holds *either* text *or* a
@@ -910,10 +960,8 @@ sub-table / footer as separate rows of the outer table instead.
 
 See TODO §9 for the current unimplemented or partial items:
 
-- TABLE-level `ALIGN` / `VALIGN` (parsed but not applied)
-- TD `CELLSPACING` per-cell override
-- Remote-URL / SVG-source IMG probing
-- `GV_FILE_PATH` environment variable for image resolution
+- Table-level `PORT` (TD `PORT` is wired; TABLE-level isn't)
+- Remote-URL / SVG-source IMG probing (local files only for now)
 
 ## Graph Tools (`gvtools.py`)
 

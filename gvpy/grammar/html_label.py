@@ -43,6 +43,8 @@ graphs like 2592.dot without the table-layout machinery.
 """
 from __future__ import annotations
 
+import os
+import re
 import struct
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
@@ -119,10 +121,29 @@ def set_image_search_paths(paths: list[str] | None) -> None:
         _IMAGE_SEARCH_PATHS = list(paths) or ["."]
 
 
+def _env_image_paths() -> list[str]:
+    """Return directories from the ``GV_FILE_PATH`` environment
+    variable — Graphviz's secondary image-search path mechanism,
+    consulted after the graph-level ``imagepath`` attribute and
+    before the CWD fallback.  Accepts ``;`` (Windows) or ``:``
+    (Unix) separators and ignores empty tokens.
+    """
+    raw = os.environ.get("GV_FILE_PATH", "") or ""
+    return [p.strip() for p in re.split(r"[;:]", raw) if p.strip()]
+
+
 def _resolve_image_path(src: str) -> Optional[Path]:
     """Return the first existing file for ``src`` across the search
-    paths, or ``None`` when unfound.  Absolute paths short-circuit
-    the search."""
+    paths, or ``None`` when unfound.
+
+    Search order (first match wins):
+
+    1. Absolute path (short-circuits the search).
+    2. ``imagepath``-configured directories (set via
+       :func:`set_image_search_paths`).
+    3. ``GV_FILE_PATH`` environment variable directories.
+    4. CWD as-given.
+    """
     if not src:
         return None
     p = Path(src)
@@ -132,8 +153,12 @@ def _resolve_image_path(src: str) -> Optional[Path]:
         candidate = Path(base) / src
         if candidate.is_file():
             return candidate
+    for base in _env_image_paths():
+        candidate = Path(base) / src
+        if candidate.is_file():
+            return candidate
     # Final fallback: as-given relative to CWD (covers the case where
-    # callers didn't configure search paths).
+    # neither imagepath nor GV_FILE_PATH was configured).
     if p.is_file():
         return p
     return None
@@ -754,11 +779,21 @@ class _LabelBuilder(HTMLParser):
             # only the outer frame, missing the grid lines that C
             # draws between cells.
             cellborder = _int_attr(attrs_d.get("cellborder", ""), border)
+            # Nested-table CELLSPACING inherits from the containing
+            # TD when the TD supplied its own value and the nested
+            # TABLE did not — matches Graphviz's per-cell spacing
+            # override semantics in ``lib/common/htmltable.c``.
+            cs_default = 2
+            parent_td = self._active_td()
+            if (parent_td is not None
+                    and parent_td.cellspacing is not None
+                    and parent_td.cellspacing >= 0):
+                cs_default = parent_td.cellspacing
             table = HtmlTable(
                 border=border,
                 cellborder=cellborder,
                 cellpadding=_int_attr(attrs_d.get("cellpadding", ""), 2),
-                cellspacing=_int_attr(attrs_d.get("cellspacing", ""), 2),
+                cellspacing=_int_attr(attrs_d.get("cellspacing", ""), cs_default),
                 bgcolor=attrs_d.get("bgcolor") or None,
                 color=attrs_d.get("color") or None,
                 align=(attrs_d.get("align") or "center").lower(),
@@ -815,9 +850,16 @@ class _LabelBuilder(HTMLParser):
             tr = self._active_tr()
             if tr is None:
                 return
+            # TABLE ALIGN / VALIGN act as per-cell defaults when the
+            # TD doesn't supply its own — matches Graphviz's
+            # attribute cascade.  Fall back to the structural
+            # defaults ("center" / "middle") when neither is set.
+            parent_table = self._active_table()
+            table_align = (parent_table.align if parent_table else "center")
+            table_valign = (parent_table.valign if parent_table else "middle")
             cell = TableCell(
-                align=(attrs_d.get("align") or "center").lower(),
-                valign=(attrs_d.get("valign") or "middle").lower(),
+                align=((attrs_d.get("align") or table_align)).lower(),
+                valign=((attrs_d.get("valign") or table_valign)).lower(),
                 balign=((attrs_d.get("balign") or "").lower() or None),
                 bgcolor=attrs_d.get("bgcolor") or None,
                 color=attrs_d.get("color") or None,

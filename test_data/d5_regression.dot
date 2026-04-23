@@ -1,0 +1,139 @@
+// D5 cluster-straddle regression fixture.
+//
+// Each subgraph ``case_<X>_...`` tests one specific failure mode that
+// the TODO §1 D5 investigation identified on the audit corpus.  The
+// whole graph is kept small (≈ 20 nodes / 4 clusters) so the rendered
+// output can be inspected manually, and so Python-vs-C differences
+// show up immediately rather than being buried in a 200-node scene.
+//
+// Expected counts (measured at fixture landing, 2026-04-22):
+//
+//   C-side (``dot.exe -Tsvg``):
+//     visible cluster crossings : 0
+//     D5 mincross-level         : 0
+//
+//   Python (``PYTHONHASHSEED=0`` for determinism):
+//     visible cluster crossings : 4
+//     D5 mincross-level         : 2
+//
+// Breakdown of Python's 4 visible crossings (from
+// ``count_cluster_crossings.py``):
+//   - Case B thread-through       : 1 crossing (B_out -> B_sink
+//                                                through cluster_B)
+//   - Case C long-edge routing    : 2 crossings (C_src -> C_dst
+//                                                and C_m2 -> C_dst
+//                                                through cluster_B)
+//   - Case A flip or Case D nest  : 1 crossing
+//
+// The regression gate in ``tests/test_d5_regression.py`` fixes
+// ``PYTHONHASHSEED=0`` and asserts visible crossings ≤ 4 — tightens
+// as D5 fixes land.  Any change that raises the count above the
+// baseline fails the test and flags the scenario.
+//
+// Hand-built May 2026; the case-level comments inside each subgraph
+// explain what's being exercised.
+digraph d5_regression {
+    rankdir=TB;
+    compound=true;
+    fontname="Times-Roman";
+    node [shape=box, fontname="Times-Roman"];
+
+    // Root connector — each test subgraph wires into this so the
+    // whole fixture is one connected component.  Carries no
+    // cluster-straddle semantics itself.
+    root [label="root"];
+
+    // ── Case A: adjacent-rank RL-flip ────────────────────────────────
+    // Two sibling clusters (A_left and A_right) sit on rank 2.  An
+    // external node ``A_in`` on rank 1 has edges into members of
+    // both clusters; an external node ``A_out`` on rank 3 collects
+    // edges from both.  If mincross places A_in on one side of the
+    // cluster pair and A_out on the opposite side, the collector
+    // edges cross through both clusters (the 2796-class RL pattern).
+    subgraph cluster_A_left {
+        label="A_left";
+        color="#d0d0d0";
+        A_l1; A_l2;
+    }
+    subgraph cluster_A_right {
+        label="A_right";
+        color="#d0d0d0";
+        A_r1; A_r2;
+    }
+    A_in  [label="A_in"];
+    A_out [label="A_out"];
+    root -> A_in;
+    A_in  -> A_l1;
+    A_in  -> A_r1;
+    A_l2  -> A_out;
+    A_r2  -> A_out;
+
+    // ── Case B: thread-through ───────────────────────────────────────
+    // ``B_out`` is a non-cluster node on the same rank as
+    // cluster_B's members.  Correct mincross keeps B_out strictly
+    // left or right of cluster_B's order range.  Thread-through
+    // (2239-class) would land B_out between cluster members.
+    subgraph cluster_B {
+        label="cluster_B";
+        color="#eff6ff";
+        B_1; B_2; B_3;
+    }
+    B_in  [label="B_in"];
+    B_out [label="B_out"];
+    B_sink [label="B_sink"];
+    root  -> B_in;
+    B_in  -> B_1;
+    B_in  -> B_out;
+    B_3   -> B_sink;
+    B_out -> B_sink;
+
+    // ── Case C: multi-rank edge threads cluster ──────────────────────
+    // ``C_src`` on rank 1 connects to ``C_dst`` on rank 4 via a
+    // 3-rank virtual chain.  cluster_C has members on ranks 2 and 3.
+    // If mincross places the virtual chain on the opposite side of
+    // cluster_C from its endpoints, the edge crosses the cluster at
+    // both intermediate ranks (aa1332 ``c0->c5359`` class).
+    subgraph cluster_C {
+        label="cluster_C";
+        color="#fef3c7";
+        C_m1; C_m2;
+    }
+    C_src [label="C_src"];
+    C_dst [label="C_dst"];
+    C_side [label="C_side"];
+    root   -> C_src;
+    C_src  -> C_dst;
+    C_side -> C_m1;
+    C_m1   -> C_m2;
+    C_m2   -> C_dst;
+
+    // ── Case D: nested-cluster interclrep ────────────────────────────
+    // ``cluster_D_outer`` contains ``cluster_D_inner``.  A node
+    // outside the outer cluster (D_ext) has an edge to a node inside
+    // the INNER cluster (D_i1).  This exercises C's
+    // ``class2.c: interclrep`` + ``make_chain`` — Python creates
+    // ``_icv_*`` chain virtuals that have to land on the
+    // same side as D_ext to avoid crossing cluster_D_outer.
+    subgraph cluster_D_outer {
+        label="D_outer";
+        color="#dcfce7";
+        D_o1; D_o2;
+        subgraph cluster_D_inner {
+            label="D_inner";
+            color="#bae6fd";
+            D_i1; D_i2;
+        }
+    }
+    D_ext [label="D_ext"];
+    root  -> D_ext;
+    D_ext -> D_i1;
+    D_o1  -> D_i2;
+    D_i2  -> D_o2;
+
+    // Chain the cases in a visible grid so the layout is easy to eyeball.
+    // Forces the four sub-graphs to lay out top-to-bottom in order.
+    root -> A_in [style=invis];
+    A_in -> B_in [style=invis];
+    B_in -> C_src [style=invis];
+    C_src -> D_ext [style=invis];
+}

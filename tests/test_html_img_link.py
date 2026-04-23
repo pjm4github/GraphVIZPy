@@ -151,6 +151,34 @@ class TestImagePath:
         finally:
             os.chdir(cwd)
 
+    def test_gv_file_path_env_var_resolves_src(self, monkeypatch):
+        """With ``imagepath`` empty, ``GV_FILE_PATH`` is the fallback
+        search path — matches Graphviz's ``lib/common/usershape.c``
+        behaviour."""
+        set_image_search_paths(None)   # imagepath = just "."
+        monkeypatch.setenv("GV_FILE_PATH", str(REPO / "test_data"))
+        assert _probe_image_size("_py_test_img.png") == (40.0, 40.0)
+
+    def test_gv_file_path_accepts_semicolon_separator(self, monkeypatch):
+        """Multiple directories separated by ``;`` (Windows) or ``:``
+        (Unix) — first match wins."""
+        set_image_search_paths(None)
+        monkeypatch.setenv(
+            "GV_FILE_PATH",
+            f"/no/such/dir;{REPO / 'test_data'}",
+        )
+        assert _probe_image_size("_py_test_img.png") == (40.0, 40.0)
+
+    def test_imagepath_takes_precedence_over_env(self, monkeypatch):
+        """If both imagepath and ``GV_FILE_PATH`` supply a match,
+        the imagepath-configured directory wins (first one in the
+        search list)."""
+        # Put the real test_data on imagepath; a different (invalid)
+        # dir on GV_FILE_PATH — imagepath should resolve first.
+        set_image_search_paths([str(REPO / "test_data")])
+        monkeypatch.setenv("GV_FILE_PATH", "/no/such/dir")
+        assert _probe_image_size("_py_test_img.png") == (40.0, 40.0)
+
     def test_render_svg_applies_graph_imagepath(self):
         """``render_svg`` should read the ``imagepath`` graph attr and
         install the search paths so a relative IMG SRC in a later

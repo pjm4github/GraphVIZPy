@@ -98,7 +98,12 @@ def init_from_graph(layout):
                 setattr(layout, field, conv(val))
             except ValueError:
                 pass
-    layout.remincross = (layout.graph.get_graph_attr("remincross") or "").lower() in ("true", "1", "yes")
+    # Graphviz ``remincross`` defaults to true for clustered graphs
+    # (C ``dot_mincross`` always runs ``mincross(g, 2)`` with
+    # ReMincross=true).  Only an explicit ``remincross=false`` in the
+    # DOT source disables it — matches C ``lib/dotgen/mincross.c``.
+    _remincross_attr = (layout.graph.get_graph_attr("remincross") or "").lower()
+    layout.remincross = _remincross_attr not in ("false", "0", "no")
     layout.normalize = (layout.graph.get_graph_attr("normalize") or "").lower() in ("true", "1", "yes")
     layout.clusterrank = (layout.graph.get_graph_attr("clusterrank") or "local").lower()
     layout.newrank = (layout.graph.get_graph_attr("newrank") or "").lower() in ("true", "1", "yes")

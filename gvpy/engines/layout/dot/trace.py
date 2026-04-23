@@ -52,6 +52,12 @@ from typing import Final
 KNOWN_CHANNELS: Final[frozenset[str]] = frozenset({
     "bfs",
     "class2",
+    "d5",            # TODO §1 D5 diagnostic: multi-rank edge side-of-
+                     # cluster classification, emitted at mincross-exit.
+    "d5_step",       # TODO §1 D5 byte-for-byte medians/reorder
+                     # alignment — emits rank state + per-swap
+                     # decisions so a diff tool can find the first
+                     # Python-vs-C divergence in ordering.
     "label",
     "median",
     "order",

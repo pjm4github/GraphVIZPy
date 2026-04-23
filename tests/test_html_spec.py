@@ -295,6 +295,103 @@ class TestAlignText:
         assert 'text-anchor="end"' in out
 
 
+# ── TABLE-level ALIGN / VALIGN as per-cell defaults ─────────────────
+
+
+class TestTableLevelAlignInheritance:
+    """``<TD>`` inherits the enclosing ``<TABLE>``'s ALIGN / VALIGN
+    when it doesn't supply its own — matches Graphviz's attribute
+    cascade in ``lib/common/htmltable.c``.
+    """
+
+    def test_table_align_cascades_to_cell(self):
+        lbl = parse_html_label(
+            '<<TABLE ALIGN="LEFT"><TR><TD>x</TD></TR></TABLE>>'
+        )
+        assert lbl.table.rows[0].cells[0].align == "left"
+
+    def test_table_valign_cascades_to_cell(self):
+        lbl = parse_html_label(
+            '<<TABLE VALIGN="TOP"><TR><TD>x</TD></TR></TABLE>>'
+        )
+        assert lbl.table.rows[0].cells[0].valign == "top"
+
+    def test_cell_align_overrides_table_align(self):
+        lbl = parse_html_label(
+            '<<TABLE ALIGN="LEFT"><TR>'
+            '<TD>uses-table-default</TD>'
+            '<TD ALIGN="RIGHT">uses-own</TD></TR></TABLE>>'
+        )
+        assert lbl.table.rows[0].cells[0].align == "left"
+        assert lbl.table.rows[0].cells[1].align == "right"
+
+    def test_unset_align_defaults_to_center(self):
+        """When neither TABLE nor TD specifies ALIGN, the cell still
+        renders centred — legacy default."""
+        lbl = parse_html_label(
+            "<<TABLE><TR><TD>x</TD></TR></TABLE>>"
+        )
+        assert lbl.table.rows[0].cells[0].align == "center"
+
+    def test_table_align_renders_in_svg(self):
+        from gvpy.render.svg_renderer import _render_html_text
+        out = _render_html_text(
+            100.0, 100.0,
+            '<<TABLE ALIGN="RIGHT" CELLBORDER="0"><TR>'
+            '<TD>x</TD></TR></TABLE>>',
+            default_face="Times-Roman", default_size=14.0,
+            default_color="#000000",
+        )
+        # Cell inherits right-alignment from TABLE.
+        assert 'text-anchor="end"' in out
+
+
+# ── TD CELLSPACING override for nested tables ───────────────────────
+
+
+class TestTdCellspacingOverride:
+    """A cell with a nested ``<TABLE>`` that omits its own
+    ``CELLSPACING`` inherits the parent cell's CELLSPACING —
+    matches C's override semantics in ``lib/common/htmltable.c``.
+    """
+
+    def _size(self, label: str):
+        lbl = parse_html_label(label)
+        size_html_table(lbl.table)
+        return lbl.table
+
+    def test_nested_table_inherits_td_cellspacing(self):
+        t = self._size(
+            '<<TABLE CELLSPACING="0">'
+            '<TR><TD CELLSPACING="8">'
+            '<TABLE><TR><TD>x</TD></TR></TABLE>'
+            '</TD></TR></TABLE>>'
+        )
+        # Outer cell has its nested table as ``nested``.
+        nested = t.rows[0].cells[0].nested
+        assert nested is not None
+        assert nested.cellspacing == 8
+
+    def test_nested_table_explicit_cellspacing_wins(self):
+        """Nested TABLE with its own CELLSPACING overrides the TD's
+        value."""
+        t = self._size(
+            '<<TABLE><TR><TD CELLSPACING="8">'
+            '<TABLE CELLSPACING="3"><TR><TD>x</TD></TR></TABLE>'
+            '</TD></TR></TABLE>>'
+        )
+        assert t.rows[0].cells[0].nested.cellspacing == 3
+
+    def test_no_td_cellspacing_uses_default(self):
+        """Without a TD override, nested TABLE still defaults to 2."""
+        t = self._size(
+            '<<TABLE><TR><TD>'
+            '<TABLE><TR><TD>x</TD></TR></TABLE>'
+            '</TD></TR></TABLE>>'
+        )
+        assert t.rows[0].cells[0].nested.cellspacing == 2
+
+
 # ── 11. Weighted COLSPAN / ROWSPAN growth ───────────────────────────
 
 

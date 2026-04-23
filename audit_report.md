@@ -1,34 +1,33 @@
 # Visual Audit — Python vs. C dot.exe
 
-Generated: 2026-04-20 17:40:46
+Generated: 2026-04-22 18:40:41
 
 Metric: **edges whose routed spline crosses a non-member cluster bbox** (sampled bezier → bbox intersection).  A relative signal, not a visual-quality absolute.
 
 ## Summary
 
-- Graphs audited: **190** (169 ok, 21 errored/timeout)
-- Graphs clean on both sides (0 crossings): **157**
-- Python regression cases (py > c): **12**
-- Total Python crossings: **339**
+- Graphs audited: **196** (172 ok, 24 errored/timeout)
+- Graphs clean on both sides (0 crossings): **161**
+- Python regression cases (py > c): **11**
+- Total Python crossings: **224**
 - Total C crossings: **0**
-- Net delta (py − c): **+339**
+- Net delta (py − c): **+224**
 
 ## Top regression graphs (py > c)
 
 | File | Py nodes | Py edges | Py cross | C cross | Δ |
 |---|---:|---:|---:|---:|---:|
-| 1879.dot | 549 | 355 | 251 | 0 | +251 |
-| 2796.dot | 59 | 91 | 20 | 0 | +20 |
-| 2470.dot | 224 | 36 | 19 | 0 | +19 |
+| 1879.dot | 549 | 355 | 145 | 0 | +145 |
+| 1472.dot | 135 | 86 | 27 | 0 | +27 |
 | 1332_ref.dot | 91 | 111 | 13 | 0 | +13 |
-| 1472.dot | 135 | 86 | 13 | 0 | +13 |
-| 1436.dot | 34 | 22 | 10 | 0 | +10 |
+| 2796.dot | 59 | 91 | 13 | 0 | +13 |
+| 1436.dot | 34 | 22 | 7 | 0 | +7 |
+| 2620.dot | 237 | 344 | 7 | 0 | +7 |
+| 1332.dot | 91 | 111 | 4 | 0 | +4 |
 | 1213-1.dot | 12 | 17 | 3 | 0 | +3 |
-| 1332.dot | 91 | 111 | 3 | 0 | +3 |
-| 2620.dot | 237 | 344 | 3 | 0 | +3 |
 | 1213-2.dot | 12 | 17 | 2 | 0 | +2 |
+| aa1332.dot | 91 | 111 | 2 | 0 | +2 |
 | 2239.dot | 94 | 41 | 1 | 0 | +1 |
-| aa1332.dot | 91 | 111 | 1 | 0 | +1 |
 
 ## Failed / timed out
 
@@ -46,11 +45,14 @@ Metric: **edges whose routed spline crosses a non-member cluster bbox** (sampled
 | 2222.dot | PY_TIMEOUT |  |
 | 2343.dot | PY_TIMEOUT |  |
 | 2371.dot | PY_TIMEOUT |  |
+| 2470.dot | PY_TIMEOUT |  |
 | 2471.dot | PY_TIMEOUT |  |
 | 2475_1.dot | PY_TIMEOUT |  |
 | 2475_2.dot | PY_TIMEOUT |  |
-| 2521.dot | C_FAIL | RuntimeError: dot.exe rc=3221226356, no SVG in stdout:  |
+| 2521.dot | C_FAIL | RuntimeError: dot.exe rc=3221225477, no SVG in stdout:  |
 | 2593.dot | PY_TIMEOUT |  |
+| 2619_1.dot | PY_FAIL | RuntimeError: IndexError: list index out of range |
+| 2619_2.dot | PY_FAIL | RuntimeError: IndexError: list index out of range |
 | 2621.dot | PY_TIMEOUT |  |
 | 2646.dot | PY_TIMEOUT |  |
 | 2723.dot | C_FAIL | RuntimeError: dot.exe rc=3221225477, no SVG in stdout:  |
@@ -71,7 +73,7 @@ Metric: **edges whose routed spline crosses a non-member cluster bbox** (sampled
 | 1323.dot | ok | 3 | 9 | 0 | 0 | 0 | +0 |
 | 1323_1.dot | ok | 3 | 3 | 0 | 0 | 0 | +0 |
 | 1328.dot | ok | 5 | 3 | 0 | 0 | 0 | +0 |
-| 1332.dot | ok | 91 | 111 | 3 | 0 | 0 | +3 |
+| 1332.dot | ok | 91 | 111 | 4 | 0 | 0 | +4 |
 | 1332_cluster_4117.dot | ok | 3 | 3 | 0 | 0 | 0 | +0 |
 | 1332_cluster_4148.dot | ok | 2 | 1 | 0 | 0 | 0 | +0 |
 | 1332_cluster_5376.dot | ok | 4 | 3 | 0 | 0 | 0 | +0 |
@@ -82,7 +84,7 @@ Metric: **edges whose routed spline crosses a non-member cluster bbox** (sampled
 | 1425.dot | ok | 1 | 0 | 0 | 0 | 0 | +0 |
 | 1425_1.dot | ok | 4 | 1 | 0 | 0 | 0 | +0 |
 | 1435.dot | ok | 12 | 9 | 0 | 0 | 0 | +0 |
-| 1436.dot | ok | 34 | 22 | 10 | 0 | 0 | +10 |
+| 1436.dot | ok | 34 | 22 | 7 | 0 | 0 | +7 |
 | 1444-2.dot | ok | 2 | 1 | 0 | 0 | 0 | +0 |
 | 1444.dot | ok | 2 | 1 | 0 | 0 | 0 | +0 |
 | 1447.dot | ok | 36 | 35 | 0 | 0 | 0 | +0 |
@@ -90,7 +92,7 @@ Metric: **edges whose routed spline crosses a non-member cluster bbox** (sampled
 | 144_no_ortho.dot | ok | 4 | 3 | 0 | 0 | 0 | +0 |
 | 144_ortho.dot | ok | 4 | 3 | 0 | 0 | 0 | +0 |
 | 1453.dot | ok | 26 | 32 | 0 | 0 | 0 | +0 |
-| 1472.dot | ok | 135 | 86 | 13 | 0 | 0 | +13 |
+| 1472.dot | ok | 135 | 86 | 27 | 0 | 0 | +27 |
 | 1474.dot | ok | 156 | 13 | 0 | 0 | 0 | +0 |
 | 1489.dot | ok | 36 | 11 | 0 | 0 | 0 | +0 |
 | 1494.dot | C_FAIL | 3 | 0 | 0 | 0 | 0 | – |
@@ -124,7 +126,7 @@ Metric: **edges whose routed spline crosses a non-member cluster bbox** (sampled
 | 1864.dot | PY_TIMEOUT | 0 | 0 | 0 | 0 | 0 | – |
 | 1865.dot | ok | 1 | 0 | 0 | 0 | 0 | +0 |
 | 1879-2.dot | ok | 2 | 1 | 0 | 0 | 0 | +0 |
-| 1879.dot | ok | 549 | 355 | 251 | 0 | 0 | +251 |
+| 1879.dot | ok | 549 | 355 | 145 | 0 | 0 | +145 |
 | 1880.dot | ok | 16 | 16 | 0 | 0 | 0 | +0 |
 | 1896.dot | ok | 3 | 2 | 0 | 0 | 0 | +0 |
 | 1898.dot | ok | 24 | 0 | 0 | 0 | 0 | +0 |
@@ -184,7 +186,7 @@ Metric: **edges whose routed spline crosses a non-member cluster bbox** (sampled
 | 2457_2.dot | ok | 5 | 4 | 0 | 0 | 0 | +0 |
 | 2458.dot | ok | 3 | 0 | 0 | 0 | 0 | +0 |
 | 2460.dot | ok | 1 | 0 | 0 | 0 | 0 | +0 |
-| 2470.dot | ok | 224 | 36 | 19 | 0 | 0 | +19 |
+| 2470.dot | PY_TIMEOUT | 0 | 0 | 0 | 0 | 0 | – |
 | 2471.dot | PY_TIMEOUT | 0 | 0 | 0 | 0 | 0 | – |
 | 2475_1.dot | PY_TIMEOUT | 0 | 0 | 0 | 0 | 0 | – |
 | 2475_2.dot | PY_TIMEOUT | 0 | 0 | 0 | 0 | 0 | – |
@@ -210,9 +212,9 @@ Metric: **edges whose routed spline crosses a non-member cluster bbox** (sampled
 | 2614.dot | ok | 2 | 1 | 0 | 0 | 0 | +0 |
 | 2615.dot | ok | 6 | 6 | 0 | 0 | 0 | +0 |
 | 2619.dot | ok | 1 | 0 | 0 | 0 | 0 | +0 |
-| 2619_1.dot | ok | 6 | 5 | 0 | 0 | 0 | +0 |
-| 2619_2.dot | ok | 6 | 5 | 0 | 0 | 0 | +0 |
-| 2620.dot | ok | 237 | 344 | 3 | 0 | 0 | +3 |
+| 2619_1.dot | PY_FAIL | 0 | 0 | 0 | 0 | 0 | – |
+| 2619_2.dot | PY_FAIL | 0 | 0 | 0 | 0 | 0 | – |
+| 2620.dot | ok | 237 | 344 | 7 | 0 | 0 | +7 |
 | 2621.dot | PY_TIMEOUT | 0 | 0 | 0 | 0 | 0 | – |
 | 2636.dot | ok | 1 | 0 | 0 | 0 | 0 | +0 |
 | 2636_1.dot | ok | 1 | 0 | 0 | 0 | 0 | +0 |
@@ -231,7 +233,7 @@ Metric: **edges whose routed spline crosses a non-member cluster bbox** (sampled
 | 2734.dot | ok | 15 | 14 | 0 | 0 | 0 | +0 |
 | 2743.dot | ok | 1 | 0 | 0 | 0 | 0 | +0 |
 | 2782.dot | ok | 7 | 1 | 0 | 0 | 0 | +0 |
-| 2796.dot | ok | 59 | 91 | 20 | 0 | 0 | +20 |
+| 2796.dot | ok | 59 | 91 | 13 | 0 | 0 | +13 |
 | 2801.dot | ok | 6 | 0 | 0 | 0 | 0 | +0 |
 | 2825.dot | ok | 10 | 14 | 0 | 0 | 0 | +0 |
 | 2854.dot | PY_TIMEOUT | 0 | 0 | 0 | 0 | 0 | – |
@@ -241,7 +243,13 @@ Metric: **edges whose routed spline crosses a non-member cluster bbox** (sampled
 | 705.dot | ok | 6 | 3 | 0 | 0 | 0 | +0 |
 | 813.dot | ok | 1 | 0 | 0 | 0 | 0 | +0 |
 | 925.dot | ok | 2 | 0 | 0 | 0 | 0 | +0 |
-| aa1332.dot | ok | 91 | 111 | 1 | 0 | 0 | +1 |
+| aa1332.dot | ok | 91 | 111 | 2 | 0 | 0 | +2 |
+| html_img_link.dot | ok | 9 | 8 | 0 | 0 | 0 | +0 |
+| html_labels.dot | ok | 17 | 1 | 0 | 0 | 0 | +0 |
+| html_port_mixed.dot | ok | 5 | 4 | 0 | 0 | 0 | +0 |
+| html_spec.dot | ok | 8 | 7 | 0 | 0 | 0 | +0 |
+| html_style.dot | ok | 8 | 7 | 0 | 0 | 0 | +0 |
+| html_tables.dot | ok | 7 | 5 | 0 | 0 | 0 | +0 |
 | negative-dpi.dot | ok | 2 | 1 | 0 | 0 | 0 | +0 |
 | test_3in1out.dot | ok | 5 | 4 | 0 | 0 | 0 | +0 |
 | test_3in1out_labeled.dot | ok | 5 | 4 | 0 | 0 | 0 | +0 |
