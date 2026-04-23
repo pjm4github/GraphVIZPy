@@ -896,6 +896,97 @@ BFS build_ranks, C-aligned interclrep) plus the earlier
 remincross + remincross_phase fixes are the net-positive
 deliverable.
 
+## Session 10: C-seed injection test (2026-04-22)
+
+User asked: "Can we inject the same seed in Python as C uses to
+confirm initial seeding is the issue?"
+
+Added a diagnostic override hook to ``phase2_ordering``:
+
+- ``GVPY_RANK_OVERRIDE=<path>`` — apply a JSON spec
+  ``{"rank_num_str": [node_name, ...]}`` to ``layout.ranks`` before
+  mincross runs.
+- ``GVPY_RANK_OVERRIDE_SKIP_MINCROSS=1`` — additionally skip the
+  mincross sweeps entirely, so phase-3 / phase-4 operate on the
+  injected ordering verbatim.
+
+Extracted C's final rank ordering (after C's full mincross) from
+``[TRACE order]`` on d5_regression, aa1332, 2796 — converted to
+JSON seeds.  Injected each into Python and re-measured visible
+cluster crossings.
+
+### Results
+
+| fixture        | baseline | C-seed + mincross | C-seed + skip_mincross |
+|----------------|---------:|------------------:|-----------------------:|
+| d5_regression  |        1 |             **0** |                      2 |
+| aa1332         |        1 |                 4 |                      3 |
+| 2796           |       15 |                15 |                     18 |
+
+### Interpretation
+
+- **d5_regression (1→0)**: Python's mincross accepts C's
+  ordering as a fixed point — stays there, gets 0 crossings.
+  **The divergence here is entirely in ``build_ranks``** (the
+  initial ordering Python's DFS-based builder produces).
+
+- **aa1332 (1→4)**: Python's mincross **perturbs** C's ordering
+  ON PURPOSE, thinking it found a better configuration.  Diffing
+  the per-rank result shows 12/27 ranks differ from C after
+  Python's mincross runs on the C-seed.  Sample:
+
+  ```
+  rank 5  C:  c4118 c4145 c4147 c4051 c4236 c4243
+  rank 5  Py: c4118 c4145 c4147 c4236 c4051 c4243
+  ```
+
+  Python moves c4051 past c4236.  Python's crossing count /
+  median / left2right evaluates this swap as a WIN; C's rejects
+  it.  **Divergence here is in the mincross iteration itself.**
+
+- **2796 (15 = 15)**: Python's mincross converges from C's seed
+  to the same 15-crossing local minimum as from its own build_ranks
+  seed.  Python's mincross has a DIFFERENT OPTIMUM than C's —
+  they disagree about what's minimal.
+
+### Conclusion
+
+The D5 divergence is not a single root cause.  Three distinct
+levels contribute:
+
+1. **``build_ranks``** produces different initial orderings.
+   The C-seed test proves this dominates on small fixtures
+   (d5_regression).
+2. **Mincross iteration** (median + reorder + transpose) agrees
+   with C on structurally simple graphs but diverges on
+   complex cluster arrangements.  The C-seed + aa1332 test
+   isolates this: even starting from C's answer, Python
+   perturbs to something worse.
+3. **Mincross convergence criterion** stops at a different local
+   minimum on large graphs.  The 2796 result shows Python's
+   optimum is structurally 15 visible crossings regardless of
+   starting point.
+
+### What's actionable
+
+The ``GVPY_RANK_OVERRIDE`` override is now a **permanent
+diagnostic tool**.  It lets any future investigator inject a
+known-good ordering and isolate "seeding vs iteration" on any
+specific fixture.
+
+Two narrowed next-step candidates:
+
+- **Aligning build_ranks BFS more carefully** (session 5's
+  attempt regressed 2796 by +13 without install_cluster; maybe
+  a targeted hybrid works).
+- **Instrumenting the specific mincross perturbation on aa1332
+  rank 5** that moves c4051 past c4236.  Identify which swap
+  decision (median / reorder / transpose) fires and whether
+  its cost function disagrees with C's.
+
+Both are multi-session projects.  The override tool makes each
+tractable without blind iteration.
+
 ## Adjacent investigation: 1879.dot (corpus-wide top regression)
 
 `porting_scripts/visual_audit.py` reports 1879.dot as the single

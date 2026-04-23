@@ -97,6 +97,46 @@ def phase2_ordering(layout):
     if not layout.ranks:
         return
 
+    # Diagnostic hook — allow external seeding or replacement of the
+    # rank ordering for Py-vs-C divergence isolation.  Two env vars:
+    #
+    # ``GVPY_RANK_OVERRIDE=<path>`` — read a JSON file mapping
+    #   ``rank_num (str) -> [node_name, ...]`` and apply it to
+    #   ``layout.ranks`` before mincross runs.  Unlisted nodes keep
+    #   their build_ranks order.  Use for "seed Python with C's
+    #   ordering and let mincross iterate from there".
+    #
+    # ``GVPY_RANK_OVERRIDE_SKIP_MINCROSS=1`` — additionally skip
+    #   the mincross sweeps (medians/reorder/transpose), so the
+    #   rendered output reflects pure phase-3 + phase-4 handling
+    #   of the injected ordering.  Use for "does Python's phase
+    #   3+4 match C when given C's mincross output".
+    import os as _os_rank_ov
+    _rank_ov_path = _os_rank_ov.environ.get("GVPY_RANK_OVERRIDE", "")
+    _skip_mincross = (
+        _os_rank_ov.environ.get("GVPY_RANK_OVERRIDE_SKIP_MINCROSS", "") == "1"
+    )
+    if _rank_ov_path:
+        import json as _json_rank_ov
+        try:
+            with open(_rank_ov_path, "r", encoding="utf-8") as _fh:
+                _spec = _json_rank_ov.load(_fh)
+        except OSError:
+            _spec = None
+        if _spec:
+            trace("order", f"rank_override applying from {_rank_ov_path}")
+            for _rstr, _seq in _spec.items():
+                _r = int(_rstr)
+                if _r not in layout.ranks:
+                    continue
+                # Keep only nodes we have; honour the spec's order,
+                # append any build_ranks nodes that weren't named.
+                _present = [n for n in _seq if n in layout.lnodes
+                            and layout.lnodes[n].rank == _r]
+                _seen = set(_present)
+                _rest = [n for n in layout.ranks[_r] if n not in _seen]
+                layout.ranks[_r] = _present + _rest
+
     for rank_nodes in layout.ranks.values():
         for i, name in enumerate(rank_nodes):
             layout.lnodes[name].order = i
@@ -107,6 +147,10 @@ def phase2_ordering(layout):
     # ordering=out preserves input order — skip crossing minimization
     if layout.ordering in ("out", "in"):
         trace("order", f"skip mincross: ordering={layout.ordering}")
+        return
+
+    if _rank_ov_path and _skip_mincross:
+        trace("order", "rank_override + skip_mincross: bypassing all sweeps")
         return
 
     # ── Skeleton-based cluster ordering ──────────────
