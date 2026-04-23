@@ -826,6 +826,76 @@ accumulation isn't hurting there.  The correct port would be a
 the existing chain's edges.  Deferred — low priority because the
 current approximation is already winning.
 
+## Session 9: phase 3 instrumentation + divergence audit (2026-04-22)
+
+Both sides already had ``[TRACE position]`` emissions at the key
+phase-3 stages:
+
+- ``phase3 begin`` — entry
+- ``set_ycoords`` — y-coord per real node
+- ``pre_ns`` — pre-NS state per real node (rank_val = mincross
+  order * MC_SCALE / N, lw, rw)
+- ``ns_solved`` — post-NS x position per real node
+- ``final_pos`` — final x, y, w, h
+
+Captured Python and C on ``d5_regression.dot`` and compared.
+
+### Result: phase 3 is aligned; divergences echo mincross output
+
+Comparing ``pre_ns`` rank_val on rank 2:
+
+| node  | C rank_val | Py rank_val |
+|-------|-----------:|------------:|
+| A_l1  |          0 |         144 |
+| A_l2  |         72 |         216 |
+| A_r1  |        144 |           0 |
+| A_r2  |        216 |          72 |
+| B_in  |        288 |         288 |
+| C_m1  |        436 |         400 |
+
+C places cluster_A_left LEFT of cluster_A_right; Python reverses
+them.  This is **already the case at mincross-exit** — phase 3
+faithfully encodes whatever ordering mincross produced into
+pre_ns.rank_val.
+
+Comparing ``ns_solved`` (NS-solved x positions):
+
+| node  | C x_pos | Py x_pos |
+|-------|--------:|---------:|
+| A_l1  |    −170 |      205 |
+| A_l2  |     −98 |      277 |
+| A_r1  |      −4 |       45 |
+| A_r2  |      68 |      117 |
+| B_in  |     173 |      357 |
+| C_m1  |     355 |      477 |
+
+Different absolute origins, but each engine's NS solver correctly
+places its OWN rank-2 ordering with proper node separation
+(72/94/72/105/182 on C; 72/88/72/80/120 on Py).  Phase 3's job
+(translate mincross order into x-coords honoring nodesep, cluster
+bbox containment, etc.) is performed equivalently on both sides.
+
+### Implication for D5 work
+
+Phase 3 isn't the leverage point.  Any remaining D5 divergence
+traces back to mincross output:
+
+- ``d5_regression``'s 1 residual comes from Python placing B_in
+  LEFT of cluster_A_right while C places B_in RIGHT of both A
+  clusters.  Mincross decision, not phase 3.
+- ``1879``'s +12 regression comes from C-aligned ICV chains
+  changing mincross convergence to a different (worse-for-1879)
+  rank ordering.  Phase 3 faithfully encodes both.
+- ``2796``'s 15 residuals are mincross-level RL-flips (documented
+  in session 1).
+
+**Phase 3 matches C.**  No fix needed.  D5 investigation closes
+at the mincross layer — the four alignments shipped this session
+(run_mincross backend, cluster-contiguity normalization, opt-in
+BFS build_ranks, C-aligned interclrep) plus the earlier
+remincross + remincross_phase fixes are the net-positive
+deliverable.
+
 ## Adjacent investigation: 1879.dot (corpus-wide top regression)
 
 `porting_scripts/visual_audit.py` reports 1879.dot as the single
