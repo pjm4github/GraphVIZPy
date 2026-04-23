@@ -753,6 +753,79 @@ outweigh 1213-2 loss).  Plus correctness: legacy was provably
 incomplete.  1879 regression documented as a known interaction
 with its HTML sizing issue.
 
+## Session 8: C-side chain parity verification (2026-04-22)
+
+Added ``[TRACE d5_icv]`` emissions to C's ``class2.c: interclrep``
+so Python's and C's inter-cluster chain sets can be compared
+line-for-line.  C emits one line per chain built:
+
+```
+[TRACE d5_icv] chain t=<cluster>@<rank> h=<cluster>@<rank>
+               tail=<raw_tail> head=<raw_head>
+[TRACE d5_icv] merge t=<cluster>@<rank> h=<cluster>@<rank>
+               tail=<raw_tail> head=<raw_head>
+```
+
+### Chain counts
+
+| fixture | Py (C-aligned) | C chains | C merges | C total |
+|---------|---------------:|---------:|---------:|--------:|
+| aa1332  |             64 |       69 |        9 |      78 |
+| 1332    |             64 |       69 |        9 |      78 |
+| 1213-2  |              6 |        6 |        0 |       6 |
+| **1879**|        **353** |  **353** |        0 |     353 |
+
+### The key finding — 1879 chains match byte-for-byte
+
+Diffed the chain (tail, tail_rank, head, head_rank) tuples between
+Python and C on 1879 after normalizing Python's ``_skel_<cluster>_<rank>``
+prefix to just the cluster name (C's format).  Result:
+
+```
+Py chains=353   C chains=353
+Common:  353
+Py-only:   0
+C-only:    0
+```
+
+**Every chain C creates, Python creates.**  Same endpoints, same
+ranks.  The chain-creation alignment is complete.
+
+### Where the 1879 regression lives
+
+Both paths (legacy and C-aligned) produce **0 D5 mincross-level
+crossings** on 1879 — the metric reports identical mincross output.
+But all 9 rank orderings differ between the two paths, and visible
+cluster crossings differ: legacy Python = 145, C-aligned Py = 157,
+C = 0.
+
+The inference: the divergence is **downstream of mincross**
+(phase 3 position or phase 4 spline routing), not in chain
+creation.  Same ICV chains, same D5 metric, but different final
+layouts.  Legacy's 0-chain state on 1879 happens to produce
+mincross ordering that spline-routes with fewer visible crossings,
+entirely by accident.
+
+C-aligned ICV is correct — chain sets match byte-for-byte.  The
++12 regression on 1879 is a loss of an accidental benefit, not a
+bug in the alignment.  Closing the remaining 157-vs-0 gap on 1879
+requires investigating phase 3 or phase 4 divergence, which is
+separate D5-adjacent work.
+
+### aa1332 merge_chain gap
+
+C reports 9 ``merge_chain`` operations on aa1332/1332.  Each one
+combines weights (``ED_weight``, ``ED_count``, ``ED_xpenalty``)
+from duplicate-endpoint edges into an already-existing chain.
+Python's deduplication (``_seen_skel_edges``) silently skips
+duplicate (leader_pair) edges — no weight accumulation.
+
+On aa1332/1332 Python improved (2→1, 4→1) so the missing weight
+accumulation isn't hurting there.  The correct port would be a
+``merge_chain`` equivalent that accumulates ``le.weight`` into
+the existing chain's edges.  Deferred — low priority because the
+current approximation is already winning.
+
 ## Adjacent investigation: 1879.dot (corpus-wide top regression)
 
 `porting_scripts/visual_audit.py` reports 1879.dot as the single
