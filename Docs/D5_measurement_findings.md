@@ -550,6 +550,74 @@ for it.  The divergence must live in either:
 The d5_step instrumentation is the same; future sessions can
 drill into any of the three without re-adding plumbing.
 
+## build_ranks BFS-vs-DFS investigation (2026-04-22, session 5)
+
+Python's legacy ``build_ranks`` (rank.py) uses DFS over an
+*undirected* adjacency list, starting from every real node in
+DOT-file order then filling remaining virtuals.  C's ``build_ranks``
+(mincross.c:1518) uses BFS over *directed* out-edges, starting
+only from "source" nodes (no in-edges for pass=0), and calls
+``install_cluster`` to batch-insert cluster members.
+
+On ``d5_regression.dot``, Python's DFS plunges from ``root`` through
+the invis ``root→D_ext`` chain before visiting cluster members.
+Rank 2 initial order ends up as
+``[_v_root_D_ext_2, _v_root_C_src_2, B_in, A_r1, A_l1, ..., A_l2, A_r2]``
+— cluster members interleaved with virtuals.  C's BFS produces
+``[A_l1, A_l2, A_r1, A_r2, B_in, ...]`` — cluster blocks tight.
+
+### BFS-from-sources variant
+
+Implemented as the non-default path in ``build_ranks``, enabled
+via ``GVPY_BFS_BUILD_RANKS=1``.  Matches C's BFS traversal +
+directed-out-adjacency + source-first iteration.  Does NOT yet
+implement ``install_cluster`` batching (that needs cluster
+skeletons at rank level, which are post-build_ranks).
+
+### Corpus impact (env var on)
+
+| fixture        | DFS (default) | BFS (env var) | delta |
+|----------------|--------------:|--------------:|------:|
+| d5_regression  |             1 |             1 |     0 |
+| aa1332         |             2 |             3 |    +1 |
+| 1332           |             4 |             5 |    +1 |
+| 1472           |            27 |            21 |    −6 |
+| 2796           |            15 |            28 |   +13 |
+| 1213-1         |             3 |             4 |    +1 |
+| 1213-2         |             2 |             3 |    +1 |
+| 2239           |             1 |             0 |    −1 |
+| 1879           |           145 |           151 |    +6 |
+
+Mixed.  Big wins on **1472 (−6)** and **2239 (−1 to zero)**.
+Big regression on **2796 (+13)**.  Net +4 across the D5 corpus.
+
+### Why 2796 regresses
+
+Hypothesis: 2796 has several attractor nodes (48, 52, 14) with
+many converging edges.  Without C's ``install_cluster`` batch
+inserting all cluster members at once, BFS interleaves attractors
+with cluster members — breaking the attractor-group clustering
+that Python's DFS happened to produce.
+
+Brief attempt at cluster-peer batching (when BFS installs a
+cluster member, also install its peers from the same cluster)
+didn't improve 2796 (actually slightly worse) because peers
+often live at different ranks that BFS hasn't reached yet —
+the install-order matters.
+
+### Current state
+
+BFS path kept behind ``GVPY_BFS_BUILD_RANKS=1`` for future work.
+Default remains DFS so the corpus baselines don't shift.  To
+close the BFS-vs-DFS gap on 2796 we'd need to port C's
+``install_cluster`` properly — which requires cluster rank-leader
+data structures that currently only live in ``skeleton_mincross``.
+
+Defer to a later session.  The next divergence candidate left is
+the ``_icv_*`` inter-cluster skeleton chain edges — that
+investigation can proceed with d5_step instrumentation already
+in place.
+
 ## Adjacent investigation: 1879.dot (corpus-wide top regression)
 
 `porting_scripts/visual_audit.py` reports 1879.dot as the single

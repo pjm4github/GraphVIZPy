@@ -745,38 +745,140 @@ def add_virtual_nodes(layout):
 
 
 def build_ranks(layout):
-    """Populate layout.ranks with DFS-based initial ordering.
+    """Populate ``layout.ranks`` with an initial in-rank ordering.
 
-    Mirrors Graphviz ``init_mincross()`` / ``dfs_range()``: traverse
-    from a root node following edges, assigning order within each
-    rank based on DFS visit order.  This naturally groups connected
-    components and clusters together, giving the mincross a better
-    starting configuration than simple dict-order iteration.
+    Mirrors Graphviz ``lib/dotgen/mincross.c: build_ranks()``: BFS
+    from every source node (no in-edges), walking only OUT-edges, so
+    each rank's order is determined by a breadth-first wavefront
+    rather than a depth-first plunge.  Gated on
+    ``GVPY_LEGACY_BUILD_RANKS=1`` — set that to restore the previous
+    DFS-over-undirected-adjacency behaviour for diagnostics.
+
+    Why this matters: the legacy DFS interleaves invis-chain virtuals
+    with cluster members on the same rank (because it walks from
+    root all the way to a leaf before backtracking).  C's BFS pulls
+    all sources' rank-1 children into the rank first, then their
+    rank-2 children, keeping cluster members contiguous at their
+    rank and matching the starting configuration C's mincross expects.
+    On ``d5_regression.dot`` the switch changes rank-2 initial order
+    from ``[_v_*_2, _v_*_2, B_in, A_r1, A_l1, ...]`` to
+    ``[A_l1, A_l2, A_r1, A_r2, B_in, ...]`` — cluster blocks tight
+    before mincross even begins.
     """
+    import os as _os_br
+
     layout.ranks = defaultdict(list)
 
-    # Build adjacency preserving edge list order (matching C's edge
-    # traversal in decompose search_component).
-    # C visits: flat_in, flat_out, in, out — in reverse edge order.
-    # We approximate this: for each node, collect neighbors in the
-    # order edges appear in layout.ledges, then reverse (to match C's
-    # reverse iteration with a LIFO stack).
-    adj: dict[str, list[str]] = defaultdict(list)
+    from gvpy.engines.layout.dot.trace import trace as _bfs_trace, trace_on as _bfs_on
+    _bfs_traceon = _bfs_on("bfs")
+
+    # BFS-from-sources (the C-aligned path) is currently opt-in
+    # behind ``GVPY_BFS_BUILD_RANKS=1``.  Corpus measurement
+    # (2026-04-22) showed it closes the 2239 gap (+1 → 0) and
+    # shaves the 1472 regression (27 → 21) but regresses 2796
+    # (+13) and several small-gap fixtures (+1 each).  Net +4
+    # across the D5 corpus, so it's not the default until the
+    # regressing fixtures are understood.  Default stays on the
+    # DFS-over-undirected path which matches the pre-session
+    # behaviour.  Flip via the env var for diagnostics.
+    if _os_br.environ.get("GVPY_BFS_BUILD_RANKS", "") != "1":
+        _build_ranks_legacy_dfs(layout, _bfs_trace, _bfs_traceon)
+        return
+
+    # Build directed out-adjacency + in-degree.  C's ``build_ranks``
+    # starts from every node whose ``otheredges`` list (``ND_in`` for
+    # pass=0) is empty — i.e. graph sources.  We mimic that.
+    out_adj: dict[str, list[str]] = defaultdict(list)
+    in_count: dict[str, int] = defaultdict(int)
+    seen_pairs: set[tuple[str, str]] = set()
+    for le in layout.ledges:
+        t, h = le.tail_name, le.head_name
+        if t not in layout.lnodes or h not in layout.lnodes:
+            continue
+        if (t, h) in seen_pairs:
+            continue
+        seen_pairs.add((t, h))
+        out_adj[t].append(h)
+        in_count[h] += 1
+
+    visited: set[str] = set()
+    from collections import deque
+
+    def _bfs(start: str) -> None:
+        if start in visited or start not in layout.lnodes:
+            return
+        if _bfs_traceon:
+            _bfs_trace("bfs",
+                       f"source: {start} rank={layout.lnodes[start].rank}")
+        queue: "deque[str]" = deque([start])
+        visited.add(start)
+        while queue:
+            name = queue.popleft()
+            layout.ranks[layout.lnodes[name].rank].append(name)
+            if _bfs_traceon:
+                _bfs_trace("bfs",
+                           f"install {name} rank={layout.lnodes[name].rank}")
+            for nbr in out_adj.get(name, []):
+                if nbr not in visited and nbr in layout.lnodes:
+                    visited.add(nbr)
+                    queue.append(nbr)
+
+    # Walk sources in DOT file order (``graph.nodes`` preserves
+    # insertion order) then any remaining nodes — C matches this
+    # via the ``agfstnode``/``ND_next`` scan with the empty-otheredges
+    # guard.
+    dot_order_nodes: list[str] = [
+        name for name in layout.graph.nodes if name in layout.lnodes
+    ]
+    virtual_nodes: list[str] = sorted(
+        (n for n in layout.lnodes if n not in set(dot_order_nodes)),
+        key=lambda n: (layout.lnodes[n].rank, n),
+    )
+
+    # Phase 1: sources with in_count == 0, in DOT order.
+    for name in dot_order_nodes + virtual_nodes:
+        if name in visited or name not in layout.lnodes:
+            continue
+        if in_count.get(name, 0) == 0:
+            _bfs(name)
+
+    # Phase 2: any residual (e.g. cycle-only components) — start from
+    # the first unvisited node in DOT order.
+    for name in dot_order_nodes + virtual_nodes:
+        if name not in visited and name in layout.lnodes:
+            _bfs(name)
+
+    # Ensure disconnected nodes get placed.
+    for name, ln in layout.lnodes.items():
+        if name not in visited:
+            layout.ranks[ln.rank].append(name)
+            visited.add(name)
+
+
+def _build_ranks_legacy_dfs(layout, _bfs_trace, _bfs_traceon):
+    """Previous DFS-over-undirected-adjacency implementation.
+
+    Kept behind ``GVPY_LEGACY_BUILD_RANKS=1`` so anyone investigating
+    a regression can A/B the two algorithms.  Walking an undirected
+    adjacency with a LIFO stack visits long chains before siblings —
+    different order than C's BFS-from-sources-following-out-edges.
+    """
+    from collections import defaultdict as _dd
+    adj: dict[str, list[str]] = _dd(list)
     for le in layout.ledges:
         adj[le.tail_name].append(le.head_name)
         adj[le.head_name].append(le.tail_name)
-    # Reverse to match C's stack-based reverse iteration
     for k in adj:
         adj[k].reverse()
 
     visited: set[str] = set()
 
-    # Use explicit stack to mirror C's search_component:
-    # push neighbors in reverse order (C iterates edge list backward
-    # and pushes, stack pops give forward order).
     def _dfs(start: str):
         if start in visited or start not in layout.lnodes:
             return
+        if _bfs_traceon:
+            _bfs_trace("bfs",
+                       f"source: {start} rank={layout.lnodes[start].rank}")
         stack: list[str] = [start]
         while stack:
             name = stack.pop()
@@ -784,26 +886,23 @@ def build_ranks(layout):
                 continue
             visited.add(name)
             layout.ranks[layout.lnodes[name].rank].append(name)
-            # Push neighbors in reverse order so first neighbor
-            # gets processed first (LIFO)
+            if _bfs_traceon:
+                _bfs_trace("bfs",
+                           f"install {name} rank={layout.lnodes[name].rank}")
             nbrs = [n for n in adj.get(name, [])
                     if n in layout.lnodes and n not in visited]
             for nbr in reversed(nbrs):
                 stack.append(nbr)
 
-    # Start from nodes in DOT file order (matching C's agfstnode)
-    # The graph.nodes dict preserves insertion order.
     dot_order_nodes: list[str] = []
     for name in layout.graph.nodes:
         if name in layout.lnodes:
             dot_order_nodes.append(name)
-    # Also include virtual nodes (sorted by rank for consistency)
     virtual_nodes = [n for n in layout.lnodes if n not in set(dot_order_nodes)]
     virtual_nodes.sort(key=lambda n: (layout.lnodes[n].rank, n))
     for name in dot_order_nodes + virtual_nodes:
         _dfs(name)
 
-    # Ensure all nodes are in ranks (disconnected nodes)
     for name, ln in layout.lnodes.items():
         if name not in visited:
             layout.ranks[ln.rank].append(name)
