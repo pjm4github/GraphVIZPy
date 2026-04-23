@@ -783,6 +783,10 @@ def build_ranks(layout):
     # behaviour.  Flip via the env var for diagnostics.
     if _os_br.environ.get("GVPY_BFS_BUILD_RANKS", "") != "1":
         _build_ranks_legacy_dfs(layout, _bfs_trace, _bfs_traceon)
+        # Apply the same cluster-contiguity normalization to the
+        # DFS output so both backends present a consistent final
+        # layout to mincross.
+        _normalize_cluster_contiguity(layout)
         return
 
     # Build directed out-adjacency + in-degree.  C's ``build_ranks``
@@ -853,6 +857,70 @@ def build_ranks(layout):
         if name not in visited:
             layout.ranks[ln.rank].append(name)
             visited.add(name)
+
+    # Post-BFS cluster-contiguity normalization.  Approximates C's
+    # ``install_cluster`` effect on the final rank arrays: within
+    # each rank, group cluster members so they're contiguous at the
+    # first-occurrence position of their cluster.  Preserves BFS
+    # visit order for non-cluster nodes and for the cluster's own
+    # first-encountered position; only reorders cluster peers that
+    # BFS happened to visit via a separate sub-tree.  Doesn't push
+    # anyone past their natural BFS wavefront position.
+    _normalize_cluster_contiguity(layout)
+
+
+def _normalize_cluster_contiguity(layout):
+    """Reorder each rank so cluster members are contiguous at the
+    rank position where the cluster was first touched.
+
+    This runs on both BFS and DFS build_ranks outputs (post-BFS
+    cleanup for BFS; for DFS it's typically a no-op because DFS
+    already groups connected components including cluster members).
+    The goal is to leave every non-cluster node in its BFS-assigned
+    position while moving any cluster peer that BFS visited later
+    (via a different sub-tree) into the cluster's group.
+    """
+    if not getattr(layout, "_clusters", None):
+        return
+    # Innermost cluster per node.
+    node_cl: dict[str, str] = {}
+    size_by_cl = {cl.name: len(cl.nodes) for cl in layout._clusters}
+    for cl in layout._clusters:
+        for n in cl.nodes:
+            if n not in layout.lnodes:
+                continue
+            prev = node_cl.get(n)
+            if prev is None or size_by_cl[cl.name] < size_by_cl[prev]:
+                node_cl[n] = cl.name
+    for rank_num, rank_list in list(layout.ranks.items()):
+        if not rank_list:
+            continue
+        first_pos: dict[str, int] = {}
+        cluster_members: dict[str, list[str]] = {}
+        for i, n in enumerate(rank_list):
+            cl = node_cl.get(n)
+            if cl is None:
+                continue
+            if cl not in first_pos:
+                first_pos[cl] = i
+                cluster_members[cl] = []
+            cluster_members[cl].append(n)
+        if not cluster_members:
+            continue
+        placed: set[str] = set()
+        new_rank: list[str] = []
+        for i, n in enumerate(rank_list):
+            cl = node_cl.get(n)
+            if cl is None:
+                new_rank.append(n)
+                continue
+            if cl in placed:
+                continue
+            if first_pos[cl] == i:
+                # Emit all members of this cluster together.
+                placed.add(cl)
+                new_rank.extend(cluster_members[cl])
+        layout.ranks[rank_num] = new_rank
 
 
 def _build_ranks_legacy_dfs(layout, _bfs_trace, _bfs_traceon):

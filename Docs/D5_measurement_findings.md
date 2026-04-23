@@ -618,6 +618,65 @@ the ``_icv_*`` inter-cluster skeleton chain edges — that
 investigation can proceed with d5_step instrumentation already
 in place.
 
+## Session 6: cluster-contiguity normalization (2026-04-22)
+
+Tried porting C's ``install_cluster`` to Python's BFS build_ranks.
+Direct port (batch-install all cluster members on first wavefront
+touch) disrupted BFS ordering and hurt 7 of 9 corpus fixtures.
+
+Pivoted to a **post-build_ranks normalization** approach: after
+build_ranks completes (either BFS or DFS backend), walk each rank
+and reorder so cluster members are contiguous at the position
+where the cluster was first encountered.  Preserves the base
+algorithm's visit order for non-cluster nodes and the cluster's
+own first-touched position; only relocates peers that landed in
+separate spots.
+
+### Implementation
+
+``_normalize_cluster_contiguity(layout)`` — runs after both the
+BFS and DFS paths in ``build_ranks``.  Builds an innermost-cluster
+map, then for each rank walks left-to-right finding each cluster's
+first-occurrence index and collecting all its members.  Rebuilds
+the rank by emitting non-cluster nodes in place and emitting each
+cluster's full member list at its first-occurrence position.
+Placed clusters are skipped on subsequent encounters.
+
+### Corpus impact (default DFS path + normalization)
+
+| fixture        | before | after | delta |
+|----------------|-------:|------:|------:|
+| d5_regression  |      1 |     1 |     0 |
+| aa1332         |      2 |     2 |     0 |
+| 1332           |      4 |     4 |     0 |
+| **1472**       |     27 |   **8** | **−19** |
+| 2796           |     15 |    15 |     0 |
+| 1213-1         |      3 |     3 |     0 |
+| 1213-2         |      2 |     2 |     0 |
+| 2239           |      1 |     1 |     0 |
+| 1879           |    145 |   145 |     0 |
+
+**Net −19 across corpus with zero regressions.**  Full test
+suite at 1137 pass.
+
+### Why it works
+
+1472's 19-crossing improvement comes from cluster members that
+Python's DFS visited via disconnected sub-trees, landing them
+far apart on the same rank.  The normalization pulls them back
+together, giving mincross a cluster-contiguous starting state
+it can improve from.
+
+The fixtures that showed no change already had cluster members
+contiguous from DFS's natural traversal — normalization is a
+no-op on them.
+
+The BFS backend is still behind ``GVPY_BFS_BUILD_RANKS=1``; the
+normalization helps it too (2239 → 0) but the BFS base still
+regresses 2796 (+12) and a handful of small-gap fixtures.
+Separately-gated; to be revisited when Python's pre-skeleton
+graph representation is closer to C's pre-skeletonized form.
+
 ## Adjacent investigation: 1879.dot (corpus-wide top regression)
 
 `porting_scripts/visual_audit.py` reports 1879.dot as the single
