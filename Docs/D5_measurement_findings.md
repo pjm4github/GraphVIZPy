@@ -677,6 +677,82 @@ regresses 2796 (+12) and a handful of small-gap fixtures.
 Separately-gated; to be revisited when Python's pre-skeleton
 graph representation is closer to C's pre-skeletonized form.
 
+## Session 7: C-aligned inter-cluster chain creation (2026-04-22)
+
+Ported C's ``class2.c: interclrep`` + ``leader_of`` + ``make_chain``
+semantics into Python's ``skeleton_mincross`` inter-cluster chain
+builder.  Legacy sibling-pair logic had four divergences:
+
+1. Missed chains when only ONE endpoint was in a cluster
+   (C's ``leader_of`` returns the node itself for non-cluster
+   nodes, enabling chain creation against any cluster's leader).
+2. Missed chains for top-level disjoint clusters — the common case
+   (``t_cl == h_cl == None`` guard in the sibling-pair walk
+   exited early when no common ancestor existed).
+3. Missed chains for nested child→parent edges (break fired when
+   one side's child equalled the common ancestor).
+4. Used SIBLING-level skeletons when C uses INNERMOST-level
+   skeletons (``GD_rankleader(ND_clust(v))[ND_rank(v)]``).
+
+### Implementation
+
+New ``_leader_of(node_name, rank)`` helper + rewritten chain
+creation loop in ``skeleton_mincross``.  Legacy sibling-pair
+logic kept behind ``GVPY_LEGACY_ICV=1`` for A/B diagnostics.
+New ``GV_TRACE=d5_icv`` channel emits one line per chain built
+with endpoint rank-leaders + the original edge, so Python's
+chain set can be diffed against C's interclrep emissions in
+future sessions.
+
+### Corpus impact
+
+| fixture        | legacy | C-aligned | delta |
+|----------------|-------:|----------:|------:|
+| d5_regression  |      1 |         1 |     0 |
+| **aa1332**     |      2 |       **1** |    **−1** |
+| **1332**       |      4 |       **1** |    **−3** |
+| 1472           |      8 |         8 |     0 |
+| 2796           |     15 |        15 |     0 |
+| 1213-1         |      3 |         3 |     0 |
+| 1213-2         |      2 |         3 |    +1 |
+| 2239           |      1 |         1 |     0 |
+| 1879           |    145 |       157 |   +12 |
+
+Chain-count diagnostics (`d5_icv` trace):
+
+| fixture   | legacy chains | C-aligned chains |
+|-----------|--------------:|-----------------:|
+| aa1332    |            57 |               64 |
+| 1332      |            57 |               64 |
+| 1213-2    |             0 |                6 |
+| 1879      |             0 |              353 |
+
+Legacy creates 0 chains on 1213-2 and 1879 because neither has
+the "sibling-pair across common-ancestor" configuration its logic
+requires.  C-aligned creates the chains C actually builds.
+
+### The 1879 regression
+
+1879 has ~100 nested clusters (one per person in a family tree),
+many pairs of which have direct edges between them.  C-aligned
+creates 353 inter-cluster chains; each chain contributes extra
+edges to the skeleton graph's median computation.  On this graph
+the extra edges happen to push mincross toward a worse local
+minimum (+12 visible crossings vs legacy's 0-chain baseline).
+
+1879 is also the corpus-wide top HTML-sizing regression (see
+earlier section) — its Python output differs from C primarily
+because C's HTML parser silently drops labels when embedded IMG
+resolution fails, sizing clusters much smaller than Python.  The
++12 D5 regression is secondary to that structural difference.
+
+### Net
+
+D5-relevant fixtures: −4 crossings (aa1332, 1332 improvements
+outweigh 1213-2 loss).  Plus correctness: legacy was provably
+incomplete.  1879 regression documented as a known interaction
+with its HTML sizing issue.
+
 ## Adjacent investigation: 1879.dot (corpus-wide top regression)
 
 `porting_scripts/visual_audit.py` reports 1879.dot as the single

@@ -699,82 +699,136 @@ def skeleton_mincross(layout):
             if n in layout.lnodes:
                 _node_skel_cluster[n] = cl_name  # last write = innermost
 
+    import os as _os_icv
+    from gvpy.engines.layout.dot.trace import trace as _icv_trace, trace_on as _icv_on
+    _icv_traceon = _icv_on("d5_icv")
+    _legacy_icv = _os_icv.environ.get("GVPY_LEGACY_ICV", "") == "1"
+
     _seen_skel_edges: set[tuple[str, str]] = set()
+
+    def _leader_of(node_name: str, rank: int) -> str | None:
+        """Return the cluster rank-leader for ``node_name`` at the
+        given ``rank``, or ``node_name`` itself if the node isn't in
+        any cluster.  Mirrors C's ``class2.c: leader_of`` — for a
+        cluster member, returns ``GD_rankleader(clust)[rank]``; for
+        a non-cluster node, returns the node itself.
+        """
+        cl = _node_skel_cluster.get(node_name)
+        if cl is None:
+            return node_name
+        return skeleton_nodes.get(cl, {}).get(rank)
+
+    def _make_chain(t_skel: str, h_skel: str,
+                    t_rank: int, h_rank: int, weight: float) -> None:
+        """Build a chain of virtual nodes from ``t_skel`` (at
+        ``t_rank``) to ``h_skel`` (at ``h_rank``), one per
+        intermediate rank.  Mirrors C ``class2.c: make_chain``.
+        Caller must have ensured ``t_rank < h_rank`` and that no
+        chain with these endpoints already exists.
+        """
+        prev_name = t_skel
+        for cr in range(t_rank + 1, h_rank + 1):
+            if cr < h_rank:
+                cvn = f"_icv_{t_skel}_{h_skel}_{cr}"
+                layout.lnodes[cvn] = LayoutNode(
+                    name=cvn, node=None, rank=cr, virtual=True,
+                    width=2.0, height=2.0)
+                next_name = cvn
+            else:
+                next_name = h_skel
+            ce = LayoutEdge(
+                edge=None, tail_name=prev_name,
+                head_name=next_name,
+                minlen=1, weight=weight,
+                virtual=True)
+            skeleton_edges.append(ce)
+            layout.ledges.append(ce)
+            prev_name = next_name
+
     for le in layout.ledges:
         if le.virtual:
             continue
         t_cl = _node_skel_cluster.get(le.tail_name)
         h_cl = _node_skel_cluster.get(le.head_name)
-        if not t_cl or not h_cl or t_cl == h_cl:
+        # Intra-cluster edge (both in the same cluster OR neither in
+        # any cluster): skip -- C's interclrep check matches this
+        # via ``if (ND_clust(t) != ND_clust(h))``.
+        if t_cl == h_cl:
             continue
-        # Find the sibling level: walk up until both share the same parent
-        t_path: list[str] = [t_cl]
-        cur = t_cl
-        while parent_of.get(cur) is not None:
-            cur = parent_of[cur]
-            t_path.append(cur)
-        h_path: list[str] = [h_cl]
-        cur = h_cl
-        while parent_of.get(cur) is not None:
-            cur = parent_of[cur]
-            h_path.append(cur)
-        h_set = set(h_path)
-        # Find sibling pair: for each parent, check if both are children
-        for par_cl in t_path:
-            if par_cl in h_set:
-                # par_cl is the common ancestor
-                # t_child = the child of par_cl on the tail side
-                t_child = t_path[max(0, t_path.index(par_cl) - 1)]
-                h_child = h_path[max(0, h_path.index(par_cl) - 1)]
-                if t_child == par_cl or h_child == par_cl:
-                    break  # one is a direct node of par_cl, not a child cluster
-                if t_child == h_child:
-                    break  # same child cluster
-                # Create inter-cluster edge chain between rank-leaders.
-                # Mirrors C class2.c:99-124 interclrep() → make_chain():
-                # instead of a direct edge from t_skel to h_skel,
-                # create a chain of virtual nodes at intermediate ranks
-                # so the BFS visits all ranks between the endpoints.
-                t_rank = layout.lnodes[le.tail_name].rank
-                h_rank = layout.lnodes[le.head_name].rank
-                t_skel = skeleton_nodes.get(t_child, {}).get(t_rank)
-                h_skel = skeleton_nodes.get(h_child, {}).get(h_rank)
-                if t_skel and h_skel and t_rank != h_rank:
-                    # Ensure t_rank < h_rank (C interclrep:106-108)
-                    if t_rank > h_rank:
-                        t_skel, h_skel = h_skel, t_skel
-                        t_rank, h_rank = h_rank, t_rank
-                    key = (t_skel, h_skel)
-                    if key not in _seen_skel_edges:
-                        _seen_skel_edges.add(key)
-                        # C class2.c:70-96 make_chain(): create chain
-                        # from→v1→v2→...→to with virtual nodes at
-                        # each intermediate rank.
-                        prev_name = t_skel
-                        for cr in range(t_rank + 1, h_rank + 1):
-                            if cr < h_rank:
-                                # Intermediate virtual node
-                                # (C class2.c:87 plain_vnode)
-                                cvn = f"_icv_{t_skel}_{h_skel}_{cr}"
-                                layout.lnodes[cvn] = LayoutNode(
-                                    name=cvn, node=None, rank=cr, virtual=True,
-                                    width=2.0, height=2.0)
-                                next_name = cvn
-                            else:
-                                next_name = h_skel
-                            ce = LayoutEdge(
-                                edge=None, tail_name=prev_name,
-                                head_name=next_name,
-                                minlen=1, weight=le.weight,
-                                virtual=True)
-                            skeleton_edges.append(ce)
-                            layout.ledges.append(ce)
-                            prev_name = next_name
-                elif t_skel and h_skel and t_rank == h_rank:
-                    # Same rank: C interclrep:114-115 skips same-rank
-                    # inter-cluster edges.  No edge created.
-                    pass
-                break
+        t_rank = layout.lnodes[le.tail_name].rank
+        h_rank = layout.lnodes[le.head_name].rank
+
+        if _legacy_icv:
+            # Legacy: sibling-pair chain creation.  Mismatched C's
+            # innermost-leader semantics; kept for A/B diagnostics.
+            t_path: list[str] = [t_cl] if t_cl else []
+            cur = t_cl
+            while cur is not None and parent_of.get(cur) is not None:
+                cur = parent_of[cur]
+                t_path.append(cur)
+            h_path: list[str] = [h_cl] if h_cl else []
+            cur = h_cl
+            while cur is not None and parent_of.get(cur) is not None:
+                cur = parent_of[cur]
+                h_path.append(cur)
+            h_set = set(h_path)
+            for par_cl in t_path:
+                if par_cl in h_set:
+                    t_child = t_path[max(0, t_path.index(par_cl) - 1)]
+                    h_child = h_path[max(0, h_path.index(par_cl) - 1)]
+                    if t_child == par_cl or h_child == par_cl:
+                        break
+                    if t_child == h_child:
+                        break
+                    t_skel = skeleton_nodes.get(t_child, {}).get(t_rank)
+                    h_skel = skeleton_nodes.get(h_child, {}).get(h_rank)
+                    if t_skel and h_skel and t_rank != h_rank:
+                        if t_rank > h_rank:
+                            t_skel, h_skel = h_skel, t_skel
+                            t_rank, h_rank = h_rank, t_rank
+                        key = (t_skel, h_skel)
+                        if key not in _seen_skel_edges:
+                            _seen_skel_edges.add(key)
+                            if _icv_traceon:
+                                _icv_trace("d5_icv",
+                                           f"chain t={t_skel}@{t_rank} "
+                                           f"h={h_skel}@{h_rank} "
+                                           f"tail={le.tail_name} "
+                                           f"head={le.head_name} legacy=1")
+                            _make_chain(t_skel, h_skel, t_rank, h_rank,
+                                        le.weight)
+                    break
+            continue
+
+        # C-aligned path: leader_of(tail), leader_of(head); chain
+        # when they belong to different clusters at different ranks.
+        t_leader = _leader_of(le.tail_name, t_rank)
+        h_leader = _leader_of(le.head_name, h_rank)
+        if not t_leader or not h_leader:
+            continue
+        if t_leader == h_leader:
+            continue
+        # Order by rank (C class2.c:112-114 SWAP)
+        if t_rank > h_rank:
+            t_leader, h_leader = h_leader, t_leader
+            t_rank, h_rank = h_rank, t_rank
+        if t_rank == h_rank:
+            # C class2.c:120-121: same-rank inter-cluster edges skip.
+            continue
+        key = (t_leader, h_leader)
+        if key in _seen_skel_edges:
+            # C find_fast_edge + merge_chain would combine weights
+            # here; for Python's median-centric use we just skip
+            # duplicates.  Matches our prior ``_seen_skel_edges``
+            # dedup semantics.
+            continue
+        _seen_skel_edges.add(key)
+        if _icv_traceon:
+            _icv_trace("d5_icv",
+                       f"chain t={t_leader}@{t_rank} "
+                       f"h={h_leader}@{h_rank} "
+                       f"tail={le.tail_name} head={le.head_name}")
+        _make_chain(t_leader, h_leader, t_rank, h_rank, le.weight)
 
     # ── Collapse: replace clusters with skeletons, top-down ──
     # For each cluster (deepest first), hide its direct nodes and

@@ -58,6 +58,10 @@ KNOWN_CHANNELS: Final[frozenset[str]] = frozenset({
                      # alignment — emits rank state + per-swap
                      # decisions so a diff tool can find the first
                      # Python-vs-C divergence in ordering.
+    "d5_icv",        # TODO §1 D5 inter-cluster chain creation —
+                     # emits each chain endpoint pair + rank span
+                     # so Python's skeleton_mincross and C's
+                     # class2.c: interclrep can be diffed.
     "label",
     "median",
     "order",
