@@ -6,29 +6,27 @@
 // output can be inspected manually, and so Python-vs-C differences
 // show up immediately rather than being buried in a 200-node scene.
 //
-// Expected counts (measured at fixture landing, 2026-04-22):
+// Expected counts (measured 2026-04-22):
 //
 //   C-side (``dot.exe -Tsvg``):
 //     visible cluster crossings : 0
 //     D5 mincross-level         : 0
 //
-//   Python (``PYTHONHASHSEED=0`` for determinism):
-//     visible cluster crossings : 4
+//   Python (``PYTHONHASHSEED=0`` for determinism), after the
+//   2026-04-22 run_mincross backend swap (cluster_medians +
+//   cluster_reorder + cluster_transpose in place of
+//   order_by_weighted_median + transpose_rank):
+//     visible cluster crossings : 1
 //     D5 mincross-level         : 2
 //
-// Breakdown of Python's 4 visible crossings (from
-// ``count_cluster_crossings.py``):
-//   - Case B thread-through       : 1 crossing (B_out -> B_sink
-//                                                through cluster_B)
-//   - Case C long-edge routing    : 2 crossings (C_src -> C_dst
-//                                                and C_m2 -> C_dst
-//                                                through cluster_B)
-//   - Case A flip or Case D nest  : 1 crossing
+//   Previous baseline (legacy run_mincross backend, before the
+//   swap): visible cluster crossings = 4.
 //
 // The regression gate in ``tests/test_d5_regression.py`` fixes
-// ``PYTHONHASHSEED=0`` and asserts visible crossings ≤ 4 — tightens
-// as D5 fixes land.  Any change that raises the count above the
-// baseline fails the test and flags the scenario.
+// ``PYTHONHASHSEED=0`` and asserts visible crossings ≤ 1.  Any
+// future D5 fix that reduces this further should tighten the
+// constant in that file.  A regression that raises it fails the
+// test and points at the specific scenario.
 //
 // Hand-built May 2026; the case-level comments inside each subgraph
 // explain what's being exercised.

@@ -395,18 +395,61 @@ def run_mincross(layout):
 
     See: /lib/dotgen/mincross.c @ 743
 
-    Alternates down passes (median + transpose at each rank from min
-    to max) and up passes (max to min), tracking the best ordering
-    seen so far via save_best / restore_best.  Iteration count is
-    bounded by MAX_MINCROSS_ITER × mclimit (C ``MaxIter``).
+    Alternates down passes (median + reorder + transpose at each rank
+    from min to max) and up passes (max to min), tracking the best
+    ordering seen so far via save_best / restore_best.  Iteration
+    count is bounded by MAX_MINCROSS_ITER × mclimit (C ``MaxIter``).
+
+    The ``use_cluster_impl`` flag switches between two backends:
+
+    - ``cluster_medians`` + ``cluster_reorder`` + ``cluster_transpose``
+      (matches C's ``medians()``/``reorder()``/``transpose()`` in
+      ``lib/dotgen/mincross.c``, including ``VAL`` + port.order
+      scaling, sawclust, and bubble-sort reorder semantics).  Required
+      for correctness in skeleton / remincross passes.
+    - ``order_by_weighted_median`` + ``transpose_rank`` (legacy
+      Python-idiomatic group-sort implementation).  Kept as a
+      fallback for non-clustered graphs where it's cheaper and
+      produces equivalent orderings.  Enabled when
+      ``GVPY_LEGACY_MINCROSS=1``.
     """
     from gvpy.engines.layout.dot.trace import trace, trace_on
+    import os as _os_mc
     _trace_order = trace_on("order")
     if _trace_order:
         _n_nodes = sum(len(v) for v in layout.ranks.values())
         _n_ranks = len(layout.ranks)
         trace("order", f"mincross_entry n_ranks={_n_ranks} "
                        f"n_nodes={_n_nodes}")
+
+    _legacy = _os_mc.environ.get("GVPY_LEGACY_MINCROSS", "") == "1"
+
+    # Set up fast graph + node-to-cluster map for the cluster-aware
+    # backend.  Mirrors the prep already done by ``remincross_full``
+    # (mincross.py lines 405-435) and C's ``init_mincross`` setup.
+    all_nodes = set(layout.lnodes.keys())
+    node_cl: dict[str, str] = {}
+    if layout._clusters:
+        for cl in sorted(layout._clusters,
+                         key=lambda c: len(c.nodes), reverse=True):
+            for n in cl.nodes:
+                if n in layout.lnodes:
+                    node_cl[n] = cl.name  # innermost wins
+    fg_out: dict[str, list[str]] = defaultdict(list)
+    fg_in: dict[str, list[str]] = defaultdict(list)
+    _seen: set[tuple[str, str]] = set()
+    for le in layout.ledges:
+        t, h = le.tail_name, le.head_name
+        if t == h:
+            continue
+        if t not in layout.lnodes or h not in layout.lnodes:
+            continue
+        pair = (t, h)
+        if pair in _seen:
+            continue
+        _seen.add(pair)
+        fg_out[t].append(h)
+        fg_in[h].append(t)
 
     max_rank = max(layout.ranks.keys()) if layout.ranks else 0
     best_crossings = layout._count_all_crossings()
@@ -415,33 +458,50 @@ def run_mincross(layout):
     iterations = max(1, int(layout.MAX_MINCROSS_ITER * layout.mclimit))
     _done_iter = 0
     _step_calls = 0
-    for _ in range(iterations):
+
+    def _step(down: bool, reverse: bool) -> None:
+        if _legacy:
+            rng = (range(1, max_rank + 1) if down
+                   else range(max_rank - 1, -1, -1))
+            for r in rng:
+                if r in layout.ranks:
+                    layout._order_by_weighted_median(
+                        r, r - 1 if down else r + 1)
+                    layout._transpose_rank(r)
+            return
+        rng = (range(1, max_rank + 1) if down
+               else range(max_rank - 1, -1, -1))
+        for r in rng:
+            if r not in layout.ranks:
+                continue
+            layout._cluster_medians(
+                r, r - 1 if down else r + 1,
+                all_nodes, fg_out, fg_in)
+            layout._cluster_reorder(r, all_nodes, node_cl, reverse)
+        # One transpose pass per full down+up cycle — matches C's
+        # mincross_step (single transpose at the end).
+        if not down:
+            for r in range(max_rank + 1):
+                if r in layout.ranks:
+                    layout._cluster_transpose(r, all_nodes, node_cl)
+
+    for pass_i in range(iterations):
         _done_iter += 1
-        for r in range(1, max_rank + 1):
-            if r in layout.ranks:
-                layout._order_by_weighted_median(r, r - 1)
-                layout._transpose_rank(r)
-        for r in range(max_rank - 1, -1, -1):
-            if r in layout.ranks:
-                layout._order_by_weighted_median(r, r + 1)
-                layout._transpose_rank(r)
-        _step_calls += 1  # one "pass" = down + up
+        reverse = (pass_i % 4) < 2
+        _step(down=True, reverse=reverse)
+        _step(down=False, reverse=reverse)
+        _step_calls += 1
         c = layout._count_all_crossings()
         if c < best_crossings:
             best_crossings = c
             best_order = layout._save_ordering()
 
     if layout.remincross and best_crossings > 0:
-        for _ in range(iterations):
+        for pass_i in range(iterations):
             _done_iter += 1
-            for r in range(1, max_rank + 1):
-                if r in layout.ranks:
-                    layout._order_by_weighted_median(r, r - 1)
-                    layout._transpose_rank(r)
-            for r in range(max_rank - 1, -1, -1):
-                if r in layout.ranks:
-                    layout._order_by_weighted_median(r, r + 1)
-                    layout._transpose_rank(r)
+            reverse = (pass_i % 4) < 2
+            _step(down=True, reverse=reverse)
+            _step(down=False, reverse=reverse)
             _step_calls += 1
             c = layout._count_all_crossings()
             if c < best_crossings:
@@ -1761,6 +1821,20 @@ def order_by_weighted_median(layout, rank: int, adj_rank: int):
         else:
             medians[name] = lnodes[name].order
 
+    # [TRACE d5_step] — emit pre-reorder rank snapshot matching C's
+    # reorder_enter format so Py-vs-C diff works at the
+    # skeleton mincross layer too.  This is the path taken by
+    # run_mincross (which drives skeleton_mincross) — distinct from
+    # cluster_reorder which is invoked by remincross_full + per-
+    # cluster expand.
+    from gvpy.engines.layout.dot.trace import trace as _trace, trace_on as _on
+    _trace_enabled = _on("d5_step")
+    if _trace_enabled:
+        _ns = " ".join(
+            f"{nm}:{i}:{medians.get(nm, -1):.2f}" for i, nm in enumerate(nodes))
+        _trace("d5_step",
+               f"reorder_enter rank={rank} reverse=0 rmx=0 nodes=[{_ns}]")
+
     if layout._node_to_cluster:
         # Group-aware sort: sort within contiguous cluster runs
         # but never interleave nodes from different clusters.
@@ -1782,6 +1856,12 @@ def order_by_weighted_median(layout, rank: int, adj_rank: int):
     for i, name in enumerate(nodes):
         lnodes[name].order = i
     layout.ranks[rank] = nodes
+
+    if _trace_enabled:
+        _ns = " ".join(
+            f"{nm}:{i}:{medians.get(nm, -1):.2f}" for i, nm in enumerate(nodes))
+        _trace("d5_step",
+               f"reorder_exit rank={rank} nodes=[{_ns}]")
 
 
 def transpose_rank(layout, rank: int):

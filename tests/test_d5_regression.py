@@ -34,9 +34,14 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 FIXTURE = REPO / "test_data" / "d5_regression.dot"
 
-# Baseline measured at fixture landing (2026-04-22).
-# Tighten as D5 fixes land; reject any increase.
-BASELINE_VISIBLE_CROSSINGS = 4
+# Baseline — tightened as D5 fixes land, reject any increase.
+#   2026-04-22: 4 (fixture landing, legacy run_mincross backend)
+#   2026-04-22: 1 (after switching run_mincross to cluster_medians /
+#                  cluster_reorder / cluster_transpose C-aligned
+#                  backend — `order_by_weighted_median` used raw
+#                  order indices as mvals instead of
+#                  ``VAL = MC_SCALE * order + port.order``).
+BASELINE_VISIBLE_CROSSINGS = 1
 
 
 @pytest.mark.skipif(not FIXTURE.exists(),

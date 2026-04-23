@@ -474,6 +474,82 @@ this one left off — the first divergence is at **rank 4 iteration 3
 (reverse=0), cluster_4148 mval**, traceable into Python's ICV
 chain creation.
 
+## run_mincross backend swap (2026-04-22, session 4)
+
+Diffing d5_step traces on the small ``d5_regression`` fixture
+(4 test cases, ~20 nodes) surfaced a structural divergence the
+aa1332 investigation only hinted at:
+
+### The bug
+
+Python's ``run_mincross`` (invoked by skeleton mincross on the
+collapsed graph) used ``order_by_weighted_median`` +
+``transpose_rank``.  C's ``mincross`` uses ``medians()`` +
+``reorder()`` + ``transpose()``.  The two are not equivalent:
+
+1. **Mval scale.**  ``order_by_weighted_median`` stores raw
+   positional indices (0, 1, 2.5, 3, ...) as median values.  C's
+   ``medians()`` computes ``VAL(node, port) = MC_SCALE * order +
+   port.order`` → (0, 256, 512, ...).  Same sort order in simple
+   cases, but different weighted-median arithmetic:
+
+   ```
+   if lspan == rspan:
+       mval = (positions[lm] + positions[m]) / 2.0
+   elif lspan + rspan > 0:
+       mval = (positions[lm] * rspan + positions[m] * lspan)
+              / (lspan + rspan)
+   ```
+
+   With tiny integer positions, ``lspan == rspan`` fires far more
+   often (hitting the simple-average branch); with MC_SCALE-256
+   positions it rarely does.  The weighted-median results diverge.
+
+2. **Reorder algorithm.**  ``order_by_weighted_median`` uses a
+   group-then-sort approach: bucket consecutive same-cluster
+   runs, sort within each bucket by mval.  C's ``reorder()``
+   uses a bubble-sort that walks pairs, allows "jumping over"
+   a single cluster via ``sawclust``, and respects ``left2right``
+   per-pair.  Different sequences of swaps → different final
+   orderings.
+
+### The fix
+
+``run_mincross`` now uses ``cluster_medians`` / ``cluster_reorder``
+/ ``cluster_transpose`` — the same C-aligned implementations that
+``remincross_full`` and the per-cluster expand already use.  Legacy
+behaviour kept behind ``GVPY_LEGACY_MINCROSS=1`` for diagnostics.
+
+### Impact
+
+On ``test_data/d5_regression.dot``:
+
+| metric                              | legacy | C-aligned | C   |
+|-------------------------------------|-------:|----------:|----:|
+| visible cluster crossings           |      4 |     **1** |   0 |
+| D5 mincross-level crossings         |      2 |         2 |   0 |
+
+75 % reduction in visible cluster crossings on the new fixture;
+D5 metric unchanged.  Corpus D5-residual fixtures (aa1332, 2796,
+2239, 1472, 1332, 1213-x, 1879) all held steady — their mincross
+path already went through the cluster_* backend so the swap was
+a no-op for them.
+
+### What this tells us
+
+The remaining 2796/2239 D5 gap isn't in ``reorder()``'s sort
+logic — both sides now use the same C-aligned implementation
+for it.  The divergence must live in either:
+(a) the initial rank ordering (``build_ranks`` — Python uses DFS
+    from a stack; C uses BFS from source nodes with a queue), or
+(b) the median VAL computation itself (port.order contributions),
+    or
+(c) the inter-cluster skeleton chain edges (the ``_icv_*`` chains
+    that create median-influencing edges C doesn't).
+
+The d5_step instrumentation is the same; future sessions can
+drill into any of the three without re-adding plumbing.
+
 ## Adjacent investigation: 1879.dot (corpus-wide top regression)
 
 `porting_scripts/visual_audit.py` reports 1879.dot as the single
