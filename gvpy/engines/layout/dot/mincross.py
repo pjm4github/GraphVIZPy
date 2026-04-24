@@ -481,6 +481,7 @@ def run_mincross(layout):
                     node_cl[n] = cl.name  # innermost wins
     fg_out: dict[str, list[str]] = defaultdict(list)
     fg_in: dict[str, list[str]] = defaultdict(list)
+    fg_xpenalty: dict[tuple[str, str], int] = {}
     _seen: set[tuple[str, str]] = set()
     for le in layout.ledges:
         t, h = le.tail_name, le.head_name
@@ -489,11 +490,15 @@ def run_mincross(layout):
         if t not in layout.lnodes or h not in layout.lnodes:
             continue
         pair = (t, h)
+        _xp = getattr(le, "xpenalty", 1) or 1
         if pair in _seen:
+            if _xp > fg_xpenalty.get(pair, 0):
+                fg_xpenalty[pair] = _xp
             continue
         _seen.add(pair)
         fg_out[t].append(h)
         fg_in[h].append(t)
+        fg_xpenalty[pair] = _xp
 
     max_rank = max(layout.ranks.keys()) if layout.ranks else 0
     best_crossings = layout._count_all_crossings()
@@ -533,7 +538,8 @@ def run_mincross(layout):
                 if r in layout.ranks:
                     layout._cluster_transpose(
                         r, all_nodes, node_cl,
-                        fg_out=fg_out, fg_in=fg_in)
+                        fg_out=fg_out, fg_in=fg_in,
+                        fg_xpenalty=fg_xpenalty)
 
     for pass_i in range(iterations):
         _done_iter += 1
@@ -581,6 +587,7 @@ def remincross_full(layout):
     # (matching C class2 at root level, class2.c:155-282)
     fg_out: dict[str, list[str]] = defaultdict(list)
     fg_in: dict[str, list[str]] = defaultdict(list)
+    fg_xpenalty: dict[tuple[str, str], int] = {}
     seen: set[tuple[str, str]] = set()
     # mark_clusters for ReMincross: left2right blocks ALL
     # cross-cluster swaps (mincross.c:612-613)
@@ -599,10 +606,14 @@ def remincross_full(layout):
         if t == h:
             continue
         pair = (t, h)
+        _xp = getattr(le, "xpenalty", 1) or 1
         if pair not in seen:
             seen.add(pair)
             fg_out[t].append(h)
             fg_in[h].append(t)
+            fg_xpenalty[pair] = _xp
+        elif _xp > fg_xpenalty.get(pair, 0):
+            fg_xpenalty[pair] = _xp
 
     # C mincross.c:774-797 iteration loop
     max_iter = max(4, int(24 * layout.mclimit))
@@ -643,7 +654,8 @@ def remincross_full(layout):
             if r in layout.ranks:
                 layout._cluster_transpose(
                     r, all_nodes, node_cl, remincross_phase=True,
-                    fg_out=fg_out, fg_in=fg_in)
+                    fg_out=fg_out, fg_in=fg_in,
+                    fg_xpenalty=fg_xpenalty)
 
         cur_cross = layout._count_all_crossings()
         if cur_cross <= best_cross:
@@ -726,6 +738,7 @@ def skeleton_mincross(layout):
                 se = LayoutEdge(
                     edge=None, tail_name=prev_leader, head_name=vn_name,
                     minlen=1, weight=layout._CL_CROSS, virtual=True,
+                    xpenalty=layout._CL_CROSS,
                 )
                 skeleton_edges.append(se)
                 layout.ledges.append(se)
@@ -793,7 +806,9 @@ def skeleton_mincross(layout):
                 edge=None, tail_name=prev_name,
                 head_name=next_name,
                 minlen=1, weight=weight,
-                virtual=True)
+                virtual=True,
+                xpenalty=layout._CL_CROSS,
+            )
             skeleton_edges.append(ce)
             layout.ledges.append(ce)
             prev_name = next_name
@@ -1118,6 +1133,10 @@ def skeleton_mincross(layout):
                 mc_fg_out: dict[str, list[str]] = defaultdict(list)
                 mc_fg_in: dict[str, list[str]] = defaultdict(list)
                 mc_seen: set[tuple[str, str]] = set()
+                # Max xpenalty seen across collapsed edges per pair —
+                # consumed by count_scoped_pair_crossings for C-aligned
+                # weighted crossing cost.
+                mc_fg_xpenalty: dict[tuple[str, str], int] = {}
 
                 # Ensure the (tail, head) → (headport, tailport) map is
                 # populated before the skeleton-substitution logic tries
@@ -1227,10 +1246,22 @@ def skeleton_mincross(layout):
                     t_sub = _skel_sub(t)
                     h_sub = _skel_sub(h)
                     pair = (t_sub, h_sub)
+                    # Track the max xpenalty across all edges that
+                    # collapse to the same (t_sub, h_sub) pair.  The
+                    # crossing counter multiplies by xpenalty (matches
+                    # C ``ED_xpenalty`` in ``in_cross``/``out_cross``);
+                    # cluster-skeleton chain edges carry CL_CROSS=100
+                    # so a real-vs-skeleton crossing costs 100× a
+                    # real-vs-real one, pushing reorder/transpose to
+                    # route real edges around non-member clusters.
+                    _xp = getattr(le, "xpenalty", 1) or 1
                     if pair not in mc_seen:
                         mc_seen.add(pair)
                         mc_fg_out[t_sub].append(h_sub)
                         mc_fg_in[h_sub].append(t_sub)
+                        mc_fg_xpenalty[pair] = _xp
+                    elif _xp > mc_fg_xpenalty.get(pair, 0):
+                        mc_fg_xpenalty[pair] = _xp
                         # Propagate the original edge's port identifiers
                         # onto the substituted-pair key so cluster_medians
                         # can compute VAL(n, port).  Without this, edges
@@ -1346,7 +1377,8 @@ def skeleton_mincross(layout):
                         if r in layout.ranks:
                             layout._cluster_transpose(
                                 r, cl_node_set, child_cl_map,
-                                fg_out=mc_fg_out, fg_in=mc_fg_in)
+                                fg_out=mc_fg_out, fg_in=mc_fg_in,
+                                fg_xpenalty=mc_fg_xpenalty)
 
                     # mincross.c:786-791: check improvement using scoped count
                     cur_cross = _scoped_cross()
@@ -1665,7 +1697,8 @@ def cluster_transpose(layout, rank: int, cl_nodes: set[str],
                        child_cl_map: dict[str, str] | None = None,
                        remincross_phase: bool = False,
                        fg_out: dict[str, list[str]] | None = None,
-                       fg_in: dict[str, list[str]] | None = None):
+                       fg_in: dict[str, list[str]] | None = None,
+                       fg_xpenalty: dict[tuple[str, str], int] | None = None):
     """Adjacent-swap transpose restricted to cluster nodes.
 
     See: /lib/dotgen/mincross.c @ 685
@@ -1730,9 +1763,9 @@ def cluster_transpose(layout, rank: int, cl_nodes: set[str],
             # count only those edges to match class2.c:199 scoping.
             if fg_out is not None and fg_in is not None:
                 c_before = count_scoped_pair_crossings(
-                    layout, fg_out, fg_in, v, w)
+                    layout, fg_out, fg_in, v, w, fg_xpenalty)
                 c_after = count_scoped_pair_crossings(
-                    layout, fg_out, fg_in, w, v)
+                    layout, fg_out, fg_in, w, v, fg_xpenalty)
             else:
                 c_before = layout._count_crossings_for_pair(v, w)
                 c_after = layout._count_crossings_for_pair(w, v)
@@ -2271,14 +2304,24 @@ def count_all_crossings(layout) -> int:
 def count_scoped_pair_crossings(layout,
                                   fg_out: dict[str, list[str]],
                                   fg_in: dict[str, list[str]],
-                                  u: str, v: str) -> int:
+                                  u: str, v: str,
+                                  xpenalty: dict[tuple[str, str], int] | None = None) -> int:
     """Crossings on edges incident to u/v, restricted to the
-    cluster-scoped fast graph.
+    cluster-scoped fast graph, weighted by C ``ED_xpenalty``.
 
     Mirrors C ``mincross.c: in_cross() @ 634`` + ``out_cross() @ 653``
     which iterate ``ND_out(v)`` / ``ND_in(v)`` — the cluster-subgraph's
     scoped edge lists.  Intra-child-cluster edges are excluded at
     class2 build time so only inter-child crossings are counted.
+
+    Each crossing contributes ``xpenalty(e1) * xpenalty(e2)`` to the
+    cost.  Cluster-skeleton chain edges carry ``CL_CROSS = 100`` so a
+    real-vs-skeleton crossing costs 100× a real-vs-real one.  Without
+    this weighting, Python's reorder/transpose treats an edge passing
+    through a non-member cluster as equivalent to an edge crossing a
+    normal rank — the "adjacent-rank RL" straddle pattern (aa1332
+    ``c6378 → c6383`` crossing cluster_6752, 2796 throughout) that
+    C penalises heavily.
 
     The global ``count_crossings_for_pair`` walked every edge in
     ``layout.ledges``, which during the cluster-expand phase mixed
@@ -2293,26 +2336,34 @@ def count_scoped_pair_crossings(layout,
         if adj_rank not in layout.ranks:
             continue
         adj_set = set(layout.ranks[adj_rank])
-        u_orders: list[int] = []
-        v_orders: list[int] = []
+        # Build (order, xpenalty) tuples so the inner loop can
+        # multiply weights.  Absent an xpenalty map, default to 1
+        # (unweighted count, preserves the pre-session-19 behavior
+        # for callers that don't pass one).
+        u_info: list[tuple[int, int]] = []
+        v_info: list[tuple[int, int]] = []
         if adj_rank > u_rank:
             for nbr in fg_out.get(u, []):
                 if nbr in adj_set:
-                    u_orders.append(layout.lnodes[nbr].order)
+                    xp = xpenalty.get((u, nbr), 1) if xpenalty else 1
+                    u_info.append((layout.lnodes[nbr].order, xp))
             for nbr in fg_out.get(v, []):
                 if nbr in adj_set:
-                    v_orders.append(layout.lnodes[nbr].order)
+                    xp = xpenalty.get((v, nbr), 1) if xpenalty else 1
+                    v_info.append((layout.lnodes[nbr].order, xp))
         else:
             for nbr in fg_in.get(u, []):
                 if nbr in adj_set:
-                    u_orders.append(layout.lnodes[nbr].order)
+                    xp = xpenalty.get((nbr, u), 1) if xpenalty else 1
+                    u_info.append((layout.lnodes[nbr].order, xp))
             for nbr in fg_in.get(v, []):
                 if nbr in adj_set:
-                    v_orders.append(layout.lnodes[nbr].order)
-        for uo in u_orders:
-            for vo in v_orders:
+                    xp = xpenalty.get((nbr, v), 1) if xpenalty else 1
+                    v_info.append((layout.lnodes[nbr].order, xp))
+        for uo, uxp in u_info:
+            for vo, vxp in v_info:
                 if uo > vo:
-                    crossings += 1
+                    crossings += uxp * vxp
     return crossings
 
 

@@ -298,6 +298,13 @@ class LayoutEdge:
     head_name: str
     minlen: int = 1
     weight: int = 1
+    # Crossing-count multiplier.  Mirrors C ``ED_xpenalty`` — the
+    # per-edge weight that ``ncross`` / ``in_cross`` / ``out_cross``
+    # use when tallying crossing cost.  Default 1; cluster-skeleton
+    # chain edges set this to ``layout._CL_CROSS`` (100) so a
+    # crossing with a real edge costs 100× a plain crossing and
+    # reorder/transpose push to avoid cluster-straddles.
+    xpenalty: int = 1
     reversed: bool = False
     virtual: bool = False
     orig_tail: str = ""
