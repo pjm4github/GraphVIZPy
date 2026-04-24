@@ -1030,6 +1030,569 @@ Deferred.  Adjacent cleanup landed during this pass: `shape=none`
 label-free-shape semantics and shows no corpus-wide impact
 (1879 is unaffected because it sets no explicit dims).
 
+## Session 11: transpose scoped-crossing fix (2026-04-23)
+
+Continuation of the aa1332 rank-5 isolation pinned down in session 10
+— where `c4051` swaps past `_skel_cluster_4246_5` in Python but C
+keeps them in opposite order.
+
+### Instrumentation delta
+
+Added `[TRACE d5_step] transpose_enter / transpose_cmp / transpose_block`
+to C's `lib/dotgen/mincross.c: transpose_step()` (matches the format
+already emitted by Python's `cluster_transpose`).
+
+### What the C trace showed
+
+C's transpose at rank 5 operates **per-cluster-subgraph** scope.
+For the cluster_4250 expansion, C sees only three nodes at rank 5:
+
+```
+[TRACE d5_step] transpose_enter rank=5 reverse=0 rmx=0
+                nodes=[clusterc4236:3 cluster_4246:4 c4051:5]
+[TRACE d5_step] transpose_cmp rank=5 v=clusterc4236@3 w=cluster_4246@4
+                c_before=100 c_after=0 swapped=1
+[TRACE d5_step] transpose_cmp rank=5 v=clusterc4236@4 w=c4051@5
+                c_before=0 c_after=0 swapped=0
+```
+
+C swaps `clusterc4236 ↔ cluster_4246` first — then `(cluster_4246,
+c4051)` is *never compared* because they're not adjacent in C's
+scoped rank after that swap (final order `cluster_4246@3,
+clusterc4236@4, c4051@5`).
+
+Python saw six nodes at the same rank (all root-level rank-5 siblings)
+and a different first-pair outcome — kept `clusterc4236 @3,
+cluster_4246 @4` and then swapped `cluster_4246 ↔ c4051`.
+
+### Root cause
+
+`count_crossings_for_pair` in `mincross.py` iterated every edge in
+`layout.ledges`, which during the cluster-expand phase mixes
+sibling-cluster edges into the crossing count.  C's `in_cross` /
+`out_cross` instead iterate `ND_out` / `ND_in` — the cluster
+subgraph's scoped edge list, built by `class2` with
+intra-child-cluster edges excluded (class2.c:199).
+
+### Fix
+
+Added `count_scoped_pair_crossings(layout, fg_out, fg_in, u, v)` —
+same topology as the C pair counter, restricted to a caller-supplied
+fast graph.  Threaded `mc_fg_out` / `mc_fg_in` through to
+`cluster_transpose` during the expand phase so its cost function
+uses the same scoping as `cluster_medians`.  `remincross_full` and
+the early `run_mincross` loop still use the global counter because
+their scope legitimately *is* the whole graph.
+
+### Measurement
+
+`tests/test_d5_regression.py`: unchanged, still passes with
+`BASELINE_VISIBLE_CROSSINGS=1`.  Full suite: 1137/1137 passing
+(one pre-existing parser failure is unrelated to mincross).
+
+On aa1332 specifically the `c4051 ↔ _skel_cluster_4246_5` swap
+still fires.  The scope fix brings Python's cost function into
+alignment with C's, but the cascade diverges earlier at rank 4 —
+C's rank-4 ordering already placed `cluster_4246_4 left-of
+clusterc4236_4`, while Python has them in the opposite order.
+So rank-5's cost inputs differ not because of the counter anymore
+but because of the rank-4 orders Python feeds into it.
+
+### Next step
+
+Walk the same d5_step traces down to rank 4 to find the first rank
+where Python and C diverge on orders.  The scope fix shipped here
+is a prerequisite correctness win; the residual divergence is a
+separate cascade earlier in the sweep.
+
+## Session 12: rank-6 divergence isolated on aa1332 (2026-04-23)
+
+Session 11 concluded that the rank-5 cost function was itself sound
+once scoped; the cascade had to start earlier.  This session walks
+cluster_4250's expand phase down to the first rank where Python and
+C disagree on a swap decision.
+
+### Setup
+
+Both engines dump `reorder_enter` / `transpose_enter` / `transpose_cmp`
+on the `d5_step` channel now (C: `lib/dotgen/mincross.c`, Python:
+`gvpy/engines/layout/dot/mincross.py`).  Captured:
+
+- C trace: `GV_TRACE=d5_step dot.exe -Tsvg aa1332.dot`
+- Python trace: `PYTHONHASHSEED=0 GV_TRACE=d5_step python dot.py aa1332.dot`
+
+### First divergence: rank 6 mval
+
+At the START of cluster_4250's expand phase, both engines agree on
+rank-5 and rank-6 ORDERS:
+
+```text
+C: reorder_enter rank=5 reverse=1 rmx=0
+   nodes=[clusterc4236:3:-1 cluster_4246:4:-1 c4051:5:-1]
+C: reorder_enter rank=6 reverse=1 rmx=0
+   nodes=[clusterc4237:1:1088 cluster_4246:2:1024 c4149:3:384]
+
+Py: reorder_enter rank=5 reverse=1 rmx=0
+    nodes=[...:0:-1 ...:1:-1 ...:2:-1 clusterc4236:3:-1 cluster_4246:4:-1 c4051:5:-1]
+Py: reorder_enter rank=6 reverse=1 rmx=0
+    nodes=[clusterc4163:0:-1 clusterc4237:1:1024 cluster_4246:2:1024 c4149:3:384]
+```
+
+(Python's extra prefix nodes are sibling-cluster skeletons at the
+same rank, gated out of the median sort with mval=-1.)
+
+The orders for the three in-scope nodes match exactly:
+`clusterc4237:1, cluster_4246:2, c4149:3`.
+
+**The mval for `clusterc4237` diverges**: C computes 1088, Python
+computes 1024 (VAL = 256 × order + port.order).  `c4149=384` and
+`cluster_4246=1024` match.
+
+### Consequence
+
+- C: 384 < 1024 < 1088 — unambiguous sort, rank-6 reorder lands on
+  `[c4149:1, cluster_4246:2, clusterc4237:3]`.
+- Python: 384 < 1024 = 1024 — the `clusterc4237`/`cluster_4246`
+  pair is tied.  Under `reverse=1`, the reorder bubble-sort treats
+  the tied pair as swappable (`p1 >= p2 && reverse`), producing
+  oscillating swap storms for the pair (visible in the trace as
+  multiple `swapped=1` lines on the same pair back-and-forth).
+
+That rank-6 instability cascades back to rank 5's transpose cost
+function: because Python's rank-6 order ends up with
+`clusterc4237` at a different position than C's, the crossing
+count for `(clusterc4236, cluster_4246)` at rank 5 comes out
+0 (no crossing) in Python versus 100 (one crossing × CL_CROSS) in C.
+
+### Why the mval differs
+
+Both engines compute `mval = median(VAL(neighbor, port))` on the
+adjacent rank below.  `clusterc4237_6`'s only in-scope rank-7
+neighbor is `clusterc4242_7`.  C reports the median as 1088,
+Python as 1024.
+
+Likely sources (to investigate next session, in order of likelihood):
+
+1. **Extra neighbors in C's scope**: C's `build_skeleton` +
+   `install_cluster` may place additional virtual chain edges on
+   the skeleton that Python's `_build_skeleton` doesn't replicate.
+   If the median spans 2+ positions, even one missing neighbor
+   shifts the result.
+2. **Port offsets**: `VAL = 256 × order + port.order`.  An 88-point
+   delta is too large for a port offset (typical port orders are
+   small integers), so probably (1) not (2).
+3. **Edge merging / weight differences**: `interclrep` /
+   `merge_chain` might route an edge through a different skeleton
+   node in C vs Python.
+
+### Recommended next step
+
+Add per-node median-positions dump on the `d5_step` channel
+(print the `positions[]` list that feeds the median for
+`clusterc4237_6`) in both engines and diff.  That will show which
+specific neighbor positions Python is missing or double-counting.
+
+## Session 13: port-propagation fix lands (2026-04-23)
+
+Continuation of session 12.  Added `[TRACE d5_step] medians_node`
+to both engines dumping the per-node `positions[]` list fed into
+the median computation.  Diffed the first call for `clusterc4237_6`
+at `r0=6 r1=5` (cluster_4250's expand phase):
+
+```text
+C:       vals=[768, 1408]  → median = 1088
+Python:  vals=[768, 1280]  → median = 1024
+```
+
+Both engines see two incoming edges.  The first neighbour (768)
+matches byte-for-byte — that's the `c4236 → c4237` skeleton chain
+edge at rank-5 order 3, port offset 0.
+
+The second diverges by 128 = `MC_SCALE / 2`.  C has `1408 =
+256 × 5 + 128`; Python has `1280 = 256 × 5 + 0`.  The edge is
+`c4051:Out0 → c4237:In1` (directly from aa1332.dot).  C picks up
+the `Out0` port offset (128); Python loses it.
+
+### Root cause
+
+Python's `mc_fg_out` / `mc_fg_in` build pass substitutes
+hidden-real-node endpoints with their parent cluster's skeleton
+(`_skel_sub`).  The edge `c4051 → c4237` becomes
+`c4051 → _skel_clusterc4237_6` in the scoped fast graph.  The
+port lookup in `cluster_medians` keys on that substituted pair —
+but `layout._edge_port_lookup` was only populated with
+*original* `(tail, head)` pairs, so the lookup missed and the
+tail port fell back to empty.  `mval_edge("", ...)` returns
+`MC_SCALE × order + 0`, losing the 128-point offset.
+
+### Fix
+
+In `cluster_mincross_expand` (mincross.py ~line 1165), when we
+substitute `(t, h)` → `(t_sub, h_sub)`, propagate the original
+edge's port identifiers onto the substituted key — but only on
+the *non-substituted* side.  A substituted endpoint stands in for
+a whole cluster, matching C's `make_chain` / `interclrep` which
+rewrites the edge into a chain where the skeleton side has no
+port.  So:
+
+```python
+hp, tp = _edge_port_lookup[(t, h)]
+if t_sub != t: tp = ''   # skeleton tail — no port
+if h_sub != h: hp = ''   # skeleton head — no port
+if hp or tp:
+    _edge_port_lookup[(t_sub, h_sub)] = (hp, tp)
+```
+
+Also eagerly populate `_edge_port_lookup` before the mc_fg build
+so the copy can find the original entry (previously cluster_medians
+populated it lazily — *after* mc_fg construction).
+
+### Measurement
+
+- Python's `clusterc4237_6` mval now reports **1088** (was 1024),
+  byte-for-byte matching C's `[768, 1408]` input list.
+- The tied-pair instability at rank 6 is gone — reorder sorts
+  unambiguously to `[c4149:1, cluster_4246:2, clusterc4237:3]`
+  matching C.
+- The cascade swap `c4051 ↔ _skel_cluster_4246_5` at rank 5
+  no longer fires (transpose_cmp now reports `c_before=0
+  c_after=0 swapped=0` instead of `c_before=1 c_after=0
+  swapped=1`).
+- Test suite: 1137/1137 pass, D5 regression unchanged.
+- aa1332 residual cluster-pair crossings still at 4 (down from
+  a previous visual count of 7 in session 10, pre-scoped-counter
+  fix) — the mincross-level alignment closes the rank-5/6
+  divergence but other ranks still diverge.  Another session
+  can extend the medians_node diff to the remaining ranks.
+
+### Files touched
+
+- `lib/dotgen/mincross.c` — `medians_node` trace emission inside
+  `medians()` (gated on `d5_step`, emits only for cluster skeletons
+  and real nodes).
+- `gvpy/engines/layout/dot/mincross.py` —
+  - `cluster_medians`: matching `medians_node` trace emission.
+  - `cluster_mincross_expand`: eager `_edge_port_lookup`
+    population + substituted-pair port propagation with
+    skeleton-side suppression.
+
+## Session 14: early-exit investigation (2026-04-23)
+
+Investigation into the next divergence after session 13's port-
+propagation fix.  Diffed `medians_node` traces across both engines
+on aa1332 and found 307 differences, many of them cluster skeletons
+present in C's trace but missing entirely from Python's (ONLY-C
+entries for `cluster_6407`, `clusterc4143`, `clusterc6722`, etc.).
+
+### Investigation
+
+Traced the flow: cluster_6407 IS built by Python's `_build_skeleton`
+and gets spliced into `layout.ranks` during cluster_6409's expand.
+But when cluster_6409's inner mincross loop calls `cluster_medians`,
+the skeleton's mval is never computed.
+
+Found the cause: Python's expand-phase mincross has
+```python
+for _pass in range(max_iter):
+    if cur_cross == 0:
+        break
+```
+and `_scoped_cross()` returns 0 for many cluster subgraphs, so the
+loop exits on `_pass=0` — no medians, no reorder, no transpose.
+
+### Two hypothesis tested
+
+**Option 2** (remove the early-exit entirely, let MIN_QUIT stop it
+naturally, assuming that's what C does) — *turned out to be wrong
+about C*: `lib/dotgen/mincross.c:1088` has the exact same
+`if (cur_cross == 0) break;` check.  Python's behavior matches C.
+
+Corpus measurement anyway, for the record:
+
+| Variant | Total Py cross | Comparable delta | Extra timeouts |
+|---|---:|---:|---:|
+| Baseline | 224 | — | — |
+| Option 2 (no cur_cross=0 break) | 70 | −9 | +1 (1879.dot) |
+| Option 1 (force one pass then break) | 90 | +12 | +2 (1879, 2239) |
+
+Net regressions in both: 2620.dot (7 → 18 in Option 2, 7 → 39 in
+Option 1), 2796, 1436, 1213-2, aa1332.  The "improvement" from
+big drops on 1472 (27 → 8) and 1332_ref (13 → 4) is offset by
+2620's explosion + new timeouts.
+
+### Root cause of the ONLY-C medians_node entries
+
+The 307 diffs are NOT from an iteration-count mismatch.  They're
+from **different initial scoped crossing counts** between the two
+engines — C's `ncross()` returns >0 for some clusters where
+Python's `count_scoped_crossings` returns 0, so C enters the
+iteration loop and computes medians while Python bails.
+
+Topologically the crossings should be the same.  The divergence is
+likely in edge set or weight:
+- C's `ncross` uses `ED_xpenalty × ED_xpenalty` (weighted).  For
+  skeleton chain edges, `ED_xpenalty = CL_CROSS`.  A single weighted
+  crossing = 100 × 100 = 10000 (or similar), which is >0 even though
+  unweighted count may be 1 and rounds to "some crossings present".
+- Python's `count_scoped_crossings` counts topologically (1 per
+  crossing).  If it returns 0, there really are zero crossings —
+  C should also see 0.  Either C sees phantom crossings from extra
+  edges in `ND_in`/`ND_out`, or Python is missing some.
+
+The real divergence to chase is the edge content of `mc_fg_in` /
+`mc_fg_out` vs C's `ND_in` / `ND_out` for the same scope.
+
+### Decision
+
+Reverted both options.  The `cur_cross == 0` check is correct and
+matches C.  Next session should diff the cluster-scoped edge sets
+between engines on a specific cluster where Python reports 0 but
+C sees >0 (e.g. cluster_6409 during aa1332).
+
+## Session 15: exit-edge filter fix (2026-04-23)
+
+Continuation of session 14's investigation of the
+`Python sees 0 where C sees >0` scoped-crossing divergence.
+
+### Method
+
+Added matching `[TRACE d5_edges]` emissions in both engines that
+dump the cluster-scoped fast graph (`mc_fg_out` in Python,
+`ND_out` in C) at the start of each cluster subgraph's expand
+mincross, keyed on cluster name, so they can be line-diffed.
+
+### Finding
+
+For cluster_6409 on aa1332:
+
+```text
+Both engines (5 shared):
+  cluster_6407@r14 → cluster_6407@r15   (chain)
+  cluster_6407@r15 → cluster_6407@r16   (chain)
+  cluster_6407@r16 → cluster_6407@r17   (chain)
+  cluster_6407@r17 → clusterc6408@r18   (inter-child chain)
+  clusterc6384@r14 → cluster_6407@r15   (inter-child chain)
+
+Only in C (1):
+  clusterc6408@r18 → clusterc6410@r19   (exit edge — leaves cluster_6409)
+```
+
+The extra C edge is an **exit edge** — `clusterc6408` is a child
+of cluster_6409 at rank 18; `clusterc6410` is a sibling of
+cluster_6409 at rank 19 (both under cluster_6754).  C's `ND_out`
+naturally retains this edge because class2 / interclrep / make_chain
+ran it through the cluster's skeleton even though the head lands
+outside the subgraph's rank range.
+
+### Why Python was missing it
+
+`mincross.py` around line 1167, the mc_fg_out build had:
+
+```python
+if not t_in or not h_in:
+    t_r = layout.lnodes[t].rank
+    h_r = layout.lnodes[h].rank
+    if t_r < min_r or t_r > max_r:  continue
+    if h_r < min_r or h_r > max_r:  continue
+```
+
+`h_r=19 > max_r=18` for cluster_6409, so the filter rejected the
+edge entirely.  That in turn made `count_scoped_crossings` return
+0 for cluster_6409, and the iteration loop exited on `cur_cross=0`
+without running medians — cascading through session 14's observed
+307 `medians_node` divergences.
+
+### Fix
+
+Relax the filter by 1 rank in each direction so boundary-crossing
+exit edges survive:
+
+```python
+if t_r < min_r - 1 or t_r > max_r + 1:  continue
+if h_r < min_r - 1 or h_r > max_r + 1:  continue
+```
+
+and extend `count_scoped_crossings`'s rank iteration by 1 on each
+side so the boundary (max_r, max_r+1) is actually counted:
+
+```python
+for r in range(min_r - 1, max_r + 1):
+    ...
+```
+
+### Measurement
+
+cluster_6409's edge set now matches C byte-for-byte (6=6 edges,
+empty diff).
+
+Corpus audit (196 → 197 graphs, PYTHONHASHSEED=0, 60s timeout):
+
+| Metric | Baseline | After fix |
+|---|---:|---:|
+| Total Py crossings | 224 | 51 |
+| Python regressions | 11 | 9 |
+| Clean-on-both-sides | 161 | 162 |
+
+Per-file (on 170 shared):
+
+- Improved (4): **1472.dot −19**, 1332_ref.dot −9, 1332.dot −1, 2239.dot −1 (went fully clean)
+- Regressed (4): 1436.dot +4, 2796.dot +2, 1213-2.dot +1, aa1332.dot +1
+- Unchanged: 162
+
+Net on comparable files (excluding 1879/2620 timeouts):
+**72 → 51 = −21 crossings (−29%)** — first non-trivial corpus
+improvement since session 11.
+
+Cost: 2620.dot newly times out (was 7 crossings).  The extra
+iteration work from including exit edges in the fast graph pushes
+it past the 60s per-side budget.  Candidates for future work:
+optimise `count_scoped_crossings` inner loop, or raise timeout.
+
+## Session 16: post-refactor + self-skeleton exclusion (2026-04-23)
+
+### Refactor: cached output views
+
+Ten call sites across six helpers rebuilt the same virtual-node /
+virtual-edge filters (`_apply_size`, `_translate_bb_to_origin`,
+`_apply_center`, `_concentrate_edges`, `_compute_xlabel_positions`,
+`_finalize_graph_label`, `_write_back`, `_to_json`).  Added
+``_rebuild_output_views()`` called once after phase 3 and replaced
+all sites with reads from three cached attributes:
+``_output_nodes_list``, ``_output_nodes_dict``, ``_output_edges``.
+
+Corpus audit: **no drift** on any existing graph.  1879.dot and
+2620.dot newly complete (were PY_TIMEOUT) thanks to this + the
+fg_out forwarding fix from earlier in the session.
+
+### fg_out forwarding to cluster_transpose
+
+Session 13 wired scoped pair-crossing counting (O(degree)) into
+``cluster_transpose`` for the expand phase.  But ``run_mincross``
+(initial pass on the collapsed graph) and ``remincross_full``
+(final pass) still called ``_cluster_transpose`` without the
+``fg_out=`` / ``fg_in=`` kwargs, so the inner loop fell back to
+``count_crossings_for_pair`` — O(E) per pair.
+
+Both call sites already built a root-scope fast graph (lines
+482-496 and 589-599).  One-line fix: forward it.
+
+2620.dot: **58.7s → 23.2s** wall time, a 2.5× speedup.  Now
+completes under the 60s audit budget; was PY_TIMEOUT after
+session 15.
+
+### Class-level mutable dicts → __init__
+
+Audit flagged ``_node_mval`` and ``_port_order_cache`` defined at
+class scope, shared across all DotGraphInfo instances.
+``_edge_port_lookup`` right next to them was already per-instance
+in ``__init__`` — so this was an inconsistent pre-existing latent
+bug.  Moved both to ``__init__``.  No behavioral change (layouts
+always overwrote mvals per-node), but it closes the memory-leak
+and port-collision risks in long-lived processes (GUI, pytest).
+
+### Self-skeleton exclusion
+
+Diffed ``mc_fg_out`` content for cluster_4250 on 1332.dot vs C's
+``ND_out`` and found **5 extra edges** in Python.  Two were
+``_skel_cluster_4250_5 → _skel_clusterc4237_6`` style edges —
+cluster_4250's OWN skeleton appearing as a tail in its OWN expand
+scope.  Leftover chain edges from when cluster_4250 was collapsed,
+never cleaned up when it was re-expanded.
+
+Fix: skip any edge where either endpoint is in ``skeleton_nodes
+[cl_name].values()`` — the cluster's own rank-leader skeleton set.
+
+Corpus measurement: **0 improved, 0 regressed on 174 shared files.**
+Pure cleanup — the offending edges were being written into scope
+but happened not to affect reorder decisions.  Bonus: 2470.dot
+newly completes (was PY_TIMEOUT) with 17 crossings.  Unit tests:
+1137/1137 still pass.
+
+Three other extra edges remain in cluster_4250's scope (intra-
+cluster c4147→c4149, sibling-cluster clusterc4145→c4149,
+skeleton-vs-real head naming clusterc4249→clusterc4251 vs
+clusterc4249→c4251).  Each is a separate investigation thread.
+
+## Session 17: dedup_cluster_nodes tie-break (reverted, 2026-04-23)
+
+Task #147 investigated why 1332.dot cluster_4250 has 5 extra edges
+in its scoped fast graph vs C.  Session 16's self-skeleton
+exclusion cleared 2 of them; this session chased a third.
+
+### Root cause (confirmed)
+
+`dedup_cluster_nodes` picked cluster_4250 as the "home" of c4051,
+not clusterc4051 (the singleton wrapper that actually declares it).
+Both are at tree-depth 1 under cluster_4252, so the depth
+tie-breaker stayed with the first-iterated cluster.  Result:
+clusterc4051 ended up with `nodes=[]` while cluster_4250 falsely
+claimed c4051 (added by edge reference, not by declaration).
+
+### Attempted fix
+
+Replaced the depth-only tie-break with size-first, depth-fallback:
+smaller cluster wins on ties, matching the DOT convention that
+`cluster<node>` singleton wrappers own their named node.
+
+### Corpus result
+
+- 173 unchanged, 0 improved, **1 regressed** (aa1332 3 → 6)
+- 2239.dot newly PY_TIMEOUT (was clean at 0 crossings)
+
+The fix is theoretically correct — clusterc4051 does declare c4051
+and cluster_4250 only references it in an edge — but the
+downstream cascade penalizes aa1332 and pushes 2239 past its 60s
+budget.  Singleton-wrapper nodes get walled off into their own
+skeleton, which constrains mincross more than the legacy
+fallthrough behavior where the outer cluster had them as direct
+members.
+
+### Reverted
+
+Back to depth-only tie-break.  A real fix needs to distinguish
+declared-vs-referenced at parse time (track which nodes were
+actually declared inside each subgraph vs picked up via edge
+references).  That's invasive — defer.
+
+## Session 18: scoped _skel_sub (landed), foreign-skel filter (reverted) — 2026-04-24
+
+### Scoped _skel_sub (landed)
+
+`_skel_sub` in the mc_fg_out build was substituting *any* hidden
+real node to its cluster skeleton, regardless of whether the
+hiding cluster was a direct child of the currently-expanding
+``cl_name``.  On 1332.dot cluster_4250's expand, this pulled
+`c4251` (hidden by clusterc4251, a *sibling* of cluster_4250)
+to ``_skel_clusterc4251_11`` — producing an edge
+``clusterc4249 → _skel_clusterc4251_11`` where C has
+``clusterc4249 → c4251``.
+
+Fix: only substitute when the hider is in
+``children_of[cl_name]``.  A sibling cluster's skeleton isn't in
+this scope; the real node is what belongs.
+
+Corpus: **0 drift** on all 175 shared files.  Clean cleanup.
+
+### Foreign-skeleton filter (reverted)
+
+Extended the fix to also exclude edges where either endpoint is
+a `_skel_*` for a cluster not in cl_name's {self, direct-children}
+set.  This matched more aggressive interpretation of "foreign"
+skeleton chain edges built by Python's inter-cluster chain
+builder that C doesn't have.
+
+Corpus result: **+8 total, 2 improved (1332 −1, aa1332 −1) but
+1332_ref regressed +10.**  The "duplicate" skeleton-chain edges
+being filtered were actually load-bearing on 1332_ref's mincross.
+Reverted.
+
+### cluster_4250 remaining divergence
+
+Down to 2 extra edges now, both with mis-attributed nodes
+(c4145→c4149, c4147→c4149) that trace back to the declared-vs-
+referenced parser issue (task #148).  Can't cleanly fix without
+parser-level changes.
+
 ## Bug prioritisation
 
 1. **Bug 1 (2796)** — highest leverage.  Fixing the adjacent-rank

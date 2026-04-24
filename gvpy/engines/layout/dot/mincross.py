@@ -523,11 +523,17 @@ def run_mincross(layout):
                 all_nodes, fg_out, fg_in)
             layout._cluster_reorder(r, all_nodes, node_cl, reverse)
         # One transpose pass per full down+up cycle — matches C's
-        # mincross_step (single transpose at the end).
+        # mincross_step (single transpose at the end).  Thread the
+        # already-built root-scope fast graph through so the inner
+        # pair cost uses count_scoped_pair_crossings (O(degree))
+        # instead of count_crossings_for_pair (O(E)).  Profiled hot
+        # path for 2620.dot — was pushing it past the 60s timeout.
         if not down:
             for r in range(max_rank + 1):
                 if r in layout.ranks:
-                    layout._cluster_transpose(r, all_nodes, node_cl)
+                    layout._cluster_transpose(
+                        r, all_nodes, node_cl,
+                        fg_out=fg_out, fg_in=fg_in)
 
     for pass_i in range(iterations):
         _done_iter += 1
@@ -630,11 +636,14 @@ def remincross_full(layout):
                     layout._cluster_reorder(
                         r, all_nodes, node_cl, reverse,
                         remincross_phase=True)
-        # Single transpose (mincross.c:1553)
+        # Single transpose (mincross.c:1553).  Forward the
+        # root-scope fast graph so the inner pair cost uses the
+        # O(degree) scoped counter instead of O(E) walks.
         for r in range(min_rank, max_rank + 1):
             if r in layout.ranks:
                 layout._cluster_transpose(
-                    r, all_nodes, node_cl, remincross_phase=True)
+                    r, all_nodes, node_cl, remincross_phase=True,
+                    fg_out=fg_out, fg_in=fg_in)
 
         cur_cross = layout._count_all_crossings()
         if cur_cross <= best_cross:
@@ -1110,31 +1119,71 @@ def skeleton_mincross(layout):
                 mc_fg_in: dict[str, list[str]] = defaultdict(list)
                 mc_seen: set[tuple[str, str]] = set()
 
-                def _skel_sub(name: str) -> str:
-                    """Map a real node that's currently hidden by a
-                    child cluster's skeleton to that skeleton node at
-                    the node's rank.
+                # Ensure the (tail, head) → (headport, tailport) map is
+                # populated before the skeleton-substitution logic tries
+                # to copy entries into substituted keys.  cluster_medians
+                # normally populates this lazily on first call, but mc_fg
+                # construction runs first during expand.
+                if not layout._edge_port_lookup:
+                    for _le in layout.ledges:
+                        _hp = getattr(_le, 'headport', '') or ''
+                        _tp = getattr(_le, 'tailport', '') or ''
+                        if ':' in _hp:
+                            _hp = _hp.split(':')[0]
+                        if ':' in _tp:
+                            _tp = _tp.split(':')[0]
+                        layout._edge_port_lookup[(_le.tail_name, _le.head_name)] = (_hp, _tp)
 
-                    During ``cl_name``'s local mincross, every child
-                    sub-cluster is collapsed to a row of ``_skel_*``
-                    nodes and its real members are recorded in
-                    ``hidden_by``.  When we hand ``mc_fg_in`` /
+                # Set of cl_name's direct child clusters — used to
+                # scope _skel_sub below so we only substitute nodes
+                # hidden by our own children, not by sibling clusters.
+                _own_children_set = set(children_of.get(cl_name, []))
+
+                def _skel_sub(name: str) -> str:
+                    """Map a real node that's currently hidden by one
+                    of ``cl_name``'s *direct-child* clusters to that
+                    child's skeleton at the node's rank.
+
+                    During ``cl_name``'s local mincross, every direct
+                    child sub-cluster is collapsed to a row of
+                    ``_skel_*`` nodes and its real members are recorded
+                    in ``hidden_by``.  When we hand ``mc_fg_in`` /
                     ``mc_fg_out`` to ``cluster_medians`` it walks
                     ``layout.ranks[adj_rank]`` looking for neighbours;
                     a hidden real node will not be there, so its mval
                     contribution gets silently dropped.  Substitute
                     the live skeleton representation so the median
                     computation sees something at the right order.
+
+                    Only DIRECT children qualify — a sibling cluster
+                    (e.g. clusterc4251 hiding c4251 while we're
+                    expanding cluster_4250) isn't in our scope, and
+                    substituting there would pull non-scoped edges into
+                    ``mc_fg_out``.  C's ND_out keeps the real node in
+                    this case (see aa1332 cluster_4250's edge
+                    ``clusterc4249 → c4251`` which Python was emitting
+                    as ``clusterc4249 → _skel_clusterc4251_11``).
                     """
                     hider = hidden_by.get(name)
-                    if hider is None:
+                    if hider is None or hider not in _own_children_set:
                         return name
                     r = layout.lnodes[name].rank
                     skel = skeleton_nodes.get(hider, {}).get(r)
                     return skel if skel is not None else name
 
+                # cl_name's own skeleton ranks (leftover from collapse):
+                # edges keyed on ``_skel_<cl_name>_<r>`` shouldn't live
+                # in this cluster's *own* expand scope — they represent
+                # the parent's view of this cluster, which is gone now
+                # that the cluster is being expanded into its children.
+                # Observed on 1332.dot cluster_4250 where
+                # ``_skel_cluster_4250_5 → _skel_clusterc4237_6``
+                # chain edges from the outer collapse polluted mc_fg_out.
+                _self_skel_set = set(skeleton_nodes.get(cl_name, {}).values())
                 for le in layout.ledges:
                     t, h = le.tail_name, le.head_name
+                    if t in _self_skel_set or h in _self_skel_set:
+                        continue
                     if t not in cl_node_set and h not in cl_node_set:
                         continue
                     if t not in layout.lnodes or h not in layout.lnodes:
@@ -1143,13 +1192,23 @@ def skeleton_mincross(layout):
                     h_in = h in cl_node_set
                     if not t_in and not h_in:
                         continue
-                    # Include virtual nodes within rank range
+                    # Include edges where one endpoint exits the
+                    # cluster's rank range by exactly 1 — matches
+                    # C's ND_out for a skeleton node, which
+                    # naturally retains exit edges to the next
+                    # rank above/below after class2 / interclrep.
+                    # Without this, boundary-crossing edges like
+                    # clusterc6408@r18 → clusterc6410@r19 (from
+                    # aa1332 cluster_6409's expand) are missing
+                    # from mc_fg_out, _scoped_cross returns 0, and
+                    # Python skips iterations C performs.  See
+                    # D5_measurement_findings.md session 15.
                     if not t_in or not h_in:
                         t_r = layout.lnodes[t].rank
                         h_r = layout.lnodes[h].rank
-                        if t_r < min_r or t_r > max_r:
+                        if t_r < min_r - 1 or t_r > max_r + 1:
                             continue
-                        if h_r < min_r or h_r > max_r:
+                        if h_r < min_r - 1 or h_r > max_r + 1:
                             continue
                     if t == h:
                         continue  # class2.c:226
@@ -1172,6 +1231,28 @@ def skeleton_mincross(layout):
                         mc_seen.add(pair)
                         mc_fg_out[t_sub].append(h_sub)
                         mc_fg_in[h_sub].append(t_sub)
+                        # Propagate the original edge's port identifiers
+                        # onto the substituted-pair key so cluster_medians
+                        # can compute VAL(n, port).  Without this, edges
+                        # whose endpoint got substituted to a skeleton
+                        # lose their port and VAL drops by MC_SCALE/2
+                        # (c4051:Out0 → c4237 on aa1332, mval diverges
+                        # 1088 → 1024 and triggers a reorder tie — see
+                        # Docs/D5_measurement_findings.md session 12).
+                        #
+                        # Only the *non-substituted* endpoint keeps its
+                        # port — matching C's make_chain/interclrep,
+                        # which rewrites an edge (t, h) into a chain of
+                        # virtual_edge hops where the SKELETON side has
+                        # port=0 but the real side preserves its port.
+                        if (t_sub != t or h_sub != h) and (t, h) in layout._edge_port_lookup:
+                            hp, tp = layout._edge_port_lookup[(t, h)]
+                            if t_sub != t:
+                                tp = ''
+                            if h_sub != h:
+                                hp = ''
+                            if hp or tp:
+                                layout._edge_port_lookup[(t_sub, h_sub)] = (hp, tp)
 
                 # C ncross() (mincross.c:1617) uses ND_out which is
                 # the cluster's scoped fast graph — intra-child-cluster
@@ -1182,6 +1263,37 @@ def skeleton_mincross(layout):
                         mc_fg_out, min_r, max_r)
                 cur_cross = best_cross = _scoped_cross()
                 best_order = layout._save_ordering()
+
+                # [TRACE d5_edges] dump the scoped fast graph for
+                # this cluster's expand-phase mincross, keyed on
+                # cluster_name, so it can be line-diffed against
+                # C's equivalent ND_in/ND_out emission.  Only the
+                # first time per cluster (before the iteration
+                # loop perturbs anything).  Normalize skeleton
+                # names to cluster-name form to align with C.
+                from gvpy.engines.layout.dot.trace import trace_on as _e_on, trace as _e_trace
+                if _e_on("d5_edges"):
+                    def _norm(nm: str) -> str:
+                        if nm.startswith("_skel_") and "_" in nm[6:]:
+                            _mid = nm[len("_skel_"):]
+                            _u = _mid.rfind("_")
+                            if _u > 0:
+                                return _mid[:_u]
+                        return nm
+                    _pairs = set()
+                    for _t, _hs in mc_fg_out.items():
+                        for _h in _hs:
+                            _pairs.add((
+                                _norm(_t),
+                                layout.lnodes[_t].rank,
+                                _norm(_h),
+                                layout.lnodes[_h].rank,
+                            ))
+                    for _tn, _tr, _hn, _hr in sorted(_pairs):
+                        _e_trace("d5_edges",
+                                 f"edge cluster={cl_name} "
+                                 f"tail={_tn}@r{_tr} "
+                                 f"head={_hn}@r{_hr}")
 
                 # C mincross.c:774-797: iteration loop.
                 _MIN_QUIT = 8       # mincross.c:1820
@@ -1233,7 +1345,8 @@ def skeleton_mincross(layout):
                     for r in range(min_r, max_r + 1):
                         if r in layout.ranks:
                             layout._cluster_transpose(
-                                r, cl_node_set, child_cl_map)
+                                r, cl_node_set, child_cl_map,
+                                fg_out=mc_fg_out, fg_in=mc_fg_in)
 
                     # mincross.c:786-791: check improvement using scoped count
                     cur_cross = _scoped_cross()
@@ -1336,6 +1449,25 @@ def cluster_medians(layout, rank: int, adj_rank: int,
                         tp = tp.split(':')[0]
                     positions.append(layout._mval_edge(le.tail_name, tp))
 
+        # [TRACE d5_step] dump per-node median input list for
+        # line-for-line diff against C's `medians_node` emission.
+        # Only emit for cluster skeletons + real nodes (skip
+        # _icv_* intermediate chain virtuals) to match C's filter.
+        from gvpy.engines.layout.dot.trace import trace_on as _m_on, trace as _m_trace
+        if _m_on("d5_step"):
+            _nm = name
+            if name.startswith("_skel_") and "_" in name[6:]:
+                # strip "_skel_" prefix + trailing "_<rank>" suffix
+                _mid = name[len("_skel_"):]
+                _pos_us = _mid.rfind("_")
+                if _pos_us > 0:
+                    _nm = _mid[:_pos_us]
+            if not name.startswith("_icv_") and not name.startswith("_v_"):
+                _vals = ",".join(str(int(p)) for p in positions)
+                _m_trace("d5_step",
+                         f"medians_node r0={rank} r1={adj_rank} "
+                         f"name={_nm} order={layout.lnodes[name].order} "
+                         f"nvals={len(positions)} vals=[{_vals}]")
         # C mincross.c:1708-1735
         if not positions:
             layout._node_mval[name] = -1.0
@@ -1531,7 +1663,9 @@ def cluster_reorder(layout, rank: int, cl_nodes: set[str],
 
 def cluster_transpose(layout, rank: int, cl_nodes: set[str],
                        child_cl_map: dict[str, str] | None = None,
-                       remincross_phase: bool = False):
+                       remincross_phase: bool = False,
+                       fg_out: dict[str, list[str]] | None = None,
+                       fg_in: dict[str, list[str]] | None = None):
     """Adjacent-swap transpose restricted to cluster nodes.
 
     See: /lib/dotgen/mincross.c @ 685
@@ -1551,6 +1685,13 @@ def cluster_transpose(layout, rank: int, cl_nodes: set[str],
     nodes = layout.ranks.get(rank, [])
     if len(nodes) < 2:
         return
+    from gvpy.engines.layout.dot.trace import trace as _t_trace, trace_on as _t_on
+    _t_enabled = _t_on("d5_step")
+    if _t_enabled:
+        _ns = " ".join(f"{nm}:{i}" for i, nm in enumerate(nodes))
+        _t_trace("d5_step",
+                 f"transpose_enter rank={rank} "
+                 f"rmx={1 if remincross_phase else 0} nodes=[{_ns}]")
     improved = True
     while improved:
         improved = False
@@ -1566,6 +1707,11 @@ def cluster_transpose(layout, rank: int, cl_nodes: set[str],
                     # C ReMincross branch: any cluster mismatch blocks,
                     # no virtual escape hatch.
                     if v_cl != w_cl:
+                        if _t_enabled:
+                            _t_trace("d5_step",
+                                     f"transpose_block rank={rank} "
+                                     f"v={v}@{i} w={w}@{i + 1} "
+                                     f"v_cl={v_cl} w_cl={w_cl}")
                         continue
                 elif v_cl and w_cl and v_cl != w_cl:
                     # Both in different non-null clusters — check if
@@ -1573,9 +1719,29 @@ def cluster_transpose(layout, rank: int, cl_nodes: set[str],
                     v_virt = v in layout.lnodes and layout.lnodes[v].virtual
                     w_virt = w in layout.lnodes and layout.lnodes[w].virtual
                     if not v_virt and not w_virt:
+                        if _t_enabled:
+                            _t_trace("d5_step",
+                                     f"transpose_block rank={rank} "
+                                     f"v={v}@{i} w={w}@{i + 1} "
+                                     f"v_cl={v_cl} w_cl={w_cl}")
                         continue  # block swap
-            c_before = layout._count_crossings_for_pair(v, w)
-            c_after = layout._count_crossings_for_pair(w, v)
+            # C in_cross/out_cross use ND_out/ND_in — the cluster-
+            # scoped fast graph.  When caller supplies mc_fg_out/in,
+            # count only those edges to match class2.c:199 scoping.
+            if fg_out is not None and fg_in is not None:
+                c_before = count_scoped_pair_crossings(
+                    layout, fg_out, fg_in, v, w)
+                c_after = count_scoped_pair_crossings(
+                    layout, fg_out, fg_in, w, v)
+            else:
+                c_before = layout._count_crossings_for_pair(v, w)
+                c_after = layout._count_crossings_for_pair(w, v)
+            if _t_enabled:
+                _t_trace("d5_step",
+                         f"transpose_cmp rank={rank} "
+                         f"v={v}@{i} w={w}@{i + 1} "
+                         f"c_before={c_before} c_after={c_after} "
+                         f"swapped={1 if c_after < c_before else 0}")
             if c_after < c_before:
                 nodes[i], nodes[i + 1] = w, v
                 layout.lnodes[w].order = i
@@ -2102,6 +2268,54 @@ def count_all_crossings(layout) -> int:
     return total
 
 
+def count_scoped_pair_crossings(layout,
+                                  fg_out: dict[str, list[str]],
+                                  fg_in: dict[str, list[str]],
+                                  u: str, v: str) -> int:
+    """Crossings on edges incident to u/v, restricted to the
+    cluster-scoped fast graph.
+
+    Mirrors C ``mincross.c: in_cross() @ 634`` + ``out_cross() @ 653``
+    which iterate ``ND_out(v)`` / ``ND_in(v)`` — the cluster-subgraph's
+    scoped edge lists.  Intra-child-cluster edges are excluded at
+    class2 build time so only inter-child crossings are counted.
+
+    The global ``count_crossings_for_pair`` walked every edge in
+    ``layout.ledges``, which during the cluster-expand phase mixed
+    sibling-cluster edges into the cost and caused Python's
+    ``cluster_transpose`` to see phantom crossing-reductions that C
+    never sees (aa1332 rank-5 c4051/cluster_4246 divergence,
+    Docs/D5_measurement_findings.md).
+    """
+    u_rank = layout.lnodes[u].rank
+    crossings = 0
+    for adj_rank in (u_rank - 1, u_rank + 1):
+        if adj_rank not in layout.ranks:
+            continue
+        adj_set = set(layout.ranks[adj_rank])
+        u_orders: list[int] = []
+        v_orders: list[int] = []
+        if adj_rank > u_rank:
+            for nbr in fg_out.get(u, []):
+                if nbr in adj_set:
+                    u_orders.append(layout.lnodes[nbr].order)
+            for nbr in fg_out.get(v, []):
+                if nbr in adj_set:
+                    v_orders.append(layout.lnodes[nbr].order)
+        else:
+            for nbr in fg_in.get(u, []):
+                if nbr in adj_set:
+                    u_orders.append(layout.lnodes[nbr].order)
+            for nbr in fg_in.get(v, []):
+                if nbr in adj_set:
+                    v_orders.append(layout.lnodes[nbr].order)
+        for uo in u_orders:
+            for vo in v_orders:
+                if uo > vo:
+                    crossings += 1
+    return crossings
+
+
 def count_scoped_crossings(layout, fg_out: dict[str, list[str]],
                              min_r: int, max_r: int) -> int:
     """Count crossings using only edges in the given fast graph.
@@ -2113,7 +2327,12 @@ def count_scoped_crossings(layout, fg_out: dict[str, list[str]],
     are judged only by inter-child crossings.
     """
     total = 0
-    for r in range(min_r, max_r):
+    # Extend by 1 rank in each direction so exit edges at the
+    # cluster's boundary (e.g. clusterc6408@r18 → clusterc6410@r19
+    # for cluster_6409 on aa1332) are counted — matching C's
+    # ND_out which retains exit edges.  fg_out already filters to
+    # edges the cluster should consider.
+    for r in range(min_r - 1, max_r + 1):
         if r not in layout.ranks or r + 1 not in layout.ranks:
             continue
         upper_set = set(layout.ranks[r])

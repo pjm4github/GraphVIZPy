@@ -450,6 +450,16 @@ class DotGraphInfo(LayoutEngine):
         self._vnode_chains: dict[tuple[str, str], list[str]] = {}
         self._chain_edges: list[LayoutEdge] = []
         self._clusters: list[LayoutCluster] = []
+        # Output-layer filters — rebuilt once after phase 3 completes
+        # (see ``_rebuild_output_views``).  Cached so the handful of
+        # post-layout helpers — ``_apply_size``, ``_apply_center``,
+        # ``_concentrate_edges``, ``_finalize_graph_label``,
+        # ``_write_back``, ``_to_json`` — don't each re-filter the
+        # ``lnodes`` / ``ledges`` maps on every call.  On large graphs
+        # the repeated O(N) / O(E) filters added measurable time.
+        self._output_nodes_list: "list[LayoutNode]" = []
+        self._output_nodes_dict: "dict[str, LayoutNode]" = {}
+        self._output_edges: "list[LayoutEdge]" = []
         # _record_ports removed — port fractions now come from
         # Node.record_fields (parsed at DOT load, sized at layout start)
         # Per-rank obstacle bounds — populated by phase4 spline routing.
@@ -470,6 +480,14 @@ class DotGraphInfo(LayoutEngine):
         # mypy see them as proper instance attributes.
         self._edge_port_lookup: dict[tuple[str, str], tuple[str, str]] = {}
         self._node_to_cluster: dict[str, str | None] = {}
+        # Per-node median values used by cluster_medians / cluster_reorder.
+        # MUST be per-instance: node names repeat across graphs and a
+        # stale mval from a prior layout would corrupt reorder decisions.
+        self._node_mval: dict[str, float] = {}
+        # (node_name, port_name) → port.order.  Same per-instance
+        # requirement: port geometry depends on Node.record_fields
+        # and HTML table layout, both of which are per-graph.
+        self._port_order_cache: dict[tuple[str, str], int] = {}
         # Per-cluster X bounds set by position.ns_x_position after the
         # NS solve, used by compute_cluster_boxes.
         self._cl_ln_x: dict[str, float] = {}
@@ -520,6 +538,11 @@ class DotGraphInfo(LayoutEngine):
         _ph_mark("phase1_rank", self._phase1_rank)
         _ph_mark("phase2_ordering", self._phase2_ordering)
         _ph_mark("phase3_position", self._phase3_position)
+        # Virtual structural nodes/edges are finalized after phase 3
+        # (position.py inserts flat-edge label vnodes; phase 4 and
+        # later only transform positions, not structure).  Cache the
+        # non-virtual views so downstream helpers reuse them.
+        self._rebuild_output_views()
         self._apply_fixed_positions()
         self._apply_size()
         self._compute_cluster_boxes()
@@ -1294,10 +1317,11 @@ class DotGraphInfo(LayoutEngine):
     # _cluster_median_order replaced by _cluster_medians (mincross.c:1687)
     # + _cluster_reorder (mincross.c:1476).
 
-    # ── Per-node mval storage for medians/reorder ──────────
-    _node_mval: dict[str, float] = {}
-    _MC_SCALE = 256  # C const.h:99 — scale factor for VAL() macro
-    _port_order_cache: dict[tuple[str, str], int] = {}
+    # C const.h:99 — scale factor for VAL() macro.  Class-level
+    # since it's a genuine constant; the per-graph dicts
+    # (``_node_mval``, ``_port_order_cache``) live in ``__init__``
+    # to avoid state leaking across layouts.
+    _MC_SCALE = 256
 
     def _mval_edge(self, *args, **kwargs) -> int:
         """Scaled median-value computation for an edge's endpoint.
@@ -1582,6 +1606,24 @@ class DotGraphInfo(LayoutEngine):
         """
         return position.apply_rankdir(self)
 
+    def _rebuild_output_views(self):
+        """Recompute the cached non-virtual views of ``lnodes`` / ``ledges``.
+
+        Call once after phase 3 (when virtual structural nodes/edges
+        are finalized).  Post-layout helpers read these views instead
+        of re-running ``[ln for ln in self.lnodes.values() if not
+        ln.virtual]`` on every access — a measurable cost on large
+        graphs where six or more post-layout helpers each filtered
+        the same map.
+        """
+        self._output_nodes_dict = {
+            n: ln for n, ln in self.lnodes.items() if not ln.virtual
+        }
+        self._output_nodes_list = list(self._output_nodes_dict.values())
+        self._output_edges = [
+            le for le in self.ledges if not le.virtual
+        ] + self._chain_edges
+
     def _apply_size(self):
         """Scale layout to fit within graph size attribute if set.
 
@@ -1592,7 +1634,7 @@ class DotGraphInfo(LayoutEngine):
         if not self.graph_size or not self.lnodes:
             return
         target_w, target_h = self.graph_size
-        real = [ln for ln in self.lnodes.values() if not ln.virtual]
+        real = self._output_nodes_list
         if not real:
             return
         min_x = min(ln.x - ln.width / 2 for ln in real)
@@ -1630,7 +1672,7 @@ class DotGraphInfo(LayoutEngine):
         detects duplicate edges during ranking and uses a single spline
         for the group (``GD_concentrate``).
         """
-        all_edges = [le for le in self.ledges if not le.virtual] + self._chain_edges
+        all_edges = self._output_edges
         seen: dict[tuple[str, str], list[float]] = {}
         for le in all_edges:
             t, h = le.tail_name, le.head_name
@@ -1663,7 +1705,7 @@ class DotGraphInfo(LayoutEngine):
         """
         if not self.lnodes:
             return
-        real = [ln for ln in self.lnodes.values() if not ln.virtual]
+        real = self._output_nodes_list
         if not real:
             return
         min_x = min(ln.x - ln.width / 2 for ln in real)
@@ -1693,7 +1735,7 @@ class DotGraphInfo(LayoutEngine):
         See: ``lib/common/postproc.c`` center-on-page logic
         honoring the ``center=true`` graph attribute.
         """
-        real = [ln for ln in self.lnodes.values() if not ln.virtual]
+        real = self._output_nodes_list
         if not real:
             return
         min_x = min(ln.x - ln.width / 2 for ln in real)
@@ -1826,7 +1868,7 @@ class DotGraphInfo(LayoutEngine):
         # ``_headlabel_pos_{x,y}`` / ``_taillabel_pos_{x,y}`` slots.
         # Without those attrs we keep the legacy grid-search path.
         from gvpy.engines.layout.dot.label_place import make_port_labels
-        all_edges = [le for le in self.ledges if not le.virtual] + self._chain_edges
+        all_edges = self._output_edges
         for le in all_edges:
             if not le.edge or not le.points:
                 continue
@@ -1890,7 +1932,7 @@ class DotGraphInfo(LayoutEngine):
             labeljust = (self.graph.get_graph_attr("labeljust") or "c").lower()
 
             # Compute graph bounding box
-            real = [ln for ln in self.lnodes.values() if not ln.virtual]
+            real = self._output_nodes_list
             if real:
                 gbb_x1 = min(ln.x - ln.width / 2 for ln in real)
                 gbb_x2 = max(ln.x + ln.width / 2 for ln in real)
@@ -2204,7 +2246,7 @@ class DotGraphInfo(LayoutEngine):
             ln.node.agset("height", str(round(ln.height / 72.0, 4)))
 
         # Write edge spline points back
-        all_edges = [le for le in self.ledges if not le.virtual] + self._chain_edges
+        all_edges = self._output_edges
         for le in all_edges:
             if le.edge and le.points:
                 parts = []
@@ -2218,7 +2260,7 @@ class DotGraphInfo(LayoutEngine):
                 le.edge.agset("pos", " ".join(parts))
 
         # Write graph bounding box
-        real = [ln for ln in self.lnodes.values() if not ln.virtual]
+        real = self._output_nodes_list
         if real:
             bb = (
                 round(min(ln.x - ln.width / 2 for ln in real), 2),
@@ -2235,7 +2277,7 @@ class DotGraphInfo(LayoutEngine):
         ``-Tjson`` output format — produces a dict with
         ``name`` / ``bb`` / ``nodes`` / ``edges`` / ``clusters`` keys.
         """
-        real_nodes = {n: ln for n, ln in self.lnodes.items() if not ln.virtual}
+        real_nodes = self._output_nodes_dict
         if real_nodes:
             min_x = min(ln.x - ln.width / 2 for ln in real_nodes.values())
             min_y = min(ln.y - ln.height / 2 for ln in real_nodes.values())
@@ -2349,7 +2391,7 @@ class DotGraphInfo(LayoutEngine):
             nodes_json.append(entry)
 
         edges_json = []
-        all_output_edges = [le for le in self.ledges if not le.virtual] + self._chain_edges
+        all_output_edges = self._output_edges
         for le in all_output_edges:
             t, h = le.tail_name, le.head_name
             if le.reversed:

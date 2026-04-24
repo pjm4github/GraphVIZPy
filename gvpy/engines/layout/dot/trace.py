@@ -62,6 +62,10 @@ KNOWN_CHANNELS: Final[frozenset[str]] = frozenset({
                      # emits each chain endpoint pair + rank span
                      # so Python's skeleton_mincross and C's
                      # class2.c: interclrep can be diffed.
+    "d5_edges",      # TODO §1 D5 — dumps the cluster-scoped fast
+                     # graph (mc_fg_out in Python, ND_out in C) at
+                     # the start of each cluster's expand mincross,
+                     # for edge-set diff.
     "label",
     "median",
     "order",

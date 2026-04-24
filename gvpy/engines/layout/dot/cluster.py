@@ -182,13 +182,22 @@ def dedup_cluster_nodes(layout):
 
     # A node's true home: the deepest cluster (by tree structure)
     # where it appears but is NOT in any tree-child cluster.
+    #
+    # ATTEMPTED FIX (reverted): session 17 tried a size-based tie-break
+    # (smaller cluster wins) to put c4051 into its clusterc4051 singleton
+    # wrapper instead of the sibling cluster_4250 that picked it up via
+    # edge reference.  Theoretically correct (clusterc4051 declares
+    # c4051; cluster_4250 only references it in an edge), but the
+    # downstream skeleton/mincross cascade pushed aa1332 from 3 → 6
+    # crossings and timed out 2239.  Singleton wrappers constrain the
+    # node's placement where the legacy fallthrough behavior gave the
+    # mincross more freedom.  Reverted pending a more nuanced fix that
+    # distinguishes declared-vs-referenced at parse time.
     home_of: dict[str, str] = {}
     for cl in layout._clusters:
         desc = _desc_nodes(cl.name)
         for n in cl.nodes:
             if n not in desc:
-                # n is in this cluster but not in any child → home
-                # Smallest cluster wins (overwrite from larger to smaller)
                 if n not in home_of:
                     home_of[n] = cl.name
                 else:
