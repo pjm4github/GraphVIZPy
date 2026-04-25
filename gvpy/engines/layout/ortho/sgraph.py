@@ -230,20 +230,22 @@ def _add_edge_to_node(np: Snode, idx: int) -> None:
     np.n_adj += 1
 
 
+# Gated diagnostics — channel ``ortho_sgraph``.  Were unconditionally
+# printed before 2026-04-24.
 def _emit_entry_trace(g: Sgraph, from_: Snode, to: Snode) -> None:
-    print(
-        f"[TRACE ortho-sgraph] shortpath from={from_.index} to={to.index} "
-        f"nnodes={g.nnodes} nedges={g.nedges}",
-        file=sys.stderr,
-    )
+    from gvpy.engines.layout.dot.trace import trace_on, trace
+    if trace_on("ortho_sgraph"):
+        trace("ortho_sgraph",
+              f"shortpath from={from_.index} to={to.index} "
+              f"nnodes={g.nnodes} nedges={g.nedges}")
 
 
 def _emit_exit_trace(to: Snode) -> None:
+    from gvpy.engines.layout.dot.trace import trace_on, trace
+    if not trace_on("ortho_sgraph"):
+        return
     if to.n_val == UNSEEN:
-        print(
-            "[TRACE ortho-sgraph] shortpath result cost=UNREACHABLE path=",
-            file=sys.stderr,
-        )
+        trace("ortho_sgraph", "shortpath result cost=UNREACHABLE path=")
         return
     path_indices: list[int] = []
     cursor: Optional[Snode] = to
@@ -252,15 +254,11 @@ def _emit_exit_trace(to: Snode) -> None:
         cursor = cursor.n_dad
     path_indices.reverse()
     path_str = ",".join(str(i) for i in path_indices)
-    print(
-        f"[TRACE ortho-sgraph] shortpath result cost={to.n_val} "
-        f"path={path_str}",
-        file=sys.stderr,
-    )
+    trace("ortho_sgraph",
+          f"shortpath result cost={to.n_val} path={path_str}")
 
 
 def _emit_overflow_trace() -> None:
-    print(
-        "[TRACE ortho-sgraph] shortpath result error=overflow",
-        file=sys.stderr,
-    )
+    from gvpy.engines.layout.dot.trace import trace_on, trace
+    if trace_on("ortho_sgraph"):
+        trace("ortho_sgraph", "shortpath result error=overflow")

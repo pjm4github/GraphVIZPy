@@ -323,12 +323,15 @@ def _pick_detour_waypoints(p_prev, p_next, cl_bb, offenders):
         ushape_candidates.sort(key=lambda kv: kv[0])
         return ushape_candidates[0][1]
 
-    print(
-        f"[TRACE d4-reshape] no clean detour around "
-        f"bb=({x1:.1f},{y1:.1f},{x2:.1f},{y2:.1f}) "
-        f"for anchors {p_prev} -> {p_next}",
-        file=sys.stderr,
-    )
+    # Gated diagnostic — was unconditionally raw-printed before
+    # 2026-04-24.  Channel: ``d4_reshape``.  Re-enable with
+    # ``GV_TRACE=d4_reshape`` to debug specific detour failures.
+    from gvpy.engines.layout.dot.trace import trace_on, trace
+    if trace_on("d4_reshape"):
+        trace("d4_reshape",
+              f"no clean detour around "
+              f"bb=({x1:.1f},{y1:.1f},{x2:.1f},{y2:.1f}) "
+              f"for anchors {p_prev} -> {p_next}")
     return ()
 
 

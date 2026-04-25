@@ -862,14 +862,20 @@ def construct_trapezoids(nseg: int, seg: list[TrapSegment],
 # ---------- trace emission ----------
 
 
+# Gated diagnostic — was unconditionally printed before
+# 2026-04-24.  Channel: ``ortho_trapezoid``.  Enables byte-match
+# diff against C's Seidel construction harness.
 def _emit_entry_trace(nseg: int) -> None:
-    print(f"[TRACE ortho-trapezoid] construct nsegs={nseg}",
-          file=sys.stderr)
+    from gvpy.engines.layout.dot.trace import trace_on, trace
+    if trace_on("ortho_trapezoid"):
+        trace("ortho_trapezoid", f"construct nsegs={nseg}")
 
 
 def _emit_exit_trace(tr: list[Trap]) -> None:
-    print(f"[TRACE ortho-trapezoid] construct ntraps={len(tr)}",
-          file=sys.stderr)
+    from gvpy.engines.layout.dot.trace import trace_on, trace
+    if not trace_on("ortho_trapezoid"):
+        return
+    trace("ortho_trapezoid", f"construct ntraps={len(tr)}")
     for i in range(1, len(tr)):
         t = tr[i]
         if not t.is_valid:
@@ -878,12 +884,10 @@ def _emit_exit_trace(tr: list[Trap]) -> None:
         hi_y = _fmt_coord(t.hi.y)
         lo_x = _fmt_coord(t.lo.x)
         lo_y = _fmt_coord(t.lo.y)
-        print(
-            f"[TRACE ortho-trapezoid] trap i={i} lseg={t.lseg} "
-            f"rseg={t.rseg} hi={hi_x},{hi_y} lo={lo_x},{lo_y} "
-            f"u0={t.u0} u1={t.u1} d0={t.d0} d1={t.d1}",
-            file=sys.stderr,
-        )
+        trace("ortho_trapezoid",
+              f"trap i={i} lseg={t.lseg} "
+              f"rseg={t.rseg} hi={hi_x},{hi_y} lo={lo_x},{lo_y} "
+              f"u0={t.u0} u1={t.u1} d0={t.d0} d1={t.d1}")
 
 
 def _fmt_coord(v: float) -> str:

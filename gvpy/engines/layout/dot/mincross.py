@@ -1208,7 +1208,7 @@ def skeleton_mincross(layout):
                 # in this cluster's *own* expand scope — they represent
                 # the parent's view of this cluster, which is gone now
                 # that the cluster is being expanded into its children.
-                # Observed on 1332.dot cluster_4250 where
+                # Observed on aa1332.dot cluster_4250 where
                 # ``_skel_cluster_4250_5 → _skel_clusterc4237_6``
                 # chain edges from the outer collapse polluted mc_fg_out.
                 _self_skel_set = set(skeleton_nodes.get(cl_name, {}).values())

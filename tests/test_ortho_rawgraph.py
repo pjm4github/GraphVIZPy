@@ -160,13 +160,19 @@ class TestTopSort:
 
 
 class TestTraceEmission:
-    def test_topsort_trace_line(self, capsys):
+    def test_topsort_trace_line(self, capsys, monkeypatch):
+        # Trace is gated on GV_TRACE=ortho_rawgraph as of 2026-04-24.
+        # Patch the cached frozenset directly since trace.py reads
+        # the env once at import time.
+        from gvpy.engines.layout.dot import trace as _trace_mod
+        monkeypatch.setattr(_trace_mod, "_enabled",
+                            frozenset({"ortho_rawgraph"}))
         g = make_graph(3)
         insert_edge(g, 0, 1)
         insert_edge(g, 1, 2)
         top_sort(g)
         captured = capsys.readouterr()
-        assert "[TRACE ortho-rawgraph] topsort n=3" in captured.err
+        assert "[TRACE ortho_rawgraph] topsort n=3" in captured.err
         assert "order=0,1,2" in captured.err
 
 

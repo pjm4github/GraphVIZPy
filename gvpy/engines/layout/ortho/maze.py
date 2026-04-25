@@ -441,15 +441,18 @@ def _chk_sgraph(g: Sgraph) -> None:
     of crashing, so Phase 6 can surface the issue for debugging
     without breaking the full pipeline.
     """
+    # Gated diagnostic — channel ``ortho_maze``.  Was unconditionally
+    # printed before 2026-04-24.
+    from gvpy.engines.layout.dot.trace import trace_on, trace
+    if not trace_on("ortho_maze"):
+        return
     for i in range(g.nnodes):
         np = g.nodes[i]
         if np.cells[0] is None or np.cells[1] is None:
-            print(
-                f"[TRACE ortho-maze] chk_sgraph warn snode={i} "
-                f"cells0={np.cells[0] is not None} "
-                f"cells1={np.cells[1] is not None}",
-                file=sys.stderr,
-            )
+            trace("ortho_maze",
+                  f"chk_sgraph warn snode={i} "
+                  f"cells0={np.cells[0] is not None} "
+                  f"cells1={np.cells[1] is not None}")
 
 
 # ---------- public entry point ----------
@@ -512,18 +515,20 @@ def mk_maze(gcell_bboxes: list[Boxf], margin: float = MARGIN) -> Maze:
 # ---------- trace emission ----------
 
 
+# Gated diagnostic — channel ``ortho_maze``.  Was unconditionally
+# printed before 2026-04-24.
 def _emit_entry_trace(ngcells: int, bb: Boxf) -> None:
-    print(
-        f"[TRACE ortho-maze] mkmaze entry gnodes={ngcells} "
-        f"bb={bb.LL.x:.6f},{bb.LL.y:.6f},{bb.UR.x:.6f},{bb.UR.y:.6f}",
-        file=sys.stderr,
-    )
+    from gvpy.engines.layout.dot.trace import trace_on, trace
+    if trace_on("ortho_maze"):
+        trace("ortho_maze",
+              f"mkmaze entry gnodes={ngcells} "
+              f"bb={bb.LL.x:.6f},{bb.LL.y:.6f},{bb.UR.x:.6f},{bb.UR.y:.6f}")
 
 
 def _emit_exit_trace(mp: Maze) -> None:
-    print(
-        f"[TRACE ortho-maze] mkmaze exit ncells={mp.ncells} "
-        f"ngcells={mp.ngcells} sg_nnodes={mp.sg.nnodes if mp.sg else 0} "
-        f"sg_nedges={mp.sg.nedges if mp.sg else 0}",
-        file=sys.stderr,
-    )
+    from gvpy.engines.layout.dot.trace import trace_on, trace
+    if trace_on("ortho_maze"):
+        trace("ortho_maze",
+              f"mkmaze exit ncells={mp.ncells} "
+              f"ngcells={mp.ngcells} sg_nnodes={mp.sg.nnodes if mp.sg else 0} "
+              f"sg_nedges={mp.sg.nedges if mp.sg else 0}")

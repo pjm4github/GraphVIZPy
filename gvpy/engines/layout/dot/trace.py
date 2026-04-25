@@ -87,6 +87,20 @@ KNOWN_CHANNELS: Final[frozenset[str]] = frozenset({
     "spline_clip",      # clip_and_install + shape_clip + arrow_clip
     "spline_path",      # beginpath / endpath / add_box / maximal_bbox
     "spline_route",     # routesplines_ box-corridor optimiser
+    # Phase-4 cluster-detour reshape diagnostics
+    # (``cluster_detour.reshape_around_clusters``).  Was firing
+    # unconditionally via raw ``print(...)`` — gated 2026-04-24.
+    "d4_reshape",       # post-hoc detour reshape attempts that fail
+                        # to find a clean route around a non-member
+                        # cluster bbox.
+    # Ortho engine diagnostics — port of ``lib/ortho/`` (§5.0–§5.8).
+    # These were firing unconditionally during the port; gated 2026-04-24.
+    "ortho_route",      # ortho.py: shortPath / track-assign decisions
+    "ortho_partition",  # partition.py: rectangle decomposition stats
+    "ortho_rawgraph",   # rawgraph.py: topo-sort order
+    "ortho_trapezoid",  # trapezoid.py: Seidel construction stats
+    "ortho_maze",       # maze.py: mkmaze entry/exit + chk_sgraph warnings
+    "ortho_sgraph",     # sgraph.py: shortpath start/result/overflow
 })
 
 

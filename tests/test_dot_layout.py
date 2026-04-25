@@ -2204,8 +2204,8 @@ class TestExpandLeaves:
         assert a["width"] > 0
 
     def test_1332_nodes_present(self):
-        """1332.dot has 91 nodes after layout."""
-        src = Path("test_data/1332.dot").read_text(encoding="utf-8")
+        """aa1332.dot has 91 nodes after layout."""
+        src = Path("test_data/aa1332.dot").read_text(encoding="utf-8")
         r = layout_dot(src)
         assert len(r["nodes"]) == 91
 
@@ -2250,8 +2250,8 @@ class TestKeepOutOtherNodes:
         assert len(r["edges"]) >= 24  # 12 directed + 12 undirected
 
     def test_1332_cluster_count(self):
-        """1332.dot produces clusters with correct DarkGreen coloring."""
-        src = Path("test_data/1332.dot").read_text(encoding="utf-8")
+        """aa1332.dot produces clusters with correct DarkGreen coloring."""
+        src = Path("test_data/aa1332.dot").read_text(encoding="utf-8")
         r = layout_dot(src)
         clusters = r.get("clusters", [])
         # Should have cluster entries
@@ -2380,15 +2380,15 @@ class TestEdgeClassification:
         assert len(flat_edges) >= 1, "Should have at least 1 flat edge"
 
     def test_1332_no_flat_edges(self):
-        """1332.dot has no same-rank edges (all cross-rank)."""
-        src = Path("test_data/1332.dot").read_text(encoding="utf-8")
+        """aa1332.dot has no same-rank edges (all cross-rank)."""
+        src = Path("test_data/aa1332.dot").read_text(encoding="utf-8")
         g = read_gv(src)
         engine = DotLayout(g)
         engine._init_from_graph()
         engine._phase1_rank()
         flat_edges = [le for le in engine.ledges
                       if le.edge_type == "flat" and not le.virtual]
-        # 1332.dot is rankdir=LR with no rank=same constraints,
+        # aa1332.dot is rankdir=LR with no rank=same constraints,
         # so there should be no flat edges
         assert len(flat_edges) == 0
 
@@ -2429,19 +2429,19 @@ class TestClusterSkeleton:
 
     def test_skeleton_preserves_node_count(self):
         """Skeleton expansion restores all original nodes."""
-        src = Path("test_data/1332.dot").read_text(encoding="utf-8")
+        src = Path("test_data/aa1332.dot").read_text(encoding="utf-8")
         r = layout_dot(src)
         assert len(r["nodes"]) == 91
 
     def test_skeleton_preserves_edge_count(self):
         """Skeleton expansion preserves all edges."""
-        src = Path("test_data/1332.dot").read_text(encoding="utf-8")
+        src = Path("test_data/aa1332.dot").read_text(encoding="utf-8")
         r = layout_dot(src)
         assert len(r["edges"]) >= 116  # 117 expected
 
     def test_no_skeleton_nodes_in_output(self):
         """No skeleton virtual nodes appear in the final output."""
-        src = Path("test_data/1332.dot").read_text(encoding="utf-8")
+        src = Path("test_data/aa1332.dot").read_text(encoding="utf-8")
         r = layout_dot(src)
         for n in r["nodes"]:
             assert not n["name"].startswith("_skel_"), \
@@ -2507,8 +2507,8 @@ class TestBSplineFitter:
                 f"{e['tail']}->{e['head']} has {len(e['points'])} pts"
 
     def test_1332_long_edges_smooth(self):
-        """1332.dot multi-rank edges produce smooth multi-segment Beziers."""
-        src = Path("test_data/1332.dot").read_text(encoding="utf-8")
+        """aa1332.dot multi-rank edges produce smooth multi-segment Beziers."""
+        src = Path("test_data/aa1332.dot").read_text(encoding="utf-8")
         r = layout_dot(src)
         # Find a multi-rank edge (more than 4 points)
         long_edges = [e for e in r["edges"] if len(e["points"]) > 4]

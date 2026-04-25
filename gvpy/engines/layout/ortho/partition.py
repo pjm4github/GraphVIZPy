@@ -758,27 +758,31 @@ def _new_seg_array(nsegs: int) -> list[TrapSegment]:
 # ---------- trace emission ----------
 
 
+# Gated diagnostic — was unconditionally printed before
+# 2026-04-24.  Channel: ``ortho_partition``.  Enables byte-match
+# diff against ``filters/partition_harness/harness.c``.
 def _emit_entry_trace(ncells: int, bb: Boxf) -> None:
-    print(
-        f"[TRACE ortho-partition] ncells={ncells} "
-        f"bb={bb.LL.x:.6f},{bb.LL.y:.6f},{bb.UR.x:.6f},{bb.UR.y:.6f}",
-        file=sys.stderr,
-    )
+    from gvpy.engines.layout.dot.trace import trace_on, trace
+    if trace_on("ortho_partition"):
+        trace("ortho_partition",
+              f"ncells={ncells} "
+              f"bb={bb.LL.x:.6f},{bb.LL.y:.6f},{bb.UR.x:.6f},{bb.UR.y:.6f}")
 
 
 def _emit_exit_trace(rects: list[Boxf]) -> None:
-    print(f"[TRACE ortho-partition] nrects={len(rects)}", file=sys.stderr)
+    from gvpy.engines.layout.dot.trace import trace_on, trace
+    if not trace_on("ortho_partition"):
+        return
+    trace("ortho_partition", f"nrects={len(rects)}")
     # Sort for deterministic emission order.
     ordered = sorted(
         rects,
         key=lambda b: (b.LL.x, b.LL.y, b.UR.x, b.UR.y),
     )
     for i, b in enumerate(ordered):
-        print(
-            f"[TRACE ortho-partition] rect i={i} "
-            f"bb={b.LL.x:.6f},{b.LL.y:.6f},{b.UR.x:.6f},{b.UR.y:.6f}",
-            file=sys.stderr,
-        )
+        trace("ortho_partition",
+              f"rect i={i} "
+              f"bb={b.LL.x:.6f},{b.LL.y:.6f},{b.UR.x:.6f},{b.UR.y:.6f}")
 
 
 # ---------- parity-test helpers ----------

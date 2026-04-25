@@ -120,6 +120,9 @@ def _remove_all(lst: list[int], value: int) -> None:
 
 
 def _emit_topsort_trace(g: Rawgraph) -> None:
-    order = ",".join(str(v.topsort_order) for v in g.vertices)
-    print(f"[TRACE ortho-rawgraph] topsort n={g.nvs} order={order}",
-          file=sys.stderr)
+    # Gated diagnostic — was unconditionally printed before
+    # 2026-04-24.  Channel: ``ortho_rawgraph``.
+    from gvpy.engines.layout.dot.trace import trace_on, trace
+    if trace_on("ortho_rawgraph"):
+        order = ",".join(str(v.topsort_order) for v in g.vertices)
+        trace("ortho_rawgraph", f"topsort n={g.nvs} order={order}")

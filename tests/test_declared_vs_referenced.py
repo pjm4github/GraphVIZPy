@@ -50,7 +50,7 @@ def test_singleton_wrapper_owns_its_node():
     the node via an edge, the node belongs to the wrapper — not
     the sibling.
 
-    (Observed on 1332.dot: cluster_4250 referenced c4051 in an
+    (Observed on aa1332.dot: cluster_4250 referenced c4051 in an
     edge while clusterc4051 actually declared c4051.  c4051 was
     being mis-attributed to cluster_4250.)
     """

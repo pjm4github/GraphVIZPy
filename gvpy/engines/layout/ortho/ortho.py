@@ -450,11 +450,11 @@ def _assign_segs(route_list: list[Route], mp: Maze) -> None:
                 continue
             _insert_chan(chan, seg)
     if dropped:
-        print(
-            f"[TRACE ortho-route] warn dropped_segments={dropped} "
-            f"(no channel found at segment coord)",
-            file=sys.stderr,
-        )
+        from gvpy.engines.layout.dot.trace import trace_on, trace
+        if trace_on("ortho_route"):
+            trace("ortho_route",
+                  f"warn dropped_segments={dropped} "
+                  f"(no channel found at segment coord)")
 
 
 # =====================================================================
@@ -1100,17 +1100,21 @@ def ortho_edges(layout, *, use_lbls: bool) -> dict[int, list]:
     """
     del use_lbls  # C warns + disables; mirror that
 
+    # Gated diagnostic — was unconditionally printed before
+    # 2026-04-24.  Channel: ``ortho_route``.
+    from gvpy.engines.layout.dot.trace import trace_on, trace
+    _ortho_trace = trace_on("ortho_route")
+
     inputs = _collect_inputs(layout)
     n_real = sum(1 for _ in getattr(layout, "ledges", ()) if not _.virtual)
     n_chain = len(getattr(layout, "_chain_edges", ()))
-    print(
-        f"[TRACE ortho-route] entry n_real={n_real} n_chain={n_chain} "
-        f"use_lbls=0",
-        file=sys.stderr,
-    )
+    if _ortho_trace:
+        trace("ortho_route",
+              f"entry n_real={n_real} n_chain={n_chain} use_lbls=0")
 
     if not inputs:
-        print("[TRACE ortho-route] no inputs — skip", file=sys.stderr)
+        if _ortho_trace:
+            trace("ortho_route", "no inputs — skip")
         return {}
 
     # Build the maze once per call.
@@ -1121,10 +1125,8 @@ def ortho_edges(layout, *, use_lbls: bool) -> dict[int, list]:
     # layer runs per-edge before short_path and mirrors the dodge logic
     # the legacy Z-router had in _ortho_safe_midy — see TODO §5b.
     cluster_info = _compute_cluster_info(layout, mp)
-    print(
-        f"[TRACE ortho-route] clusters n={len(cluster_info.bboxes)}",
-        file=sys.stderr,
-    )
+    if _ortho_trace:
+        trace("ortho_route", f"clusters n={len(cluster_info.bboxes)}")
 
     # Attach each LayoutNode's cell (by bbox lookup).
     bb_to_cell = {_bb_key(c.bb): c for c in mp.gcells}
@@ -1135,10 +1137,8 @@ def ortho_edges(layout, *, use_lbls: bool) -> dict[int, list]:
         key=lambda e: (e.tail_pos.x - e.head_pos.x) ** 2
                       + (e.tail_pos.y - e.head_pos.y) ** 2,
     )
-    print(
-        f"[TRACE ortho-route] edges sorted n={len(sorted_inputs)}",
-        file=sys.stderr,
-    )
+    if _ortho_trace:
+        trace("ortho_route", f"edges sorted n={len(sorted_inputs)}")
 
     sg = mp.sg
     gstart = sg.nnodes
@@ -1179,8 +1179,8 @@ def ortho_edges(layout, *, use_lbls: bool) -> dict[int, list]:
 
         rc = short_path(pq, sg, dn, sn)
         if rc != 0:
-            print("[TRACE ortho-route] shortPath overflow — abort",
-                  file=sys.stderr)
+            if _ortho_trace:
+                trace("ortho_route", "shortPath overflow — abort")
             break
 
         rte = _convert_sp_to_route(sg, sn, dn)
@@ -1197,17 +1197,17 @@ def ortho_edges(layout, *, use_lbls: bool) -> dict[int, list]:
 
     mp.hchans = _extract_h_chans(mp)
     mp.vchans = _extract_v_chans(mp)
-    print(
-        f"[TRACE ortho-route] channels h={_chan_count(mp.hchans)} "
-        f"v={_chan_count(mp.vchans)}",
-        file=sys.stderr,
-    )
+    if _ortho_trace:
+        trace("ortho_route",
+              f"channels h={_chan_count(mp.hchans)} "
+              f"v={_chan_count(mp.vchans)}")
     _assign_segs(routes, mp)
     if _assign_tracks(mp) != 0:
-        print("[TRACE ortho-route] tracks assigned ok=False",
-              file=sys.stderr)
+        if _ortho_trace:
+            trace("ortho_route", "tracks assigned ok=False")
         return {}
-    print("[TRACE ortho-route] tracks assigned ok=True", file=sys.stderr)
+    if _ortho_trace:
+        trace("ortho_route", "tracks assigned ok=True")
 
     endpoints = [(inp.tail_pos, inp.head_pos) for inp in routed_inputs]
     waypoint_lists = _attach_ortho_edges(mp, routes, endpoints)
@@ -1216,11 +1216,9 @@ def ortho_edges(layout, *, use_lbls: bool) -> dict[int, list]:
     for inp, pts in zip(routed_inputs, waypoint_lists):
         if pts:
             result[inp.edge_id] = [(p.x, p.y) for p in pts]
-            print(
-                f"[TRACE ortho-route] waypoints edge={inp.edge_id} "
-                f"npts={len(pts)}",
-                file=sys.stderr,
-            )
+            if _ortho_trace:
+                trace("ortho_route",
+                      f"waypoints edge={inp.edge_id} npts={len(pts)}")
     return result
 
 

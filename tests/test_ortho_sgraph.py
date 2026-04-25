@@ -186,17 +186,21 @@ class TestShortPath:
         assert rc == 0
         assert c.n_val == UNSEEN
 
-    def test_trace_emissions(self, capsys):
+    def test_trace_emissions(self, capsys, monkeypatch):
+        # Trace is gated on GV_TRACE=ortho_sgraph as of 2026-04-24.
+        from gvpy.engines.layout.dot import trace as _trace_mod
+        monkeypatch.setattr(_trace_mod, "_enabled",
+                            frozenset({"ortho_sgraph"}))
         g, a, _, c = _build_triangle()
         pq = fpq.pq_gen(g.nnodes)
         short_path(pq, g, a, c)
         captured = capsys.readouterr()
         assert (
-            "[TRACE ortho-sgraph] shortpath from=0 to=2 "
+            "[TRACE ortho_sgraph] shortpath from=0 to=2 "
             "nnodes=3 nedges=3"
         ) in captured.err
         assert (
-            "[TRACE ortho-sgraph] shortpath result cost=3 path=0,1,2"
+            "[TRACE ortho_sgraph] shortpath result cost=3 path=0,1,2"
         ) in captured.err
 
 
