@@ -622,10 +622,11 @@ def make_flat_labeled_edge(layout, sp: SplineInfo, P: Path,
     for i in range(hend.boxn - 1, -1, -1):
         add_box(P, hend.boxes[i])
 
+    _edge_label = f"{le.tail_name}->{le.head_name}"
     if et == EDGETYPE_SPLINE:
-        ps = routesplines(P)
+        ps = routesplines(P, edge_name=_edge_label)
     else:
-        ps = routepolylines(P)
+        ps = routepolylines(P, edge_name=_edge_label)
     if not ps:
         return
 
@@ -716,7 +717,9 @@ def make_flat_bottom_edges(layout, sp: SplineInfo, P: Path,
         ))
 
         is_spline = et == EDGETYPE_SPLINE
-        ps = routesplines(P) if is_spline else routepolylines(P)
+        _edge_label = f"{le.tail_name}->{le.head_name}"
+        ps = (routesplines(P, edge_name=_edge_label) if is_spline
+              else routepolylines(P, edge_name=_edge_label))
         if not ps:
             return
 
@@ -863,7 +866,9 @@ def make_flat_edge(layout, sp: SplineInfo, P: Path,
         ))
 
         is_spline = et == EDGETYPE_SPLINE
-        ps = routesplines(P) if is_spline else routepolylines(P)
+        _edge_label = f"{le.tail_name}->{le.head_name}"
+        ps = (routesplines(P, edge_name=_edge_label) if is_spline
+              else routepolylines(P, edge_name=_edge_label))
         if not ps:
             return
 

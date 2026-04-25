@@ -318,10 +318,16 @@ def Pshortestpath(polyp: Ppoly, eps: list) -> tuple[int, Ppolyline]:
     ``(status, polyline)``:
 
     - ``status == 0``: success; ``polyline`` is the shortest path.
-    - ``status == -1``: bad input (endpoint not in any triangle);
-      ``polyline`` may be empty.
-    - ``status == -2``: memory allocation problem (not used in
-      Python but preserved for API fidelity).
+    - ``status == -1``: bad input — empty polygon, or one of the
+      two endpoints does not fall inside any triangle of the
+      triangulation (typically because the endpoint is outside the
+      polygon, or sits on a degenerate edge).  ``polyline`` is empty.
+    - ``status == -2``: triangulation itself failed
+      (``_triangulate_pnls`` returned non-zero).  Polygon is
+      malformed — typically self-intersecting, has near-collinear
+      runs of points, or is degenerate (zero area).  Common on
+      tightly-packed graphs where the box corridor collapses to
+      a thin strip.  ``polyline`` is empty.
 
     **Preconditions:** ``polyp`` is a simple polygon; ``eps`` has
     exactly two points that are both inside (or on the boundary of)

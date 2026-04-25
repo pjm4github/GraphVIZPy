@@ -52,7 +52,8 @@ from gvpy.engines.layout.common.geom import interval_overlap as overlap  # noqa:
 
 # ── checkpath ──────────────────────────────────────────────────────
 
-def checkpath(boxes: list[Box], pp: Path) -> tuple[int, list[Box]]:
+def checkpath(boxes: list[Box], pp: Path,
+              edge_name: str | None = None) -> tuple[int, list[Box]]:
     """Validate and repair the box corridor.
 
     See: /lib/common/routespl.c @ 635
@@ -61,6 +62,9 @@ def checkpath(boxes: list[Box], pp: Path) -> tuple[int, list[Box]]:
     1 on failure.  The returned list may be shorter than the input
     (degenerate boxes are removed).  ``pp.start`` and ``pp.end`` are
     clamped to the first/last box if they fall outside.
+
+    ``edge_name`` is forwarded into diagnostic output so failure
+    messages identify which edge had the malformed corridor.
     """
     # Diagnostic (GVPY_CHECKPATH_WARN=1): flag box chains that violate
     # the polygon builder's monotone-y assumption — adjacent boxes
@@ -96,20 +100,33 @@ def checkpath(boxes: list[Box], pp: Path) -> tuple[int, list[Box]]:
     boxn = len(boxes)
 
     if boxn == 0:
-        print("in checkpath, no valid boxes", file=sys.stderr)
+        print(
+            f"in checkpath: no valid boxes "
+            f"edge={edge_name or '<unknown>'}",
+            file=sys.stderr,
+        )
         return (1, boxes)
 
     ba = boxes[0]
     if ba.ll_x > ba.ur_x or ba.ll_y > ba.ur_y:
-        print("in checkpath, box 0 has LL coord > UR coord", file=sys.stderr)
+        print(
+            f"in checkpath: box 0 has LL coord > UR coord "
+            f"edge={edge_name or '<unknown>'} "
+            f"box=[{ba.ll_x:.1f},{ba.ll_y:.1f},{ba.ur_x:.1f},{ba.ur_y:.1f}]",
+            file=sys.stderr,
+        )
         return (1, boxes)
 
     for bi in range(boxn - 1):
         ba = boxes[bi]
         bb = boxes[bi + 1]
         if bb.ll_x > bb.ur_x or bb.ll_y > bb.ur_y:
-            print(f"in checkpath, box {bi + 1} has LL coord > UR coord",
-                  file=sys.stderr)
+            print(
+                f"in checkpath: box {bi + 1} has LL coord > UR coord "
+                f"edge={edge_name or '<unknown>'} "
+                f"box=[{bb.ll_x:.1f},{bb.ll_y:.1f},{bb.ur_x:.1f},{bb.ur_y:.1f}]",
+                file=sys.stderr,
+            )
             return (1, boxes)
 
         l = 1 if ba.ur_x < bb.ll_x else 0
@@ -256,7 +273,8 @@ _INITIAL_LLX = float("inf")
 _INITIAL_URX = float("-inf")
 
 
-def routesplines_(pp: Path, polyline: bool = False) -> list[Ppoint] | None:
+def routesplines_(pp: Path, polyline: bool = False,
+                   edge_name: str | None = None) -> list[Ppoint] | None:
     """Route a spline through the box corridor in *pp*.
 
     See: /lib/common/routespl.c @ 294
@@ -266,8 +284,12 @@ def routesplines_(pp: Path, polyline: bool = False) -> list[Ppoint] | None:
     their x-extents are tightened to the spline's actual footprint
     so subsequent edges sharing the same boxes can use the freed
     space.
+
+    ``edge_name`` is an optional ``"tail->head"`` string for diagnostic
+    output; callers in ``regular_edge`` / ``flat_edge`` pass the live
+    edge name so failure messages identify which edge couldn't route.
     """
-    status, boxes = checkpath(list(pp.boxes), pp)
+    status, boxes = checkpath(list(pp.boxes), pp, edge_name=edge_name)
     if status != 0:
         return None
     boxn = len(boxes)
@@ -328,8 +350,11 @@ def routesplines_(pp: Path, polyline: bool = False) -> list[Ppoint] | None:
             polypoints.append(Ppoint(boxes[bi].ur_x, boxes[bi].ur_y))
         else:
             if not (prev == -1 and nxt == -1):
-                print(f"in routesplines, illegal prev={prev} next={nxt}",
-                      file=sys.stderr)
+                print(
+                    f"in routesplines: illegal prev={prev} next={nxt} "
+                    f"edge={edge_name or '<unknown>'} bi={bi}/{boxn}",
+                    file=sys.stderr,
+                )
                 return None
             polypoints.append(Ppoint(boxes[bi].ur_x, boxes[bi].ll_y))
             polypoints.append(Ppoint(boxes[bi].ur_x, boxes[bi].ur_y))
@@ -357,7 +382,26 @@ def routesplines_(pp: Path, polyline: bool = False) -> list[Ppoint] | None:
 
     status, pl = Pshortestpath(poly, eps)
     if status < 0:
-        print("in routesplines, Pshortestpath failed", file=sys.stderr)
+        # Status decodes per ``shortest.Pshortestpath``:
+        #   -1 = empty polygon, or endpoint not in any triangle
+        #   -2 = triangulation itself failed (degenerate polygon —
+        #        self-intersecting / collinear / zero-area corridor)
+        # Callers in regular_edge / flat_edge supply edge_name so a
+        # multi-failure run (e.g. 1879.dot ≈ 34 failures) tells you
+        # which edges couldn't route, not just that something failed.
+        # Set ``GV_TRACE=spline_route`` for the per-box corridor dump.
+        _reason = {
+            -1: "endpoint not in triangulation (or empty polygon)",
+            -2: "triangulation failed (degenerate corridor)",
+        }.get(status, f"unknown status {status}")
+        print(
+            f"in routesplines: Pshortestpath failed "
+            f"edge={edge_name or '<unknown>'} "
+            f"eps=({sx:.1f},{sy:.1f})->({ex:.1f},{ey:.1f}) "
+            f"boxes={boxn} poly={len(polypoints)} status={status} "
+            f"reason={_reason!r}",
+            file=sys.stderr,
+        )
         return None
 
     if polyline:
@@ -379,7 +423,13 @@ def routesplines_(pp: Path, polyline: bool = False) -> list[Ppoint] | None:
                             -math.sin(pp.end.theta))
         spl = Proutespline(edges, pl, evs)
         if spl is None:
-            print("in routesplines, Proutespline failed", file=sys.stderr)
+            print(
+                f"in routesplines: Proutespline failed "
+                f"edge={edge_name or '<unknown>'} "
+                f"eps=({sx:.1f},{sy:.1f})->({ex:.1f},{ey:.1f}) "
+                f"poly={len(polypoints)} pl_pts={len(pl.ps)}",
+                file=sys.stderr,
+            )
             return None
 
     ps = list(spl.ps)
@@ -425,20 +475,28 @@ def routesplines_(pp: Path, polyline: bool = False) -> list[Ppoint] | None:
 
 # ── Public wrappers ────────────────────────────────────────────────
 
-def routesplines(pp: Path) -> list[Ppoint] | None:
+def routesplines(pp: Path,
+                 edge_name: str | None = None) -> list[Ppoint] | None:
     """Route a curved spline through the box corridor.
 
     See: /lib/common/routespl.c @ 598
+
+    ``edge_name`` (e.g. ``"a->b"``) is forwarded into diagnostic
+    output if routing fails.
     """
-    return routesplines_(pp, polyline=False)
+    return routesplines_(pp, polyline=False, edge_name=edge_name)
 
 
-def routepolylines(pp: Path) -> list[Ppoint] | None:
+def routepolylines(pp: Path,
+                   edge_name: str | None = None) -> list[Ppoint] | None:
     """Route a polyline through the box corridor.
 
     See: /lib/common/routespl.c @ 602
+
+    ``edge_name`` (e.g. ``"a->b"``) is forwarded into diagnostic
+    output if routing fails.
     """
-    return routesplines_(pp, polyline=True)
+    return routesplines_(pp, polyline=True, edge_name=edge_name)
 
 
 # ── simple_spline_route ───────────────────────────────────────────

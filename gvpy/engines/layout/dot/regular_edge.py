@@ -615,10 +615,11 @@ def make_regular_edge(layout, sp: SplineInfo, P: Path,
                          f"n_boxes={len(_boxes)} boxes={_bs} "
                          f"eps=({_sx:.1f},{_sy:.1f})->({_ex:.1f},{_ey:.1f})")
 
+    _edge_label = f"{tail_name}->{head_final_name}"
     if is_spline:
-        ps = routesplines(P)
+        ps = routesplines(P, edge_name=_edge_label)
     else:
-        ps = routepolylines(P)
+        ps = routepolylines(P, edge_name=_edge_label)
         if ps and et == EDGETYPE_LINE and len(ps) > 4:
             ps[1] = Ppoint(ps[0].x, ps[0].y)
             ps[3] = Ppoint(ps[-1].x, ps[-1].y)
