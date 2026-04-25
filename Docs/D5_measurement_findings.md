@@ -162,7 +162,7 @@ Top individual offenders (edge appears in the most crossings):
    the cluster.  A virtual-chain cross-rank constraint could catch
    this, but it's rare enough that it's not the leverage target.
 
-## C-side parity (2026-04-22)
+## §1.5.1 — C-side parity — 2026-04-22
 
 `lib/dotgen/mincross.c` got the same classifier, hooked in at
 `dot_mincross` end (right before `cleanup2`).  Cluster enumeration
@@ -261,7 +261,7 @@ These fixtures were hand-built as cluster-mincross stress tests
 (the `V*` / `S*H*` node naming).  Both engines struggle; Python
 just a little more.
 
-## Bug 1 fix attempt (2026-04-22)
+## §1.5.1.bug1 — Bug 1 fix attempt — 2026-04-22
 
 Ported the `ReMincross` branch of C's `left2right` (mincross.c line
 842-845) into Python: a new `remincross_phase` flag on
@@ -308,7 +308,7 @@ branch Python was diverging on, and shows measurable improvement
 on the one fixture where it bites.  The deeper skeleton/expand
 work is deferred (TODO §1 D5 row updated).
 
-## Skeleton/expand alignment push (2026-04-22, session 2)
+## §1.5.2 — Skeleton/expand alignment push — 2026-04-22
 
 Added a staged D5 counter (`d5_stage_crossings`) that emits
 `[TRACE d5] stage=<name> cluster_pair_crosses=<n>` at key pipeline
@@ -372,7 +372,7 @@ Neither is a one-session job.  Deferring; the correctness fixes
 landed this pass (remincross default, remincross_phase,
 shape=none cap) and the staged instrumentation are the deliverable.
 
-## Byte-for-byte alignment push (2026-04-22, session 3)
+## §1.5.3 — Byte-for-byte alignment push — 2026-04-22
 
 Added `d5_step` channel to both Python's `cluster_reorder` and C's
 `reorder` with identical line format:
@@ -474,7 +474,7 @@ this one left off — the first divergence is at **rank 4 iteration 3
 (reverse=0), cluster_4148 mval**, traceable into Python's ICV
 chain creation.
 
-## run_mincross backend swap (2026-04-22, session 4)
+## §1.5.4 — run_mincross backend swap — 2026-04-22
 
 Diffing d5_step traces on the small ``d5_regression`` fixture
 (4 test cases, ~20 nodes) surfaced a structural divergence the
@@ -550,7 +550,7 @@ for it.  The divergence must live in either:
 The d5_step instrumentation is the same; future sessions can
 drill into any of the three without re-adding plumbing.
 
-## build_ranks BFS-vs-DFS investigation (2026-04-22, session 5)
+## §1.5.5 — build_ranks BFS-vs-DFS investigation — 2026-04-22
 
 Python's legacy ``build_ranks`` (rank.py) uses DFS over an
 *undirected* adjacency list, starting from every real node in
@@ -618,7 +618,7 @@ the ``_icv_*`` inter-cluster skeleton chain edges — that
 investigation can proceed with d5_step instrumentation already
 in place.
 
-## Session 6: cluster-contiguity normalization (2026-04-22)
+## §1.5.6 — cluster-contiguity normalization — 2026-04-22
 
 Tried porting C's ``install_cluster`` to Python's BFS build_ranks.
 Direct port (batch-install all cluster members on first wavefront
@@ -677,7 +677,7 @@ regresses 2796 (+12) and a handful of small-gap fixtures.
 Separately-gated; to be revisited when Python's pre-skeleton
 graph representation is closer to C's pre-skeletonized form.
 
-## Session 7: C-aligned inter-cluster chain creation (2026-04-22)
+## §1.5.7 — C-aligned inter-cluster chain creation — 2026-04-22
 
 Ported C's ``class2.c: interclrep`` + ``leader_of`` + ``make_chain``
 semantics into Python's ``skeleton_mincross`` inter-cluster chain
@@ -753,7 +753,7 @@ outweigh 1213-2 loss).  Plus correctness: legacy was provably
 incomplete.  1879 regression documented as a known interaction
 with its HTML sizing issue.
 
-## Session 8: C-side chain parity verification (2026-04-22)
+## §1.5.8 — C-side chain parity verification — 2026-04-22
 
 Added ``[TRACE d5_icv]`` emissions to C's ``class2.c: interclrep``
 so Python's and C's inter-cluster chain sets can be compared
@@ -826,7 +826,7 @@ accumulation isn't hurting there.  The correct port would be a
 the existing chain's edges.  Deferred — low priority because the
 current approximation is already winning.
 
-## Session 9: phase 3 instrumentation + divergence audit (2026-04-22)
+## §1.5.9 — phase 3 instrumentation + divergence audit — 2026-04-22
 
 Both sides already had ``[TRACE position]`` emissions at the key
 phase-3 stages:
@@ -887,7 +887,7 @@ traces back to mincross output:
   changing mincross convergence to a different (worse-for-1879)
   rank ordering.  Phase 3 faithfully encodes both.
 - ``2796``'s 15 residuals are mincross-level RL-flips (documented
-  in session 1).
+  in §1.5.1).
 
 **Phase 3 matches C.**  No fix needed.  D5 investigation closes
 at the mincross layer — the four alignments shipped this session
@@ -896,7 +896,7 @@ BFS build_ranks, C-aligned interclrep) plus the earlier
 remincross + remincross_phase fixes are the net-positive
 deliverable.
 
-## Session 10: C-seed injection test (2026-04-22)
+## §1.5.10 — C-seed injection test — 2026-04-22
 
 User asked: "Can we inject the same seed in Python as C uses to
 confirm initial seeding is the issue?"
@@ -976,7 +976,7 @@ specific fixture.
 
 Two narrowed next-step candidates:
 
-- **Aligning build_ranks BFS more carefully** (session 5's
+- **Aligning build_ranks BFS more carefully** (§1.5.5's
   attempt regressed 2796 by +13 without install_cluster; maybe
   a targeted hybrid works).
 - **Instrumenting the specific mincross perturbation on aa1332
@@ -1030,9 +1030,9 @@ Deferred.  Adjacent cleanup landed during this pass: `shape=none`
 label-free-shape semantics and shows no corpus-wide impact
 (1879 is unaffected because it sets no explicit dims).
 
-## Session 11: transpose scoped-crossing fix (2026-04-23)
+## §1.5.11 — transpose scoped-crossing fix — 2026-04-23
 
-Continuation of the aa1332 rank-5 isolation pinned down in session 10
+Continuation of the aa1332 rank-5 isolation pinned down in §1.5.10
 — where `c4051` swaps past `_skel_cluster_4246_5` in Python but C
 keeps them in opposite order.
 
@@ -1105,9 +1105,9 @@ where Python and C diverge on orders.  The scope fix shipped here
 is a prerequisite correctness win; the residual divergence is a
 separate cascade earlier in the sweep.
 
-## Session 12: rank-6 divergence isolated on aa1332 (2026-04-23)
+## §1.5.12 — rank-6 divergence isolated on aa1332 — 2026-04-23
 
-Session 11 concluded that the rank-5 cost function was itself sound
+§1.5.11 concluded that the rank-5 cost function was itself sound
 once scoped; the cascade had to start earlier.  This session walks
 cluster_4250's expand phase down to the first rank where Python and
 C disagree on a swap decision.
@@ -1192,9 +1192,9 @@ Add per-node median-positions dump on the `d5_step` channel
 `clusterc4237_6`) in both engines and diff.  That will show which
 specific neighbor positions Python is missing or double-counting.
 
-## Session 13: port-propagation fix lands (2026-04-23)
+## §1.5.13 — port-propagation fix lands — 2026-04-23
 
-Continuation of session 12.  Added `[TRACE d5_step] medians_node`
+Continuation of §1.5.12.  Added `[TRACE d5_step] medians_node`
 to both engines dumping the per-node `positions[]` list fed into
 the median computation.  Diffed the first call for `clusterc4237_6`
 at `r0=6 r1=5` (cluster_4250's expand phase):
@@ -1260,7 +1260,7 @@ populated it lazily — *after* mc_fg construction).
   swapped=1`).
 - Test suite: 1137/1137 pass, D5 regression unchanged.
 - aa1332 residual cluster-pair crossings still at 4 (down from
-  a previous visual count of 7 in session 10, pre-scoped-counter
+  a previous visual count of 7 in §1.5.10, pre-scoped-counter
   fix) — the mincross-level alignment closes the rank-5/6
   divergence but other ranks still diverge.  Another session
   can extend the medians_node diff to the remaining ranks.
@@ -1276,9 +1276,9 @@ populated it lazily — *after* mc_fg construction).
     population + substituted-pair port propagation with
     skeleton-side suppression.
 
-## Session 14: early-exit investigation (2026-04-23)
+## §1.5.14 — early-exit investigation — 2026-04-23
 
-Investigation into the next divergence after session 13's port-
+Investigation into the next divergence after §1.5.13's port-
 propagation fix.  Diffed `medians_node` traces across both engines
 on aa1332 and found 307 differences, many of them cluster skeletons
 present in C's trace but missing entirely from Python's (ONLY-C
@@ -1349,9 +1349,9 @@ matches C.  Next session should diff the cluster-scoped edge sets
 between engines on a specific cluster where Python reports 0 but
 C sees >0 (e.g. cluster_6409 during aa1332).
 
-## Session 15: exit-edge filter fix (2026-04-23)
+## §1.5.15 — exit-edge filter fix — 2026-04-23
 
-Continuation of session 14's investigation of the
+Continuation of §1.5.14's investigation of the
 `Python sees 0 where C sees >0` scoped-crossing divergence.
 
 ### Method
@@ -1399,7 +1399,7 @@ if not t_in or not h_in:
 `h_r=19 > max_r=18` for cluster_6409, so the filter rejected the
 edge entirely.  That in turn made `count_scoped_crossings` return
 0 for cluster_6409, and the iteration loop exited on `cur_cross=0`
-without running medians — cascading through session 14's observed
+without running medians — cascading through §1.5.14's observed
 307 `medians_node` divergences.
 
 ### Fix
@@ -1441,14 +1441,14 @@ Per-file (on 170 shared):
 
 Net on comparable files (excluding 1879/2620 timeouts):
 **72 → 51 = −21 crossings (−29%)** — first non-trivial corpus
-improvement since session 11.
+improvement since §1.5.11.
 
 Cost: 2620.dot newly times out (was 7 crossings).  The extra
 iteration work from including exit edges in the fast graph pushes
 it past the 60s per-side budget.  Candidates for future work:
 optimise `count_scoped_crossings` inner loop, or raise timeout.
 
-## Session 16: post-refactor + self-skeleton exclusion (2026-04-23)
+## §1.5.16 — post-refactor + self-skeleton exclusion — 2026-04-23
 
 ### Refactor: cached output views
 
@@ -1466,7 +1466,7 @@ fg_out forwarding fix from earlier in the session.
 
 ### fg_out forwarding to cluster_transpose
 
-Session 13 wired scoped pair-crossing counting (O(degree)) into
+§1.5.13 wired scoped pair-crossing counting (O(degree)) into
 ``cluster_transpose`` for the expand phase.  But ``run_mincross``
 (initial pass on the collapsed graph) and ``remincross_full``
 (final pass) still called ``_cluster_transpose`` without the
@@ -1478,7 +1478,7 @@ Both call sites already built a root-scope fast graph (lines
 
 2620.dot: **58.7s → 23.2s** wall time, a 2.5× speedup.  Now
 completes under the 60s audit budget; was PY_TIMEOUT after
-session 15.
+§1.5.15.
 
 ### Class-level mutable dicts → __init__
 
@@ -1513,10 +1513,10 @@ cluster c4147→c4149, sibling-cluster clusterc4145→c4149,
 skeleton-vs-real head naming clusterc4249→clusterc4251 vs
 clusterc4249→c4251).  Each is a separate investigation thread.
 
-## Session 17: dedup_cluster_nodes tie-break (reverted, 2026-04-23)
+## §1.5.17 — dedup_cluster_nodes tie-break (reverted) — 2026-04-23
 
 Task #147 investigated why 1332.dot cluster_4250 has 5 extra edges
-in its scoped fast graph vs C.  Session 16's self-skeleton
+in its scoped fast graph vs C.  §1.5.16's self-skeleton
 exclusion cleared 2 of them; this session chased a third.
 
 ### Root cause (confirmed)
@@ -1554,7 +1554,7 @@ declared-vs-referenced at parse time (track which nodes were
 actually declared inside each subgraph vs picked up via edge
 references).  That's invasive — defer.
 
-## Session 18: scoped _skel_sub (landed), foreign-skel filter (reverted) — 2026-04-24
+## §1.5.18 — scoped _skel_sub (landed), foreign-skel filter (reverted) — 2026-04-24
 
 ### Scoped _skel_sub (landed)
 
@@ -1593,9 +1593,9 @@ Down to 2 extra edges now, both with mis-attributed nodes
 referenced parser issue (task #148).  Can't cleanly fix without
 parser-level changes.
 
-## Session 19-20: declared-vs-referenced + tuning attempts (2026-04-24)
+## §1.5.19–20 — declared-vs-referenced + tuning attempts — 2026-04-24
 
-### Implementation (session 19)
+### Implementation (§1.5.19)
 
 Per ``Docs/declared_vs_referenced_proposal.md`` (task #148):
 
@@ -1629,7 +1629,7 @@ c4051 are now walled off in their singleton clusters
 output and never refined — reorder-time mval is set to -1 because
 they aren't in any cluster's ``cl_node_set``.
 
-### Tuning attempt 1 (session 19): wide neighbour augmentation
+### Tuning attempt 1 (§1.5.19): wide neighbour augmentation
 
 Added all edge-neighbour nodes within the cluster's rank range to
 ``cl_node_set`` during expand mincross.  Goal: re-grant reorder
@@ -1646,7 +1646,7 @@ Result: **net +14 crossings, 5 regressions**:
 The wider scope confused the median heuristic — too many sibling-
 cluster nodes in the reorder pool.  Reverted.
 
-### Tuning attempt 2 (session 20): narrow singleton augmentation
+### Tuning attempt 2 (§1.5.20): narrow singleton augmentation
 
 Restricted the augmentation to outsiders whose home cluster is a
 SINGLETON (1 node, 1 rank — skips its own mincross loop).  This
