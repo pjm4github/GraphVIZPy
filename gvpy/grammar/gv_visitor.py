@@ -160,9 +160,16 @@ class GVGraphVisitor(GVParserVisitor):
     # ── helpers ───────────────────────────────────
 
     def _resolve_node_id(self, ctx: GVParser.NodeIdContext) -> tuple[str, str]:
-        """Resolve a node_id context: ensure the node exists, return (name, port)."""
+        """Resolve a node_id context used as an *edge endpoint*:
+        ensure the node exists (creating it in the root graph if
+        needed) but do NOT register it as a member of the current
+        subgraph.  A node becomes a cluster member only via a
+        ``node_stmt`` declaration inside the subgraph body — not via
+        an edge that references it.  See
+        ``Docs/declared_vs_referenced_proposal.md``.
+        """
         name = self._get_id_text(ctx.id_())
-        self._current.add_node(name, create=True)
+        self._current.add_node(name, create=True, declared=False)
         port = self._get_port_text(ctx.port()) if ctx.port() else ""
         return name, port
 

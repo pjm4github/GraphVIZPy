@@ -85,8 +85,12 @@ class EdgeMixin:
             # No loops allowed in strict graphs
             agerr(Agerrlevel.AGERR, f"Error: Loops are not allowed in strict graphs (attempted to add edge from '{tail_name}' to itself).")
             return None
-        tail = self.add_node(tail_name, create=cflag)  # source
-        head = self.add_node(head_name, create=cflag)  # destination
+        # Edge endpoints are REFERENCES, not declarations — use
+        # declared=False so the nodes don't spuriously become members
+        # of this subgraph.  Matches C's agedge + agnode semantics.
+        # See ``Docs/declared_vs_referenced_proposal.md``.
+        tail = self.add_node(tail_name, create=cflag, declared=False)
+        head = self.add_node(head_name, create=cflag, declared=False)
 
         if not tail or not head:
             agerr(Agerrlevel.AGWARN, f"Failed to create edge from '{tail_name}' to '{head_name}'.")

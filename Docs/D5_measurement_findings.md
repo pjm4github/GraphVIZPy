@@ -1593,6 +1593,78 @@ Down to 2 extra edges now, both with mis-attributed nodes
 referenced parser issue (task #148).  Can't cleanly fix without
 parser-level changes.
 
+## Session 19-20: declared-vs-referenced + tuning attempts (2026-04-24)
+
+### Implementation (session 19)
+
+Per ``Docs/declared_vs_referenced_proposal.md`` (task #148):
+
+- ``Graph.add_node`` accepts a new ``declared: bool = True`` flag.
+  When ``False``, the node is created in the root graph (if missing)
+  but NOT added to ``self.nodes`` of the current subgraph.  Matches
+  C cgraph's agedge + agnode where edge references don't establish
+  cluster membership — only ``node_stmt`` declarations do.
+- Visitor ``_resolve_node_id`` calls ``add_node(name, declared=False)``
+  for edge-endpoint resolution.
+- ``Graph.add_edge`` calls ``add_node(..., declared=False)`` for both
+  tail and head.
+- 4 regression tests in ``tests/test_declared_vs_referenced.py``.
+
+Direct probe on 1332.dot post-parse:
+- ``clusterc4051.nodes = ['c4051']`` ✓ (was ``[]`` pre-fix)
+- ``clusterc4149.nodes = ['c4149']`` ✓ (was ``[]`` pre-fix)
+- ``cluster_4250.nodes`` no longer contains c4051 / c4149 ✓
+
+### Corpus impact
+
+- 173/175 files unchanged
+- 3 regressed: aa1332 3→5 (+2), 1332 1→3 (+2), 2183 0→1 (+1)
+- Net: 172 → 177 (+5 crossings)
+
+The fix is semantically correct (matches C) but practically pushes
+mincross into worse local minima.  Sibling-declared nodes like
+c4051 are now walled off in their singleton clusters
+(``clusterc4051``) which skip their own mincross loop
+(``len(cl_ranks) < 2``).  Their position is fixed at build_ranks
+output and never refined — reorder-time mval is set to -1 because
+they aren't in any cluster's ``cl_node_set``.
+
+### Tuning attempt 1 (session 19): wide neighbour augmentation
+
+Added all edge-neighbour nodes within the cluster's rank range to
+``cl_node_set`` during expand mincross.  Goal: re-grant reorder
+flexibility to formerly-polluted-now-orphaned nodes.
+
+Result: **net +14 crossings, 5 regressions**:
+- 2796: 15 → 37 (+22)
+- 1332_ref: 4 → 11 (+7)
+- 1332: 1 → 3 (+2)
+- 2183: 0 → 1 (+1)
+- 2239: 0 → 1 (+1)
+- 2470, 2620 newly timed out.
+
+The wider scope confused the median heuristic — too many sibling-
+cluster nodes in the reorder pool.  Reverted.
+
+### Tuning attempt 2 (session 20): narrow singleton augmentation
+
+Restricted the augmentation to outsiders whose home cluster is a
+SINGLETON (1 node, 1 rank — skips its own mincross loop).  This
+should be safer: only add nodes that genuinely have nowhere else
+to be reordered.
+
+Result: still net regression (1332 3→4, 2796 15→25, aa1332 5→4).
+Targeted is better than wide but neither beats the no-augmentation
+baseline.
+
+Reverted.  Decision: keep declared-vs-referenced active (option 2,
++5 corpus regression), accept that Python's mincross heuristic
+doesn't benefit from the wider reorder scope C uses.  Future work
+could explore a different angle — e.g., a final "loose-node"
+reorder pass over orphaned singleton-cluster members within their
+rank — but the open-ended nature of the tuning makes it a
+non-priority.
+
 ## Bug prioritisation
 
 1. **Bug 1 (2796)** — highest leverage.  Fixing the adjacent-rank

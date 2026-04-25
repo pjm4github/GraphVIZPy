@@ -1105,6 +1105,19 @@ def skeleton_mincross(layout):
                     for sn in skeleton_nodes[child].values():
                         if sn in layout.lnodes:
                             cl_node_set.add(sn)
+            # NOTE: session 19/20 attempted "neighbour augmentation"
+            # here — pulling singleton-cluster-wrapped nodes (e.g.
+            # clusterc4051's c4051) into THIS cluster's scope so they
+            # can reorder during expand mincross.  Two variants tested:
+            #   - wide  (any rank-range neighbour): +14 corpus, 2796
+            #     went 15 → 37
+            #   - narrow (only singleton-cluster nodes):  intermediate
+            #     (1332 3→4, 2796 15→25)
+            # Both regressed the corpus.  The current "more nodes in
+            # scope" intuition is wrong here — Python's median
+            # heuristic doesn't benefit from the wider view the way C
+            # does.  Tuning deferred; the declared-vs-referenced fix
+            # holds at +5 crossings net (still semantically correct).
             cl_ranks = sorted(set(
                 layout.lnodes[n].rank for n in cl_node_set
                 if n in layout.lnodes

@@ -17,11 +17,23 @@ _logger = logging.getLogger(__name__)
 class NodeMixin:
     """Mixin providing node management methods for Graph."""
 
-    def add_node(self, n_name: str, create: bool = True) -> Optional["Node"]:
+    def add_node(self, n_name: str, create: bool = True,
+                 declared: bool = True) -> Optional["Node"]:
         """
         Equivalent to agnode(g, name, createflag).
         :param n_name: The name of the node.
         :param create: If True, create the node if it does not exist.
+        :param declared: If True (default), register the node as a
+            member of ``self`` by adding it to ``self.nodes``.  If
+            False, ensure the node exists (creating in the root graph
+            when necessary) but DO NOT add it to ``self.nodes``.  The
+            DOT parser's edge-endpoint resolution passes
+            ``declared=False`` so that nodes only referenced via
+            ``a -> b`` inside a subgraph body don't spuriously become
+            cluster members — matching C cgraph's agnode semantics
+            where cluster membership derives from explicit node_stmt
+            declarations, not edge references.  See
+            ``Docs/declared_vs_referenced_proposal.md``.
         :return: The created or existing Node object if successful, else None.
         """
         if n_name in self.nodes:
@@ -34,8 +46,17 @@ class NodeMixin:
             root = get_root_graph(self)
             existing = root.nodes.get(n_name) if root is not self else None
             if existing is not None:
-                self.nodes[n_name] = existing
+                if declared:
+                    self.nodes[n_name] = existing
                 return existing
+
+            # Referenced-only (declared=False) creation in a subgraph:
+            # create the node in the ROOT graph instead so it's
+            # reachable but not a member of this subgraph.  Matches C
+            # agnode on a subgraph — C creates the node in the parent
+            # chain and marks membership only at declaration sites.
+            if not declared and not self.is_main_graph:
+                return root.add_node(n_name, create=True, declared=True)
 
             node_id = self.disc.map(self.clos, ObjectType.AGNODE, n_name, createflag=create)
             # node_id = agmapnametoid(self, ObjectType.AGNODE, n_name, createflag=True)
