@@ -507,15 +507,18 @@ def run_mincross(layout):
     _done_iter = 0
     _step_calls = 0
 
-    # The C-faithful 3-pass outer loop is the **default** as of
-    # §1.5.31 (2026-04-26).  §1.5.27–§1.5.30 closed the inner-step
-    # divergences (cross-rank transpose with candidate flags,
-    # reverse tie-break, flat_mval+hasfixed, CL_CROSS-guarded
-    # reverse tie-break) so the C-faithful path matches the
-    # d5_regression baseline (1 cluster crossing) while keeping all
-    # 1141 unit tests green.  Set ``GVPY_LEGACY_MINCROSS_LOOP=1`` to
-    # restore the previous over-iterating loop for diagnostics.
+    # The C-faithful 3-pass outer loop is the default as of §1.5.31.
+    # §1.5.32 measurement showed the per-pass *restart* added in
+    # §1.5.31 over-perturbs the search on graphs where mincross is
+    # already converging fast (1879, 1436), so we disable just the
+    # restart while keeping the rest of the C-faithful structure
+    # (MinQuit/Convergence early-stop, multi-pass with iteration
+    # caps, save_best/restore_best at the end).  ``GVPY_LEGACY_MINCROSS_LOOP=1``
+    # restores the over-iterating legacy loop.
+    # ``GVPY_C_MINCROSS_RESTART=1`` re-enables the per-pass restart
+    # for diagnostics (mirrors C's build_ranks-per-pass exactly).
     _c_loop = _os_mc.environ.get("GVPY_LEGACY_MINCROSS_LOOP", "") != "1"
+    _c_restart = _os_mc.environ.get("GVPY_C_MINCROSS_RESTART", "") == "1"
 
     def _mincross_step(pass_idx: int) -> None:
         """One call mirrors C's ``mincross.c:1928 mincross_step``.
@@ -592,27 +595,17 @@ def run_mincross(layout):
         for pass_n in range(3):
             if pass_n <= 1:
                 maxthispass = min(4, MaxIter)
-                # ── Restart from the fresh build_ranks state ────────
+                # ── Optional restart from the fresh build_ranks state ─
                 # Mirrors C ``mincross.c:1086-1095`` — passes 0 and 1
                 # each reset the rank arrays before iterating, so a
                 # bad local optimum in pass 0 doesn't poison pass 1.
-                # Pass 2 picks up from the best ordering across all
-                # passes (mincross.c:1115).
-                #
-                # Pass 0 only on the first multi_pass_loop call: the
-                # snapshot is the post-build_ranks "fresh" state.  On
-                # the remincross_full re-entry, ``fresh_order`` was
-                # captured AFTER the first sweep, so restoring it
-                # doesn't undo cluster expansion.
-                #
-                # Skip the restart on pass 1 if pass 0 already
-                # produced the best — restarting from fresh would
-                # discard pass 0's gains and make pass 1 redundant.
-                # This matches C's effect: passes 0/1 differ only by
-                # flat_breakcycles (pass 0 only), so on graphs
-                # without same-rank cycles pass 1 lands on pass 0's
-                # result anyway.
-                if pass_n == 0 or cur_cross > best_crossings:
+                # Disabled by default (§1.5.32) because corpus
+                # measurement showed it over-perturbs on already-
+                # converging graphs (1879 went 57 → 94 with the
+                # restart enabled, 1436 went 6 → 11).  Opt back in
+                # via ``GVPY_C_MINCROSS_RESTART=1`` for graphs that
+                # benefit from C's exact multi-restart behaviour.
+                if _c_restart and (pass_n == 0 or cur_cross > best_crossings):
                     layout._restore_ordering(fresh_order)
                 cur_cross = layout._count_all_crossings()
                 if cur_cross <= best_crossings:
