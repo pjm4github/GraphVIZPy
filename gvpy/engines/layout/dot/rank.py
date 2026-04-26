@@ -1051,19 +1051,86 @@ def build_ranks_on_skeleton(layout, active_nodes: set[str]) -> None:
                     visited.add(nbr)
                     queue.append(nbr)
 
-    # Source-iteration order.  C's ``GD_nlist`` walk starts at the
-    # head of the linked list, which (per ``class2.c``) places the
-    # cluster proxies in skeleton-construction order.  Our own
-    # ``_build_skeleton`` recursion is depth-first per top cluster
-    # in DOT-declaration order, so iterating the active set in
-    # cluster-name DOT order followed by non-cluster names roughly
-    # matches.  The ``GVPY_SKELETON_ITER_ORDER`` env var lets us
-    # try alternative orderings while we work out exactly what
-    # GD_nlist produces.
-    _order_mode = _os_skel.environ.get("GVPY_SKELETON_ITER_ORDER", "dot")
+    # Source-iteration order.  §1.5.35 trace of C's ``GD_nlist`` on
+    # 1879.dot showed:
+    #   * idx 0-27 are nodes with ``has_in=1`` — reached via DFS from
+    #     ``agfstnode``-order starting points (DOT-declared first).
+    #   * Sources (``has_in=0``) appear from idx 28 onwards in the
+    #     order C's DFS stack pops them — basically a DFS pre-order
+    #     through the cluster graph following ``ND_out``.
+    # The first source in C's iteration is therefore the FIRST source
+    # encountered during DFS pre-order from the first DOT-declared
+    # node, which on 1879.dot is ``cluster_7545x7546`` (rank 1) —
+    # whatever the DFS happens to reach last among the rank-1 cluster
+    # proxies.  ``GVPY_SKELETON_ITER_ORDER=dfs`` selects this; legacy
+    # ``dot`` and ``rank_then_dot`` remain available for diagnostics.
+    _order_mode = _os_skel.environ.get("GVPY_SKELETON_ITER_ORDER", "dfs")
 
     # Build a list of active nodes in our chosen iteration order.
-    if _order_mode == "rank_then_dot":
+    if _order_mode == "dfs":
+        # DFS pre-order starting from the first DOT-declared active
+        # node, walking out-edges.  Mirrors C's ``GD_nlist`` order
+        # observed on 1879.dot via the [TRACE skeleton_nlist] dump
+        # — clusters and non-cluster nodes come out of this in the
+        # exact sequence C uses, so the eventual source-iteration
+        # picks the same first source as C.
+        clusters_by_name = {cl.name: cl for cl in (
+            getattr(layout, "_clusters", None) or [])}
+        node_dot_idx = {n: i for i, n in enumerate(layout.graph.nodes)}
+
+        def _proxy_dot_idx(p: str) -> int:
+            """For a ``_skel_<cluster>_<rank>`` proxy, the DOT
+            position of its cluster's first member — gives a stable
+            seed point for DFS within the active set."""
+            rest = p[len("_skel_"):]
+            u = rest.rfind("_")
+            if u < 0:
+                return len(node_dot_idx)
+            cl_name = rest[:u]
+            cl = clusters_by_name.get(cl_name)
+            if cl is None:
+                return len(node_dot_idx)
+            for member in cl.nodes:
+                if member in node_dot_idx:
+                    return node_dot_idx[member]
+            return len(node_dot_idx)
+
+        def _start_key(n: str) -> int:
+            if n.startswith("_skel_"):
+                return _proxy_dot_idx(n)
+            return node_dot_idx.get(n, len(node_dot_idx))
+
+        # Order in which to TRY DFS starting points.  Within a DFS
+        # tree, child order also matters — use the same key on
+        # neighbours.
+        start_order = sorted(active_nodes, key=_start_key)
+
+        dfs_visited: set[str] = set()
+        iter_order: list[str] = []
+
+        def _dfs(n: str) -> None:
+            stack = [n]
+            while stack:
+                node = stack.pop()
+                if node in dfs_visited:
+                    continue
+                dfs_visited.add(node)
+                iter_order.append(node)
+                # Push out-neighbours in REVERSE start_key order so
+                # that the lowest-key neighbour is popped (and thus
+                # visited) FIRST.  Mirrors C's ``ND_out`` walk
+                # which goes through the linked list head-first.
+                nbrs = [nbr for nbr in out_adj.get(node, [])
+                        if nbr in active_nodes and nbr not in dfs_visited]
+                nbrs.sort(key=_start_key, reverse=True)
+                for nbr in nbrs:
+                    stack.append(nbr)
+
+        for s in start_order:
+            if s not in dfs_visited:
+                _dfs(s)
+
+    elif _order_mode == "rank_then_dot":
         # Same key as legacy ``build_ranks``: rank ascending, then
         # DOT-declaration order within rank.
         dot_nodes = [n for n in layout.graph.nodes if n in active_nodes]
