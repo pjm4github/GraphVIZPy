@@ -973,6 +973,182 @@ def build_ranks(layout):
         _reposition_rank_internal_sources(layout, in_count, out_adj)
 
 
+def build_ranks_on_skeleton(layout, active_nodes: set[str]) -> None:
+    """Re-run BFS-based rank ordering restricted to a skeleton view.
+
+    Mirrors C's ``mincross.c:build_ranks(g, 0)`` when ``g`` is the
+    SKELETON graph produced by ``class2`` (cluster proxies +
+    non-cluster real nodes + chain virtuals).  Currently
+    :func:`build_ranks` runs in phase 1 on the *original* graph and
+    its output is the input to ``skeleton_mincross``.  C's flow is
+    different: phase 1 only assigns rank numbers, then ``class2``
+    builds the skeleton graph, then ``mincross()`` calls
+    ``build_ranks`` on the SKELETON.  Source iteration happens over
+    the skeleton's ``GD_nlist`` (cluster proxies count!), so the
+    first BFS source can be a rank-1 cluster proxy whose cluster has
+    no inter-cluster in-edges — not a rank-0 real-node source as
+    Py's pre-§1.5.34 build_ranks always picks.
+
+    ``active_nodes`` is the set of skeleton-visible names: cluster
+    rank-leader proxies plus any real nodes that aren't currently
+    hidden inside a cluster.  Edges with one endpoint outside this
+    set are skipped — they're either intra-cluster (already
+    represented by the cluster's chain edges) or cross to a hidden
+    node (which has been re-routed to the cluster's proxy via the
+    skeleton chain).
+
+    Repopulates ``layout.ranks`` with the new ordering.  Other
+    layout state (lnodes / ledges) is unchanged.
+    """
+    import os as _os_skel
+    from collections import deque, defaultdict as _dd
+    from gvpy.engines.layout.dot.trace import (
+        trace as _bfs_trace, trace_on as _bfs_on,
+    )
+    _bfs_traceon = _bfs_on("bfs")
+
+    # Reset the rank arrays — caller is asking for a fresh ordering.
+    layout.ranks = _dd(list)
+
+    # Build directed out-adjacency restricted to ``active_nodes``.
+    out_adj: dict[str, list[str]] = _dd(list)
+    in_count: dict[str, int] = _dd(int)
+    seen_pairs: set[tuple[str, str]] = set()
+    for le in layout.ledges:
+        t, h = le.tail_name, le.head_name
+        if t not in active_nodes or h not in active_nodes:
+            continue
+        if (t, h) in seen_pairs:
+            continue
+        seen_pairs.add((t, h))
+        out_adj[t].append(h)
+        in_count[h] += 1
+
+    visited: set[str] = set()
+    installed: set[str] = set()
+
+    def _bfs(start: str) -> None:
+        if start in visited or start not in layout.lnodes:
+            return
+        if _bfs_traceon:
+            _bfs_trace(
+                "bfs",
+                f"source: {start} rank={layout.lnodes[start].rank}")
+        queue: "deque[str]" = deque([start])
+        visited.add(start)
+        while queue:
+            name = queue.popleft()
+            if name in installed:
+                continue
+            layout.ranks[layout.lnodes[name].rank].append(name)
+            installed.add(name)
+            if _bfs_traceon:
+                _bfs_trace(
+                    "bfs",
+                    f"install {name} rank={layout.lnodes[name].rank}")
+            for nbr in out_adj.get(name, []):
+                if nbr in active_nodes and nbr not in visited:
+                    visited.add(nbr)
+                    queue.append(nbr)
+
+    # Source-iteration order.  C's ``GD_nlist`` walk starts at the
+    # head of the linked list, which (per ``class2.c``) places the
+    # cluster proxies in skeleton-construction order.  Our own
+    # ``_build_skeleton`` recursion is depth-first per top cluster
+    # in DOT-declaration order, so iterating the active set in
+    # cluster-name DOT order followed by non-cluster names roughly
+    # matches.  The ``GVPY_SKELETON_ITER_ORDER`` env var lets us
+    # try alternative orderings while we work out exactly what
+    # GD_nlist produces.
+    _order_mode = _os_skel.environ.get("GVPY_SKELETON_ITER_ORDER", "dot")
+
+    # Build a list of active nodes in our chosen iteration order.
+    if _order_mode == "rank_then_dot":
+        # Same key as legacy ``build_ranks``: rank ascending, then
+        # DOT-declaration order within rank.
+        dot_nodes = [n for n in layout.graph.nodes if n in active_nodes]
+        dot_idx = {n: i for i, n in enumerate(dot_nodes)}
+        rest = [n for n in active_nodes if n not in dot_idx]
+        rest.sort(key=lambda n: (layout.lnodes[n].rank, n))
+        iter_order = sorted(
+            dot_nodes + rest,
+            key=lambda n: (layout.lnodes[n].rank,
+                           dot_idx.get(n, len(dot_nodes))),
+        )
+    else:
+        # Default: DOT-declaration order with cluster proxies
+        # interleaved at the position of their first member.  Real
+        # non-cluster nodes appear in their DOT order; cluster
+        # proxies appear before/after based on their cluster's first
+        # member's position.
+        dot_nodes = [n for n in layout.graph.nodes if n in active_nodes]
+        skel_nodes = [n for n in active_nodes
+                      if n not in set(dot_nodes) and n.startswith("_skel_")]
+        # Map each cluster proxy to its cluster's first DOT-order
+        # member's index, then sort proxies among real names.
+        clusters_by_name = {cl.name: cl for cl in (
+            getattr(layout, "_clusters", None) or [])}
+        node_dot_idx = {n: i for i, n in enumerate(layout.graph.nodes)}
+
+        def _proxy_idx(p: str) -> int:
+            # ``_skel_<cluster>_<rank>`` — find <cluster>
+            rest = p[len("_skel_"):]
+            u = rest.rfind("_")
+            if u < 0:
+                return len(node_dot_idx)
+            cl_name = rest[:u]
+            cl = clusters_by_name.get(cl_name)
+            if cl is None:
+                return len(node_dot_idx)
+            for member in cl.nodes:
+                if member in node_dot_idx:
+                    return node_dot_idx[member]
+            return len(node_dot_idx)
+
+        # Other virtuals (icv, anonymous) come last in name order.
+        other_virt = [n for n in active_nodes
+                      if n not in set(dot_nodes)
+                      and not n.startswith("_skel_")]
+        other_virt.sort()
+        proxy_order = sorted(skel_nodes, key=_proxy_idx)
+        # Interleave real nodes and proxies by their DOT position.
+        keyed: list[tuple[int, int, str]] = []
+        for n in dot_nodes:
+            keyed.append((node_dot_idx[n], 0, n))
+        for p in proxy_order:
+            keyed.append((_proxy_idx(p), 1, p))
+        keyed.sort()
+        iter_order = [n for _, _, n in keyed] + other_virt
+
+    if _bfs_traceon:
+        _bfs_trace(
+            "bfs",
+            f"build_ranks_on_skeleton active={len(active_nodes)} "
+            f"order_mode={_order_mode}")
+
+    # Phase 1: sources with in_count == 0 in our iteration order.
+    for name in iter_order:
+        if in_count.get(name, 0) == 0:
+            _bfs(name)
+
+    # Phase 2: any residual (cycle-only components).
+    for name in iter_order:
+        if name not in visited and name in layout.lnodes:
+            _bfs(name)
+
+    # Disconnected fall-through.
+    for name in active_nodes:
+        if name not in installed and name in layout.lnodes:
+            layout.ranks[layout.lnodes[name].rank].append(name)
+            installed.add(name)
+
+    # Update per-node order indices.
+    for r, rank_list in layout.ranks.items():
+        for i, name in enumerate(rank_list):
+            if name in layout.lnodes:
+                layout.lnodes[name].order = i
+
+
 def _reposition_rank_internal_sources(layout, in_count, out_adj):
     """Move rank-internal sources (no in-edges, rank > 0) to a position
     in their rank that reflects their children's centroid.

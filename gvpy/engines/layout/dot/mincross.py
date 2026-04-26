@@ -1124,6 +1124,28 @@ def skeleton_mincross(layout):
                 for i, name in enumerate(layout.ranks[r]):
                     layout.lnodes[name].order = i
 
+    # §1.5.34 — Re-run build_ranks on the SKELETON state before
+    # running mincross.  Phase 1's build_ranks operated on the
+    # ORIGINAL graph; the collapse step above swapped real cluster
+    # members for proxies in ``layout.ranks``, but inherited the
+    # original-graph ordering from phase 1.  C does it the other
+    # way around: ``mincross.c:1090`` calls ``build_ranks(g, 0)``
+    # AFTER ``class2`` builds the skeleton, so its BFS sources are
+    # cluster-proxy-aware.  Without this re-run, Py and C diverge at
+    # idx 0 of every rank from the very first reorder_enter event
+    # (1879.dot rank 1: C cluster_7545x7546 vs Py cluster_637x636,
+    # see §1.5.21 / Docs/D5_measurement_findings.md).
+    #
+    # Gated behind ``GVPY_SKELETON_BUILD_RANKS=1`` initially so we
+    # can A/B-test the impact on the full corpus before promoting.
+    import os as _os_sk
+    if _os_sk.environ.get("GVPY_SKELETON_BUILD_RANKS", "") == "1":
+        active = set()
+        for r in layout.ranks.values():
+            active.update(r)
+        from gvpy.engines.layout.dot.rank import build_ranks_on_skeleton
+        build_ranks_on_skeleton(layout, active)
+
     # ── Run mincross on fully collapsed graph ──
     layout._run_mincross()
     d5_stage_crossings(layout, "post_collapsed_mincross")
