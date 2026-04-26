@@ -637,9 +637,16 @@ def run_mincross(layout):
                 break
 
     if _c_loop:
+        # §1.5.33 — single pass through the C-faithful loop only.
+        # Earlier code optionally re-ran ``_multi_pass_loop`` when
+        # ``layout.remincross`` was set, but for clustered graphs
+        # ``_phase2_ordering`` already calls ``remincross_full`` as
+        # a separate phase (matching C's ``mincross(g, 2)`` after
+        # cluster expansion).  The double-loop here was triple-
+        # counting iterations (skeleton mincross hit 48 iters vs C's
+        # 16 on 1879.dot).  Match C's ``dotgen.c:mincross`` 1:1 —
+        # one mincross() call = one full 3-pass run, period.
         _multi_pass_loop()
-        if layout.remincross and best_crossings > 0:
-            _multi_pass_loop()
     else:
         # Legacy path — over-iterates medians+reorder per outer iter
         # to compensate for inner-function divergence.  Default until
