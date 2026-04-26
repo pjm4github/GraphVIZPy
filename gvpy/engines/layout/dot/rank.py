@@ -1032,6 +1032,39 @@ def build_ranks_on_skeleton(layout, active_nodes: set[str]) -> None:
         out_adj[t].append(h)
         in_adj[h].append(t)
         in_count[h] += 1
+    # §1.5.38: sort in_adj entries by their tail's DOT-declaration
+    # position to match C's ND_in order.  Class2 walks
+    # ``agfstnode → agfstout`` to populate ND_in, so the in-edges
+    # of any node end up in the order their TAILS were declared in
+    # the DOT file.  Our edge-iteration order from ``layout.ledges``
+    # doesn't preserve that — sometimes it's reversed (cluster_20x21
+    # case, ND_in_emit trace) — so sort explicitly.  out_adj already
+    # matches C without sorting (verified §1.5.36), so leave it
+    # alone.
+    _clusters_by_name = {cl.name: cl for cl in (
+        getattr(layout, "_clusters", None) or [])}
+    _node_dot_idx = {n: i for i, n in enumerate(layout.graph.nodes)}
+
+    def _proxy_dot_pos(p: str) -> int:
+        rest = p[len("_skel_"):]
+        u = rest.rfind("_")
+        if u < 0:
+            return len(_node_dot_idx)
+        cl = _clusters_by_name.get(rest[:u])
+        if cl is None:
+            return len(_node_dot_idx)
+        for member in cl.nodes:
+            if member in _node_dot_idx:
+                return _node_dot_idx[member]
+        return len(_node_dot_idx)
+
+    def _adj_sort_key(n: str) -> int:
+        if n.startswith("_skel_"):
+            return _proxy_dot_pos(n)
+        return _node_dot_idx.get(n, len(_node_dot_idx))
+
+    for h, tails in in_adj.items():
+        tails.sort(key=_adj_sort_key)
 
     visited: set[str] = set()
     installed: set[str] = set()
