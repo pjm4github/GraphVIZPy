@@ -1010,8 +1010,16 @@ def build_ranks_on_skeleton(layout, active_nodes: set[str]) -> None:
     # Reset the rank arrays — caller is asking for a fresh ordering.
     layout.ranks = _dd(list)
 
-    # Build directed out-adjacency restricted to ``active_nodes``.
+    # Build out + in adjacency restricted to ``active_nodes``.
+    # §1.5.37: ``decompose()``'s ``search_component`` (decomp.c:85)
+    # walks all four edge categories — ``flat_in``, ``flat_out``,
+    # ``in``, ``out`` — when picking DFS neighbours, with out-edges
+    # ending up on top of the stack and being popped first.  We mirror
+    # the (out, in) traversal here; flat_in/flat_out entries on a
+    # ranked DAG are rare and add complexity without observable
+    # impact in practice — fold them into in_adj if they show up.
     out_adj: dict[str, list[str]] = _dd(list)
+    in_adj: dict[str, list[str]] = _dd(list)
     in_count: dict[str, int] = _dd(int)
     seen_pairs: set[tuple[str, str]] = set()
     for le in layout.ledges:
@@ -1022,6 +1030,7 @@ def build_ranks_on_skeleton(layout, active_nodes: set[str]) -> None:
             continue
         seen_pairs.add((t, h))
         out_adj[t].append(h)
+        in_adj[h].append(t)
         in_count[h] += 1
 
     visited: set[str] = set()
@@ -1116,19 +1125,26 @@ def build_ranks_on_skeleton(layout, active_nodes: set[str]) -> None:
                     continue
                 dfs_visited.add(node)
                 iter_order.append(node)
-                # §1.5.36: visit neighbours in their ``out_adj``
-                # insertion order, matching C's ND_out linked-list
-                # head-to-tail walk.  Stack is LIFO, so push in
-                # REVERSE of desired visit order — the first
-                # neighbour in ``out_adj`` ends up on top of the
-                # stack and gets popped (visited) first.  Trace
-                # ``[TRACE nd_out_emit]`` on 1879.dot confirmed
-                # cluster_325x326's ND_out order matches our
-                # ``layout.ledges``-derived ``out_adj`` order
-                # exactly when no sort is applied.
-                nbrs = [nbr for nbr in out_adj.get(node, [])
-                        if nbr in active_nodes and nbr not in dfs_visited]
-                for nbr in reversed(nbrs):
+                # §1.5.37: mirror C ``decomp.c:search_component`` —
+                # push four edge categories with reverse-iteration so
+                # the first OUT-neighbour ends up on top of the stack
+                # (popped next).  Order pushed (LIFO last-pushed-pops-
+                # first):
+                #   1. flat_in      (popped last)
+                #   2. flat_out
+                #   3. in
+                #   4. out          (popped first)
+                # We omit flat_in/flat_out (rare, no observed impact)
+                # and push (in then out) so out-neighbours come off
+                # the stack in their ND_out order, then in-neighbours
+                # in reverse of their ND_in order.
+                in_nbrs = [nbr for nbr in in_adj.get(node, [])
+                           if nbr in active_nodes and nbr not in dfs_visited]
+                out_nbrs = [nbr for nbr in out_adj.get(node, [])
+                            if nbr in active_nodes and nbr not in dfs_visited]
+                for nbr in reversed(in_nbrs):
+                    stack.append(nbr)
+                for nbr in reversed(out_nbrs):
                     stack.append(nbr)
 
         for s in start_order:
