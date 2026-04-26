@@ -1116,14 +1116,19 @@ def build_ranks_on_skeleton(layout, active_nodes: set[str]) -> None:
                     continue
                 dfs_visited.add(node)
                 iter_order.append(node)
-                # Push out-neighbours in REVERSE start_key order so
-                # that the lowest-key neighbour is popped (and thus
-                # visited) FIRST.  Mirrors C's ``ND_out`` walk
-                # which goes through the linked list head-first.
+                # §1.5.36: visit neighbours in their ``out_adj``
+                # insertion order, matching C's ND_out linked-list
+                # head-to-tail walk.  Stack is LIFO, so push in
+                # REVERSE of desired visit order — the first
+                # neighbour in ``out_adj`` ends up on top of the
+                # stack and gets popped (visited) first.  Trace
+                # ``[TRACE nd_out_emit]`` on 1879.dot confirmed
+                # cluster_325x326's ND_out order matches our
+                # ``layout.ledges``-derived ``out_adj`` order
+                # exactly when no sort is applied.
                 nbrs = [nbr for nbr in out_adj.get(node, [])
                         if nbr in active_nodes and nbr not in dfs_visited]
-                nbrs.sort(key=_start_key, reverse=True)
-                for nbr in nbrs:
+                for nbr in reversed(nbrs):
                     stack.append(nbr)
 
         for s in start_order:
