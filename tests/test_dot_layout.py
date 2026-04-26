@@ -751,7 +751,13 @@ class TestOrdering:
 class TestRatioSize:
 
     def test_size_scales_layout(self):
-        """Layout with size is smaller than layout without size."""
+        """size= records a zoom factor < 1 without mutating layout coords.
+
+        Mirrors C's emit-time viewport scale: the layout bbox stays at
+        its natural dimensions and the renderer applies ``zoom`` as a
+        single transform.  This test asserts (a) the layout was not
+        mutated and (b) the recorded zoom shrinks the rendered canvas.
+        """
         r_small = layout_dot("""
             digraph G {
                 size="1,1";
@@ -761,9 +767,12 @@ class TestRatioSize:
         r_big = layout_dot("digraph G { a -> b -> c -> d -> e -> f; }")
         bb_small = r_small["graph"]["bb"]
         bb_big = r_big["graph"]["bb"]
-        small_h = bb_small[3] - bb_small[1]
-        big_h = bb_big[3] - bb_big[1]
-        assert small_h < big_h
+        # Layout coords are unaffected by size= (positions stay put)
+        assert bb_small == bb_big
+        # But the constrained graph reports a sub-1 zoom factor
+        assert "zoom" in r_small["graph"]
+        assert r_small["graph"]["zoom"] < 1.0
+        assert "zoom" not in r_big["graph"]
 
     def test_size_in_json(self):
         """Size attribute appears in graph JSON metadata."""

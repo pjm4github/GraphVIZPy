@@ -437,6 +437,13 @@ class DotGraphInfo(LayoutEngine):
         self.compound: bool = False
         self.ratio: str = ""
         self.graph_size: tuple[float, float] | None = None
+        # Viewport zoom factor produced by ``_apply_size`` when the
+        # ``size="W,H"`` attribute forces the rendered canvas to shrink.
+        # Layout coordinates are NOT mutated; the renderer applies this
+        # as a single ``transform="scale(zoom)"`` at SVG-emit time, the
+        # same way C's ``lib/common/emit.c`` carries the ``Z`` factor
+        # through to viewport emission.  ``1.0`` means no scaling.
+        self.zoom: float = 1.0
         self.nslimit: int = 200
         self.nslimit1: int = 200
         self.searchsize: int = 30
@@ -1388,6 +1395,19 @@ class DotGraphInfo(LayoutEngine):
         """
         return mincross.cluster_transpose(self, *args, **kwargs)
 
+    def _transpose_all_ranks(self, *args, **kwargs):
+        """Cross-rank transpose convergence loop (C ``transpose()``).
+
+        See: ``lib/dotgen/mincross.c:1006-1021``.  Drives
+        :meth:`_cluster_transpose` (single-pass mode) over every rank
+        repeatedly with candidate-flag propagation until no swap
+        fires anywhere — captures the cascade effects that C's
+        candidate mechanism handles natively.
+
+        Delegates to :func:`mincross.transpose_all_ranks`.
+        """
+        return mincross.transpose_all_ranks(self, *args, **kwargs)
+
 
     def _order_by_weighted_median(self, *args, **kwargs):
         """Reorder a rank by weighted-median of neighbor positions.
@@ -1632,11 +1652,18 @@ class DotGraphInfo(LayoutEngine):
         ] + self._chain_edges
 
     def _apply_size(self):
-        """Scale layout to fit within graph size attribute if set.
+        """Compute the viewport zoom factor for ``size="W,H"`` if set.
 
         See: ``lib/common/input.c: graph_init() @ 599`` +
         ``lib/common/emit.c: resize()`` — implements the ``size="W,H"``
         attribute including the ``!`` suffix for forcing upscale.
+
+        Unlike earlier revisions that scaled ``ln.x`` / ``ln.y`` in
+        place, this method matches C's emit-time viewport model: the
+        layout coords stay untouched and a single ``zoom`` multiplier
+        is stored on ``self``.  The SVG renderer applies it as a group
+        transform so positions, fonts, and HTML-table cells all scale
+        together.
         """
         if not self.graph_size or not self.lnodes:
             return
@@ -1654,22 +1681,20 @@ class DotGraphInfo(LayoutEngine):
             return
         sx = target_w / cur_w
         sy = target_h / cur_h
-        if self.ratio == "compress":
-            pass  # non-uniform: use sx, sy as-is
-        elif self.ratio == "fill":
+        # ``ratio="compress"`` is the only non-uniform mode; under "fill"
+        # and the default the canvas is scaled uniformly so the graph's
+        # aspect ratio is preserved.  We always store a single ``zoom``
+        # because SVG's group transform is uniform anyway — non-uniform
+        # ratios still get the same scalar (Graphviz documents fill/auto
+        # as the common behavior).
+        if self.ratio == "fill":
             s = max(sx, sy)
-            sx = sy = s
         else:
             s = min(sx, sy)
-            sx = sy = s
         # Only scale down, never up (unless size has !)
-        if sx >= 1.0 and sy >= 1.0:
+        if s >= 1.0:
             return
-        cx = (min_x + max_x) / 2.0
-        cy = (min_y + max_y) / 2.0
-        for ln in self.lnodes.values():
-            ln.x = cx + (ln.x - cx) * sx
-            ln.y = cy + (ln.y - cy) * sy
+        self.zoom = s
 
     def _concentrate_edges(self):
         """Merge parallel edges that share the same tail and head.
@@ -2460,6 +2485,8 @@ class DotGraphInfo(LayoutEngine):
             graph_meta["ratio"] = self.ratio
         if self.graph_size:
             graph_meta["size"] = [round(v, 2) for v in self.graph_size]
+        if self.zoom != 1.0:
+            graph_meta["zoom"] = round(self.zoom, 6)
         if self.dpi != 96.0:
             graph_meta["dpi"] = self.dpi
         if self.pad != 4.0:

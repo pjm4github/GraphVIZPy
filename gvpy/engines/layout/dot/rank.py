@@ -772,16 +772,17 @@ def build_ranks(layout):
     from gvpy.engines.layout.dot.trace import trace as _bfs_trace, trace_on as _bfs_on
     _bfs_traceon = _bfs_on("bfs")
 
-    # BFS-from-sources (the C-aligned path) is currently opt-in
-    # behind ``GVPY_BFS_BUILD_RANKS=1``.  Corpus measurement
-    # (2026-04-22) showed it closes the 2239 gap (+1 → 0) and
-    # shaves the 1472 regression (27 → 21) but regresses 2796
-    # (+13) and several small-gap fixtures (+1 each).  Net +4
-    # across the D5 corpus, so it's not the default until the
-    # regressing fixtures are understood.  Default stays on the
-    # DFS-over-undirected path which matches the pre-session
-    # behaviour.  Flip via the env var for diagnostics.
-    if _os_br.environ.get("GVPY_BFS_BUILD_RANKS", "") != "1":
+    # BFS-from-sources is the **default** (C-aligned) path as of
+    # §1.5.31 (2026-04-26).  §1.5.21–§1.5.30 added install_cluster
+    # recursion, rank-then-DOT source ordering, and rank-internal
+    # source repositioning, then ported C's 3-pass mincross loop with
+    # cross-rank transpose / reverse tie-break / flat_mval+hasfixed
+    # / CL_CROSS-guarded reverse tie-break.  d5_regression baseline
+    # closes (1 crossing, matches C) under the new default;
+    # 1879.dot's parent-child placement spread drops 17× vs the
+    # legacy DFS path.  Set ``GVPY_LEGACY_BUILD_RANKS=1`` to fall
+    # back to the DFS-over-undirected path for diagnostics.
+    if _os_br.environ.get("GVPY_LEGACY_BUILD_RANKS", "") == "1":
         _build_ranks_legacy_dfs(layout, _bfs_trace, _bfs_traceon)
         # Apply the same cluster-contiguity normalization to the
         # DFS output so both backends present a consistent final
@@ -806,7 +807,56 @@ def build_ranks(layout):
         in_count[h] += 1
 
     visited: set[str] = set()
+    installed: set[str] = set()  # added to ``layout.ranks``
+    cluster_installed: set[str] = set()  # whole cluster placed
     from collections import deque
+
+    # Innermost cluster per node (mirrors C's ``ND_clust(n)``).
+    node_cl: dict[str, str] = {}
+    clusters_by_name: dict = {}
+    if getattr(layout, "_clusters", None):
+        size_by_cl = {cl.name: len(cl.nodes) for cl in layout._clusters}
+        for cl in layout._clusters:
+            clusters_by_name[cl.name] = cl
+            for n in cl.nodes:
+                if n not in layout.lnodes:
+                    continue
+                prev = node_cl.get(n)
+                if prev is None or size_by_cl[cl.name] < size_by_cl[prev]:
+                    node_cl[n] = cl.name
+
+    def _install_cluster(cl_name: str, q: "deque[str]") -> None:
+        """Mirror of ``lib/dotgen/cluster.c:install_cluster()``.
+
+        Install every member of cluster ``cl_name`` into its rank in
+        cluster-declaration order, then enqueue all their out-neighbors.
+        Sets ``cluster_installed`` so a later BFS pop on a sibling
+        member is a no-op.
+        """
+        if cl_name in cluster_installed:
+            return
+        cl = clusters_by_name.get(cl_name)
+        if cl is None:
+            return
+        for n in cl.nodes:
+            if n not in layout.lnodes or n in installed:
+                continue
+            layout.ranks[layout.lnodes[n].rank].append(n)
+            installed.add(n)
+            visited.add(n)
+            if _bfs_traceon:
+                _bfs_trace("bfs",
+                           f"install_cluster {cl_name} member {n} "
+                           f"rank={layout.lnodes[n].rank}")
+        cluster_installed.add(cl_name)
+        # C does this in a separate loop after every rankleader is in.
+        for n in cl.nodes:
+            if n not in layout.lnodes:
+                continue
+            for nbr in out_adj.get(n, []):
+                if nbr not in visited and nbr in layout.lnodes:
+                    visited.add(nbr)
+                    q.append(nbr)
 
     def _bfs(start: str) -> None:
         if start in visited or start not in layout.lnodes:
@@ -818,7 +868,19 @@ def build_ranks(layout):
         visited.add(start)
         while queue:
             name = queue.popleft()
+            if name in installed:
+                continue  # already placed via _install_cluster
+            cl_name = node_cl.get(name)
+            if cl_name is not None and cl_name not in cluster_installed:
+                # Cluster-block install — every member at its rank, in
+                # declaration order, with all out-neighbors enqueued at
+                # the end (matches C's ``install_cluster`` two-loop
+                # structure).
+                _install_cluster(cl_name, queue)
+                continue
+            # Plain node install.
             layout.ranks[layout.lnodes[name].rank].append(name)
+            installed.add(name)
             if _bfs_traceon:
                 _bfs_trace("bfs",
                            f"install {name} rank={layout.lnodes[name].rank}")
@@ -827,10 +889,16 @@ def build_ranks(layout):
                     visited.add(nbr)
                     queue.append(nbr)
 
-    # Walk sources in DOT file order (``graph.nodes`` preserves
-    # insertion order) then any remaining nodes — C matches this
-    # via the ``agfstnode``/``ND_next`` scan with the empty-otheredges
-    # guard.
+    # Walk sources in **rank-then-DOT** order — C's ``GD_nlist`` is
+    # populated in rank order during graph build, so its
+    # ``agfstnode``/``ND_next`` scan visits rank-0 sources before any
+    # rank-1+ source.  Pure-DOT-order iteration (the §1.5.22 default)
+    # interleaves ranks, so a rank-1 source declared early in the file
+    # gets BFS'd before a rank-0 source declared later, producing a
+    # rank-0 ordering that doesn't match C's.  The sort key keeps
+    # DOT-declaration order *within* a rank, only promoting earlier
+    # ranks ahead of later ones — preserves §1.5.22 behaviour for
+    # graphs with no rank-skew between sources.
     dot_order_nodes: list[str] = [
         name for name in layout.graph.nodes if name in layout.lnodes
     ]
@@ -838,34 +906,202 @@ def build_ranks(layout):
         (n for n in layout.lnodes if n not in set(dot_order_nodes)),
         key=lambda n: (layout.lnodes[n].rank, n),
     )
+    # Stable sort: (rank, original DOT position) — Python's sort is
+    # stable so equal-rank entries retain their dot_order_nodes order.
+    dot_idx = {n: i for i, n in enumerate(dot_order_nodes)}
+    iter_order = sorted(
+        dot_order_nodes + virtual_nodes,
+        key=lambda n: (layout.lnodes[n].rank, dot_idx.get(n, len(dot_order_nodes))),
+    )
 
-    # Phase 1: sources with in_count == 0, in DOT order.
-    for name in dot_order_nodes + virtual_nodes:
+    # Phase 1: sources with in_count == 0, in rank-then-DOT order.
+    for name in iter_order:
         if name in visited or name not in layout.lnodes:
             continue
         if in_count.get(name, 0) == 0:
             _bfs(name)
 
     # Phase 2: any residual (e.g. cycle-only components) — start from
-    # the first unvisited node in DOT order.
-    for name in dot_order_nodes + virtual_nodes:
+    # the first unvisited node in rank-then-DOT order.
+    for name in iter_order:
         if name not in visited and name in layout.lnodes:
             _bfs(name)
 
-    # Ensure disconnected nodes get placed.
+    # Ensure disconnected nodes get placed (use ``installed`` since
+    # ``visited`` includes nodes reserved for cluster-block install
+    # that may not yet be in ``layout.ranks``).
     for name, ln in layout.lnodes.items():
-        if name not in visited:
+        if name not in installed:
             layout.ranks[ln.rank].append(name)
-            visited.add(name)
+            installed.add(name)
 
-    # Post-BFS cluster-contiguity normalization.  Approximates C's
-    # ``install_cluster`` effect on the final rank arrays: within
-    # each rank, group cluster members so they're contiguous at the
-    # first-occurrence position of their cluster.  Preserves BFS
-    # visit order for non-cluster nodes and for the cluster's own
-    # first-encountered position; only reorders cluster peers that
-    # BFS happened to visit via a separate sub-tree.  Doesn't push
-    # anyone past their natural BFS wavefront position.
+    # Post-BFS cluster-contiguity normalization is now redundant when
+    # the in-BFS ``_install_cluster`` runs (mirrors C's behaviour
+    # exactly).  Kept as a no-op safety net for single-rank clusters
+    # the BFS reaches via cluster-internal edges only — the pass
+    # leaves rank arrays untouched if every cluster is already
+    # contiguous.
+    _normalize_cluster_contiguity(layout)
+
+    # §1.5.24 — Reposition rank-internal sources by children-median.
+    # A rank-internal source is a node with no incoming edges that's
+    # at rank > 0 (typically pulled to its rank by cluster
+    # constraints).  BFS installs these at the END of their rank
+    # (whenever the source-iteration phase reaches them), but their
+    # children may already live near the FRONT of the next rank,
+    # creating long parent→child edges.  Mincross can't pull them
+    # leftward because it has no upward median for them.
+    #
+    # Fix: for each rank-internal source, slot it (and its cluster)
+    # in front of the rank position whose children-median equals
+    # this source's children-median.  Surgical — only moves nodes
+    # mincross can't move on its own; leaves every node with at
+    # least one incoming edge in its BFS-determined position.
+    #
+    # Iterate up to ``_MAX_ITERS`` passes — moving one source can
+    # shift another's children-median, so a single pass undershoots
+    # cases like ``couple_5378x5379`` where children sit deep on the
+    # left.  Stops on first pass that produces no further changes
+    # (typical: 2-3 iterations).
+    _MAX_ITERS = 5
+    prev_state: list[tuple[int, tuple[str, ...]]] = []
+    for _it in range(_MAX_ITERS):
+        snapshot = sorted((r, tuple(rl)) for r, rl in layout.ranks.items())
+        if snapshot == prev_state:
+            break
+        prev_state = snapshot
+        _reposition_rank_internal_sources(layout, in_count, out_adj)
+
+
+def _reposition_rank_internal_sources(layout, in_count, out_adj):
+    """Move rank-internal sources (no in-edges, rank > 0) to a position
+    in their rank that reflects their children's centroid.
+
+    Mincross's median heuristic computes ``upward median`` (parent
+    positions) to position a node — but a node with no parents has
+    no upward median, so mincross leaves it where build_ranks put
+    it.  This function fills that gap by positioning such nodes
+    using their children's median index in the next rank.
+    """
+    if not layout.ranks:
+        return
+    sorted_ranks = sorted(layout.ranks.keys())
+    if len(sorted_ranks) < 2:
+        return
+
+    # Innermost cluster per node so we move clusters as units.
+    node_cl: dict[str, str] = {}
+    if getattr(layout, "_clusters", None):
+        size_by_cl = {cl.name: len(cl.nodes) for cl in layout._clusters}
+        for cl in layout._clusters:
+            for n in cl.nodes:
+                if n not in layout.lnodes:
+                    continue
+                prev = node_cl.get(n)
+                if prev is None or size_by_cl[cl.name] < size_by_cl[prev]:
+                    node_cl[n] = cl.name
+
+    # Walk ranks 1..N-1.  §1.5.26 included rank 0 too, but on 1879
+    # that cascaded through the median chain and tripled rank-3
+    # overlaps (14 → 41) — the per-rank coupling is too tight to
+    # blindly resort rank 0 at build_ranks time.  Skipping rank 0
+    # here defers its ordering to mincross (which has the full
+    # crossing-count signal to balance against), and limits this
+    # pass to deeper-rank sources mincross definitionally can't
+    # move (no upward median).
+    for ri, r in enumerate(sorted_ranks):
+        if ri == 0:
+            continue
+        next_r = sorted_ranks[ri + 1] if ri + 1 < len(sorted_ranks) else None
+        if next_r is None:
+            continue  # bottom rank — no children to median over
+        child_pos = {n: idx for idx, n in enumerate(layout.ranks[next_r])}
+        rank_list = layout.ranks[r]
+
+        # Identify rank-internal sources at this rank.
+        sources: list[tuple[float, str]] = []
+        for n in rank_list:
+            if in_count.get(n, 0) != 0:
+                continue
+            children = out_adj.get(n, [])
+            indices = sorted(child_pos[c] for c in children if c in child_pos)
+            if not indices:
+                continue
+            cnt = len(indices)
+            med = (float(indices[cnt // 2]) if cnt % 2
+                   else (indices[cnt // 2 - 1] + indices[cnt // 2]) / 2.0)
+            sources.append((med, n))
+        if not sources:
+            continue
+
+        # Group source-cluster blocks (a source's whole cluster moves
+        # with it).  Pull them out of the rank, then re-insert at the
+        # position whose existing-node children-median is closest.
+        cluster_blocks: dict[str, tuple[float, list[str]]] = {}
+        loose_sources: list[tuple[float, str]] = []
+        for med, n in sources:
+            cl = node_cl.get(n)
+            if cl is None:
+                loose_sources.append((med, n))
+                continue
+            # First time we see this cluster, harvest all its members.
+            if cl not in cluster_blocks:
+                members = [m for m in rank_list if node_cl.get(m) == cl]
+                cluster_blocks[cl] = (med, members)
+            else:
+                # Multiple sources in same cluster — keep min-median.
+                old_med, members = cluster_blocks[cl]
+                cluster_blocks[cl] = (min(old_med, med), members)
+
+        # Build the moved-out set and the residual rank.
+        moved: set[str] = set()
+        for cl, (_, members) in cluster_blocks.items():
+            moved.update(members)
+        for _, n in loose_sources:
+            moved.add(n)
+        residual = [n for n in rank_list if n not in moved]
+
+        # Compute children-medians for the residual nodes too, so we
+        # can find the right insertion point per moved block.
+        residual_med: list[float] = []
+        for n in residual:
+            children = out_adj.get(n, [])
+            indices = sorted(child_pos[c] for c in children if c in child_pos)
+            if not indices:
+                residual_med.append(float("inf"))  # no signal — push right
+            else:
+                cnt = len(indices)
+                m = (float(indices[cnt // 2]) if cnt % 2
+                     else (indices[cnt // 2 - 1] + indices[cnt // 2]) / 2.0)
+                residual_med.append(m)
+
+        # Splice each moved block in by its median: insert before the
+        # first residual entry whose median is >= the block's median.
+        new_rank: list[str] = list(residual)
+        new_rank_med: list[float] = list(residual_med)
+
+        # Process blocks in ascending median order so insertion
+        # positions remain stable as we add to ``new_rank``.
+        all_blocks: list[tuple[float, list[str]]] = []
+        for cl, (med, members) in cluster_blocks.items():
+            all_blocks.append((med, members))
+        for med, n in loose_sources:
+            all_blocks.append((med, [n]))
+        all_blocks.sort(key=lambda x: x[0])
+
+        for med, members in all_blocks:
+            insert_at = len(new_rank)
+            for j, m in enumerate(new_rank_med):
+                if m >= med:
+                    insert_at = j
+                    break
+            new_rank[insert_at:insert_at] = members
+            new_rank_med[insert_at:insert_at] = [med] * len(members)
+
+        layout.ranks[r] = new_rank
+
+    # Cluster contiguity may have been disturbed if a moved cluster
+    # landed between two members of another cluster.  Re-group.
     _normalize_cluster_contiguity(layout)
 
 

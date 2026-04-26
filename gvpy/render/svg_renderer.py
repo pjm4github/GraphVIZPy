@@ -22,7 +22,7 @@ _SVG_HEADER = """\
 a {{ cursor: pointer; }}
 a text, a tspan {{ text-decoration: underline; }}
 ]]></style>
-<g id="graph0" class="graph">
+<g id="graph0" class="graph"{zoom_attr}>
 <title>{title}</title>
 """
 
@@ -977,8 +977,29 @@ def render_svg(layout: dict) -> str:
     # is searched first — matches C's behaviour.
     _apply_imagepath(graph.get("imagepath", ""))
 
+    # ── Viewport zoom (size="W,H") ─────────────────────────────
+    # ``DotLayout._apply_size`` records the C-style emit-time zoom
+    # factor when the graph's declared ``size`` is smaller than the
+    # natural canvas.  We apply it as a single ``transform="scale(z)"``
+    # on the graph0 group and scale the outer ``width``/``height``/
+    # ``viewBox`` to match.  Internal coords stay in layout units so
+    # text, HTML tables, and edges all scale together.
+    try:
+        zoom = float(graph.get("zoom", 1.0))
+    except (TypeError, ValueError):
+        zoom = 1.0
+    if zoom != 1.0 and zoom > 0.0:
+        vx_o, vy_o = vx * zoom, vy * zoom
+        vw_o, vh_o = vw * zoom, vh * zoom
+        zoom_attr = f' transform="scale({zoom:.6f})"'
+    else:
+        vx_o, vy_o, vw_o, vh_o = vx, vy, vw, vh
+        zoom_attr = ""
+
     parts = [_SVG_HEADER.format(
-        w=round(vw), h=round(vh), vx=vx, vy=vy, vw=vw, vh=vh, title=title,
+        w=round(vw_o), h=round(vh_o),
+        vx=vx_o, vy=vy_o, vw=vw_o, vh=vh_o,
+        title=title, zoom_attr=zoom_attr,
     )]
 
     for cl in layout.get("clusters", []):

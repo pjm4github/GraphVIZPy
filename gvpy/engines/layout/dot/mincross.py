@@ -504,65 +504,235 @@ def run_mincross(layout):
     best_crossings = layout._count_all_crossings()
     best_order = layout._save_ordering()
 
-    iterations = max(1, int(layout.MAX_MINCROSS_ITER * layout.mclimit))
     _done_iter = 0
     _step_calls = 0
 
-    def _step(down: bool, reverse: bool) -> None:
+    # The C-faithful 3-pass outer loop is the **default** as of
+    # §1.5.31 (2026-04-26).  §1.5.27–§1.5.30 closed the inner-step
+    # divergences (cross-rank transpose with candidate flags,
+    # reverse tie-break, flat_mval+hasfixed, CL_CROSS-guarded
+    # reverse tie-break) so the C-faithful path matches the
+    # d5_regression baseline (1 cluster crossing) while keeping all
+    # 1141 unit tests green.  Set ``GVPY_LEGACY_MINCROSS_LOOP=1`` to
+    # restore the previous over-iterating loop for diagnostics.
+    _c_loop = _os_mc.environ.get("GVPY_LEGACY_MINCROSS_LOOP", "") != "1"
+
+    def _mincross_step(pass_idx: int) -> None:
+        """One call mirrors C's ``mincross.c:1928 mincross_step``.
+
+        Per call: medians+reorder for ONE direction (down on even
+        ``pass_idx``, up on odd), followed by a transpose over every
+        rank.  ``reverse`` flips every 2 passes (``pass_idx % 4 < 2``).
+
+        Earlier Python versions did down+up per outer iteration with
+        a single trailing transpose — that doubled the medians work
+        per iteration relative to C, masking divergences in the
+        crossing-count search.  Matching C 1:1 here means the outer
+        3-pass loop in ``run_mincross`` does the same work-per-step
+        as C's outer loop (mincross.c:1086-1142).
+        """
+        reverse = (pass_idx % 4) < 2
+        is_down = (pass_idx % 2 == 0)
         if _legacy:
-            rng = (range(1, max_rank + 1) if down
+            rng = (range(1, max_rank + 1) if is_down
                    else range(max_rank - 1, -1, -1))
             for r in rng:
                 if r in layout.ranks:
                     layout._order_by_weighted_median(
-                        r, r - 1 if down else r + 1)
+                        r, r - 1 if is_down else r + 1)
                     layout._transpose_rank(r)
             return
-        rng = (range(1, max_rank + 1) if down
+        rng = (range(1, max_rank + 1) if is_down
                else range(max_rank - 1, -1, -1))
         for r in rng:
             if r not in layout.ranks:
                 continue
-            layout._cluster_medians(
-                r, r - 1 if down else r + 1,
+            hasfixed = layout._cluster_medians(
+                r, r - 1 if is_down else r + 1,
                 all_nodes, fg_out, fg_in)
-            layout._cluster_reorder(r, all_nodes, node_cl, reverse)
-        # One transpose pass per full down+up cycle — matches C's
-        # mincross_step (single transpose at the end).  Thread the
-        # already-built root-scope fast graph through so the inner
-        # pair cost uses count_scoped_pair_crossings (O(degree))
-        # instead of count_crossings_for_pair (O(E)).  Profiled hot
-        # path for 2620.dot — was pushing it past the 60s timeout.
-        if not down:
-            for r in range(max_rank + 1):
-                if r in layout.ranks:
-                    layout._cluster_transpose(
-                        r, all_nodes, node_cl,
-                        fg_out=fg_out, fg_in=fg_in,
-                        fg_xpenalty=fg_xpenalty)
+            layout._cluster_reorder(r, all_nodes, node_cl, reverse,
+                                     hasfixed=bool(hasfixed))
+        # C's mincross_step transposes every call (mincross.c:1953),
+        # not just on up passes.  And C's ``transpose()``
+        # (mincross.c:1006-1021) does a do-while loop over all ranks
+        # with candidate-flag propagation — a swap at rank R re-marks
+        # R-1/R+1 as candidates because their crossing counts have
+        # shifted.  Our previous one-pass loop missed the cascade and
+        # converged to a worse local minimum than C.  ``reverse``
+        # also drives C's tie-break on equal-crossing pairs.
+        layout._transpose_all_ranks(
+            all_nodes, node_cl,
+            reverse=(not reverse),  # C: transpose(g, !reverse)
+            fg_out=fg_out, fg_in=fg_in, fg_xpenalty=fg_xpenalty)
 
-    for pass_i in range(iterations):
-        _done_iter += 1
-        reverse = (pass_i % 4) < 2
-        _step(down=True, reverse=reverse)
-        _step(down=False, reverse=reverse)
-        _step_calls += 1
-        c = layout._count_all_crossings()
-        if c < best_crossings:
-            best_crossings = c
-            best_order = layout._save_ordering()
+    # ── C's 3-pass outer loop (mincross.c:1086-1142) ────────────────
+    # Match C's tunables (mincross.c:2299-2306):
+    #   MinQuit = 8     — break after this many no-improvement iters
+    #   MaxIter = 24    — hard cap on the long pass-2 phase
+    #   Convergence = 0.995 — only reset ``trying`` on a ≥ 0.5% drop
+    # ``mclimit`` scales both MinQuit and MaxIter (mincross.c:2304-5).
+    # Pass 0/1: short bursts of MIN(4, MaxIter); Pass 2: full MaxIter.
+    Convergence = 0.995
+    MinQuit = max(1, int(8 * layout.mclimit))
+    MaxIter = max(1, int(24 * layout.mclimit))
 
-    if layout.remincross and best_crossings > 0:
+    # Snapshot of the post-build_ranks "fresh" state.  C resets to
+    # this between passes 0 and 1 by re-calling build_ranks
+    # (mincross.c:1090) — for us, restoring the snapshot achieves
+    # the same multi-restart semantics without needing to re-walk
+    # the graph (and works for both initial mincross and the
+    # post-cluster-expand remincross_full pass, where calling
+    # build_ranks would incorrectly undo cluster expansion).
+    fresh_order = layout._save_ordering()
+
+    def _multi_pass_loop():
+        nonlocal best_crossings, best_order, _done_iter, _step_calls
+        cur_cross = best_crossings
+        pass_idx_global = 0
+        for pass_n in range(3):
+            if pass_n <= 1:
+                maxthispass = min(4, MaxIter)
+                # ── Restart from the fresh build_ranks state ────────
+                # Mirrors C ``mincross.c:1086-1095`` — passes 0 and 1
+                # each reset the rank arrays before iterating, so a
+                # bad local optimum in pass 0 doesn't poison pass 1.
+                # Pass 2 picks up from the best ordering across all
+                # passes (mincross.c:1115).
+                #
+                # Pass 0 only on the first multi_pass_loop call: the
+                # snapshot is the post-build_ranks "fresh" state.  On
+                # the remincross_full re-entry, ``fresh_order`` was
+                # captured AFTER the first sweep, so restoring it
+                # doesn't undo cluster expansion.
+                #
+                # Skip the restart on pass 1 if pass 0 already
+                # produced the best — restarting from fresh would
+                # discard pass 0's gains and make pass 1 redundant.
+                # This matches C's effect: passes 0/1 differ only by
+                # flat_breakcycles (pass 0 only), so on graphs
+                # without same-rank cycles pass 1 lands on pass 0's
+                # result anyway.
+                if pass_n == 0 or cur_cross > best_crossings:
+                    layout._restore_ordering(fresh_order)
+                cur_cross = layout._count_all_crossings()
+                if cur_cross <= best_crossings:
+                    best_crossings = cur_cross
+                    best_order = layout._save_ordering()
+            else:
+                maxthispass = MaxIter
+                if cur_cross > best_crossings:
+                    layout._restore_ordering(best_order)
+                cur_cross = best_crossings
+            trying = 0
+            for _it in range(maxthispass):
+                if trying >= MinQuit:
+                    break
+                trying += 1
+                if cur_cross == 0:
+                    break
+                _mincross_step(pass_idx_global)
+                pass_idx_global += 1
+                _done_iter += 1
+                _step_calls += 1
+                cur_cross = layout._count_all_crossings()
+                if cur_cross <= best_crossings:
+                    if cur_cross < Convergence * best_crossings:
+                        trying = 0
+                    best_crossings = cur_cross
+                    best_order = layout._save_ordering()
+            if cur_cross == 0:
+                break
+
+    if _c_loop:
+        _multi_pass_loop()
+        if layout.remincross and best_crossings > 0:
+            _multi_pass_loop()
+    else:
+        # Legacy path — over-iterates medians+reorder per outer iter
+        # to compensate for inner-function divergence.  Default until
+        # ``_cluster_medians/_cluster_reorder/_cluster_transpose``
+        # are audited to match C exactly.
+        iterations = max(1, int(layout.MAX_MINCROSS_ITER * layout.mclimit))
         for pass_i in range(iterations):
             _done_iter += 1
             reverse = (pass_i % 4) < 2
-            _step(down=True, reverse=reverse)
-            _step(down=False, reverse=reverse)
+            # Inline old behaviour: down (no transpose), up (with
+            # transpose).  Use the underlying primitives directly
+            # rather than ``_mincross_step`` (which always
+            # transposes, mirroring C).
+            for r in range(1, max_rank + 1):
+                if r not in layout.ranks:
+                    continue
+                if _legacy:
+                    layout._order_by_weighted_median(r, r - 1)
+                    layout._transpose_rank(r)
+                else:
+                    layout._cluster_medians(r, r - 1, all_nodes,
+                                              fg_out, fg_in)
+                    layout._cluster_reorder(r, all_nodes, node_cl,
+                                              reverse)
+            for r in range(max_rank - 1, -1, -1):
+                if r not in layout.ranks:
+                    continue
+                if _legacy:
+                    layout._order_by_weighted_median(r, r + 1)
+                    layout._transpose_rank(r)
+                else:
+                    layout._cluster_medians(r, r + 1, all_nodes,
+                                              fg_out, fg_in)
+                    layout._cluster_reorder(r, all_nodes, node_cl,
+                                              reverse)
+            if not _legacy:
+                for r in range(max_rank + 1):
+                    if r in layout.ranks:
+                        layout._cluster_transpose(
+                            r, all_nodes, node_cl,
+                            fg_out=fg_out, fg_in=fg_in,
+                            fg_xpenalty=fg_xpenalty)
             _step_calls += 1
             c = layout._count_all_crossings()
             if c < best_crossings:
                 best_crossings = c
                 best_order = layout._save_ordering()
+
+        if layout.remincross and best_crossings > 0:
+            for pass_i in range(iterations):
+                _done_iter += 1
+                reverse = (pass_i % 4) < 2
+                for r in range(1, max_rank + 1):
+                    if r not in layout.ranks:
+                        continue
+                    if _legacy:
+                        layout._order_by_weighted_median(r, r - 1)
+                        layout._transpose_rank(r)
+                    else:
+                        layout._cluster_medians(r, r - 1, all_nodes,
+                                                  fg_out, fg_in)
+                        layout._cluster_reorder(r, all_nodes, node_cl,
+                                                  reverse)
+                for r in range(max_rank - 1, -1, -1):
+                    if r not in layout.ranks:
+                        continue
+                    if _legacy:
+                        layout._order_by_weighted_median(r, r + 1)
+                        layout._transpose_rank(r)
+                    else:
+                        layout._cluster_medians(r, r + 1, all_nodes,
+                                                  fg_out, fg_in)
+                        layout._cluster_reorder(r, all_nodes, node_cl,
+                                                  reverse)
+                if not _legacy:
+                    for r in range(max_rank + 1):
+                        if r in layout.ranks:
+                            layout._cluster_transpose(
+                                r, all_nodes, node_cl,
+                                fg_out=fg_out, fg_in=fg_in,
+                                fg_xpenalty=fg_xpenalty)
+                _step_calls += 1
+                c = layout._count_all_crossings()
+                if c < best_crossings:
+                    best_crossings = c
+                    best_order = layout._save_ordering()
 
     layout._restore_ordering(best_order)
     if _trace_order:
@@ -1429,16 +1599,62 @@ def skeleton_mincross(layout):
                 layout.lnodes[name].order = i
 
 
+def _flat_mval(layout, name: str, flat_in: dict, flat_out: dict) -> bool:
+    """Mirror of ``mincross.c:2055-2083 flat_mval()``.
+
+    Used when a node has NO cross-rank edges — its mval has to be
+    derived from same-rank (flat) neighbours instead.
+
+    * Has flat in-edges: pick the predecessor with the **highest**
+      order; if its mval is ≥ 0, set ours to ``mval + 1`` and return
+      ``False`` (not fixed — we got a value).
+    * Else has flat out-edges: pick the successor with the **lowest**
+      order; if its mval is > 0, set ours to ``mval - 1`` and return
+      ``False``.
+    * Otherwise (no flat neighbour with a valid mval): return
+      ``True`` — node is "fixed" and ``reorder()`` should preserve
+      its position by *not* shrinking ``ep`` this pass.
+    """
+    mval = layout._node_mval
+    nodes_in = flat_in.get(name, [])
+    if nodes_in:
+        # Predecessor with the largest order (rightmost on rank).
+        best = max(nodes_in, key=lambda nn: layout.lnodes[nn].order
+                   if nn in layout.lnodes else -1)
+        v = mval.get(best, -1.0)
+        if v >= 0:
+            mval[name] = v + 1.0
+            return False
+        return True
+    nodes_out = flat_out.get(name, [])
+    if nodes_out:
+        # Successor with the smallest order (leftmost on rank).
+        best = min(nodes_out, key=lambda nn: layout.lnodes[nn].order
+                   if nn in layout.lnodes else 10**9)
+        v = mval.get(best, -1.0)
+        if v > 0:
+            mval[name] = v - 1.0
+            return False
+        return True
+    return True
+
+
 def cluster_medians(layout, rank: int, adj_rank: int,
                       cl_nodes: set[str],
                       fg_out: dict | None = None,
-                      fg_in: dict | None = None):
+                      fg_in: dict | None = None) -> bool:
     """Compute median values for nodes at rank.
 
     Mirrors C mincross.c:1687-1743 medians().
     Uses VAL(node, port) = MC_SCALE * order + port.order
     (mincross.c:1685, sameport.c:151-152) for neighbor positions.
     Stores results in layout._node_mval[name].
+
+    Returns ``hasfixed`` (C ``mincross.c:2087-2163``) — True iff any
+    node at this rank with only flat (same-rank) edges could not
+    derive a valid mval from its flat neighbours.  ``reorder()``
+    consumes this to decide whether to keep ``ep`` from shrinking
+    (a fixed node anchors the rest of the pass).
     """
     rank_nodes = layout.ranks.get(rank, [])
     adj_set = set(layout.ranks.get(adj_rank, []))
@@ -1587,11 +1803,54 @@ def cluster_medians(layout, rank: int, adj_rank: int,
             if nbr_parts:
                 trace("median", f"  {name} adj_nbrs: {' '.join(nbr_parts)}")
 
+    # ── flat_mval pass + hasfixed (mincross.c:2159-2163) ──────────
+    # For nodes whose only edges are same-rank (flat) — they have no
+    # cross-rank median input, so ``flat_mval`` derives a value from
+    # their flat-edge neighbours' mvals.  If a flat-only node still
+    # can't get a valid mval (its flat neighbour also lacks one),
+    # it's "fixed": ``reorder()`` keeps ``ep`` from shrinking on its
+    # pass, anchoring the rank's right end so the bubble-sort doesn't
+    # walk it past unstable downstream entries.
+    hasfixed = False
+    if cl_nodes:
+        # Build flat-edge adjacency restricted to the same rank.  We
+        # check for "no cross-rank edges" by intersecting with
+        # ``layout.lnodes`` rank info.  Cheap to do per-call — each
+        # rank typically has a handful of flat-only nodes at most.
+        flat_in: dict[str, list[str]] = {}
+        flat_out: dict[str, list[str]] = {}
+        has_cross_edge: dict[str, bool] = {}
+        for le in layout.ledges:
+            t, h = le.tail_name, le.head_name
+            if (t not in layout.lnodes) or (h not in layout.lnodes):
+                continue
+            tr = layout.lnodes[t].rank
+            hr = layout.lnodes[h].rank
+            if tr == hr == rank:
+                flat_out.setdefault(t, []).append(h)
+                flat_in.setdefault(h, []).append(t)
+            else:
+                if tr == rank:
+                    has_cross_edge[t] = True
+                if hr == rank:
+                    has_cross_edge[h] = True
+        for name in rank_nodes:
+            if name not in cl_nodes:
+                continue
+            # C: ``ND_out(n).size == 0 && ND_in(n).size == 0`` —
+            # the regular cross-rank edge lists are empty.
+            if has_cross_edge.get(name, False):
+                continue
+            if _flat_mval(layout, name, flat_in, flat_out):
+                hasfixed = True
+    return hasfixed
+
 
 def cluster_reorder(layout, rank: int, cl_nodes: set[str],
                       child_cl_map: dict[str, str] | None = None,
                       reverse: bool = False,
-                      remincross_phase: bool = False):
+                      remincross_phase: bool = False,
+                      hasfixed: bool = False):
     """Bubble-sort reorder matching C mincross.c:1476-1526 reorder().
 
     Compares nodes by mval (from _cluster_medians).  Skips nodes
@@ -1701,8 +1960,11 @@ def cluster_reorder(layout, rank: int, cl_nodes: set[str],
 
             li = ri
 
-        # C mincross.c:1517-1518: shrink unless hasfixed or reverse
-        if not reverse:
+        # C mincross.c:1917-1918: ``if (!hasfixed && !reverse) ep--;``.
+        # ``hasfixed`` from medians() — a flat-only node that
+        # couldn't derive an mval anchors the right edge of the
+        # bubble-sort scan, so we keep ep at its current position.
+        if not hasfixed and not reverse:
             ep -= 1
 
 
@@ -1711,7 +1973,9 @@ def cluster_transpose(layout, rank: int, cl_nodes: set[str],
                        remincross_phase: bool = False,
                        fg_out: dict[str, list[str]] | None = None,
                        fg_in: dict[str, list[str]] | None = None,
-                       fg_xpenalty: dict[tuple[str, str], int] | None = None):
+                       fg_xpenalty: dict[tuple[str, str], int] | None = None,
+                       reverse: bool = False,
+                       single_pass: bool = False) -> int:
     """Adjacent-swap transpose restricted to cluster nodes.
 
     See: /lib/dotgen/mincross.c @ 685
@@ -1728,16 +1992,35 @@ def cluster_transpose(layout, rank: int, cl_nodes: set[str],
     are NOT exempt.  Fixes the D5 ``RL``-flip pattern identified on
     2796 (see ``Docs/D5_measurement_findings.md``).
     """
+    """
+    ``single_pass=True`` mirrors C's ``transpose_step``: one pass over
+    adjacent pairs, returning the total ``c_before - c_after`` delta
+    (positive if any beneficial swap fired).  The caller is then
+    expected to drive convergence at the cross-rank level via a
+    do-while loop with candidate-flag propagation
+    (``transpose_all_ranks``), matching ``mincross.c:1006-1021``.
+
+    ``single_pass=False`` (default) keeps the legacy per-rank
+    convergence loop so existing call sites in ``remincross_full``
+    don't change behaviour.
+
+    ``reverse=True`` enables C's reverse tie-break (``c1 < c0 ||
+    (c0 > 0 && reverse && c1 == c0)``) — swap on equal crossings to
+    perturb out of local minima.  Without this, Py converges
+    deterministically to a worse local minimum than C on
+    near-tied configurations.
+    """
     nodes = layout.ranks.get(rank, [])
     if len(nodes) < 2:
-        return
+        return 0
     from gvpy.engines.layout.dot.trace import trace as _t_trace, trace_on as _t_on
     _t_enabled = _t_on("d5_step")
     if _t_enabled:
         _ns = " ".join(f"{nm}:{i}" for i, nm in enumerate(nodes))
         _t_trace("d5_step",
-                 f"transpose_enter rank={rank} "
+                 f"transpose_enter rank={rank} reverse={1 if reverse else 0} "
                  f"rmx={1 if remincross_phase else 0} nodes=[{_ns}]")
+    rv = 0  # cumulative delta across all swaps (C's ``rv`` in transpose_step)
     improved = True
     while improved:
         improved = False
@@ -1782,17 +2065,97 @@ def cluster_transpose(layout, rank: int, cl_nodes: set[str],
             else:
                 c_before = layout._count_crossings_for_pair(v, w)
                 c_after = layout._count_crossings_for_pair(w, v)
+            # C's swap condition (mincross.c:969):
+            #   c1 < c0 || (c0 > 0 && reverse && c1 == c0)
+            #
+            # Note on the ``c_before < layout._CL_CROSS`` guard: C and
+            # Py both weight cluster-border edges by CL_CROSS=1000.
+            # On d5_regression, our weighted-pair crossing metric finds
+            # ~4 more "ties" per iteration than C's because of subtle
+            # differences in which virtual edges receive the CL_CROSS
+            # weight (long invis edges yield a longer chain of weighted
+            # virtuals in Py).  Triggering the reverse-tie-break swap on
+            # those high-magnitude ties perturbs the layout into a
+            # worse local minimum — d5_regression goes from 1 → 3
+            # cluster crossings.  Restricting the tie-break to
+            # unweighted ties (``c_before < CL_CROSS``) keeps C's
+            # perturbation behaviour for genuine tie cases without
+            # over-firing on virtuals where our weight bookkeeping
+            # diverges from C's.
+            _CL_CROSS = getattr(layout, "_CL_CROSS", 1000)
+            do_swap = (c_after < c_before) or (
+                reverse and c_before > 0 and c_after == c_before
+                and c_before < _CL_CROSS
+            )
             if _t_enabled:
                 _t_trace("d5_step",
                          f"transpose_cmp rank={rank} "
                          f"v={v}@{i} w={w}@{i + 1} "
                          f"c_before={c_before} c_after={c_after} "
-                         f"swapped={1 if c_after < c_before else 0}")
-            if c_after < c_before:
+                         f"swapped={1 if do_swap else 0}")
+            if do_swap:
                 nodes[i], nodes[i + 1] = w, v
                 layout.lnodes[w].order = i
                 layout.lnodes[v].order = i + 1
+                rv += c_before - c_after
                 improved = True
+        if single_pass:
+            # C's transpose_step: single pass per call.  Outer loop
+            # in ``transpose_all_ranks`` drives the do-while.
+            break
+    return rv
+
+
+def transpose_all_ranks(layout, cl_nodes: set[str], child_cl_map,
+                         reverse: bool, remincross_phase: bool = False,
+                         fg_out=None, fg_in=None, fg_xpenalty=None,
+                         max_outer_iters: int = 1000) -> int:
+    """Mirror of ``mincross.c:1006-1021 transpose()``.
+
+    Drives :func:`cluster_transpose` (in single-pass mode) over every
+    rank repeatedly until no swap fires anywhere — implementing C's
+    ``do { delta = 0; for r in ranks: delta += transpose_step(...) }
+    while (delta >= 1)`` cross-rank propagation.  A swap at rank r
+    affects in/out crossings at ranks r-1 and r+1, so they're
+    re-marked as candidates and re-processed in the next sweep.
+    Without this, Py's per-rank convergence misses cascade effects
+    that C's candidate-flag mechanism naturally captures.
+
+    Returns total swap delta across all sweeps (positive ⇒ improved).
+    """
+    if not layout.ranks:
+        return 0
+    sorted_ranks = sorted(layout.ranks.keys())
+    candidate = {r: True for r in sorted_ranks}
+    total_delta = 0
+    for _it in range(max_outer_iters):
+        delta = 0
+        # Iterate in min→max rank order, matching C's loop.  A swap
+        # at rank r flips ``candidate[r±1]`` so the next outer sweep
+        # picks them up.
+        for r in sorted_ranks:
+            if not candidate.get(r, False):
+                continue
+            candidate[r] = False  # C: ``GD_rank(g)[r].candidate = false``
+            d = layout._cluster_transpose(
+                r, cl_nodes, child_cl_map,
+                remincross_phase=remincross_phase,
+                fg_out=fg_out, fg_in=fg_in, fg_xpenalty=fg_xpenalty,
+                reverse=reverse, single_pass=True,
+            )
+            if d > 0:
+                # A swap fired — this rank may swap again, and so may
+                # its neighbours (their crossing counts changed).
+                candidate[r] = True
+                if r > sorted_ranks[0]:
+                    candidate[r - 1] = True
+                if r < sorted_ranks[-1]:
+                    candidate[r + 1] = True
+                delta += d
+        total_delta += delta
+        if delta < 1:
+            break
+    return total_delta
 
 
 def cluster_build_ranks(

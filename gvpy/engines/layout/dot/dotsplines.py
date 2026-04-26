@@ -521,6 +521,18 @@ def _phase4_routing_body(layout):
                 le.points = layout._to_bezier(le.points)
                 le.spline_type = "bezier"
 
+    # Smooth multi-segment beziers whose middle pieces are degenerate
+    # (control points colinear with anchors → effectively straight
+    # lines).  ``Proutespline``'s recursive fit emits one cubic per
+    # corridor box, so an edge crossing N boxes can land here as an
+    # N-piece path with N-2 dead-straight middle segments stitched
+    # between two curved end pieces.  C's emit pipeline (mkspline +
+    # the dotsplines smoother) collapses those into a single smooth
+    # cubic; this pass mirrors that, refitting via Schneider only when
+    # the chord across the extreme anchors doesn't cross a non-member
+    # cluster bbox (preserves the D4 cluster-detour guarantee).
+    _smooth_degenerate_beziers(layout)
+
     # Parallel-edge separation: shift overlapping parallel edges
     # perpendicular to their axis so they do not draw over each other.
     _apply_parallel_offsets(layout)
@@ -546,6 +558,163 @@ def _phase4_routing_body(layout):
             if le.points:
                 pts_str = " ".join(f"({p[0]:.1f},{p[1]:.1f})" for p in le.points[:4])
                 trace("spline_detail", f"edge {le.tail_name}->{le.head_name}: npts={len(le.points)} type={le.spline_type} pts={pts_str}{'...' if len(le.points)>4 else ''}")
+
+
+def _smooth_degenerate_beziers(layout):
+    """Refit multi-segment beziers whose middle pieces are degenerate
+    into a single smooth cubic, mirroring C's mkspline-emit behaviour.
+
+    A bezier point list ``[a0, c1, c2, a1, c1', c2', a2, ...]`` carries
+    one cubic segment per ``(c1, c2, end)`` triple.  ``Proutespline``'s
+    recursive fit emits a fresh segment for each corridor box, so a
+    long edge with mostly-straight intermediate boxes lands here as an
+    N-piece path whose middle segments have ``c1 == a_i``,
+    ``c2 == a_{i+1}`` (i.e. the cubic collapses to the chord between
+    two anchors).  C's emit pipeline absorbs this redundancy into a
+    single cubic via ``mkspline``.
+
+    Heuristic:
+
+    * Only consider edges with ``len(points) > 4`` (≥ 2 segments) and
+      ``spline_type == "bezier"``.
+    * Refit only when **every middle segment** is degenerate (the
+      curvature lives in the two endpoint segments — the routing
+      didn't intentionally bend around an obstacle).
+    * Skip any edge whose extreme-anchor chord crosses a non-member
+      cluster bbox (preserves D4 cluster-detour guarantee — the same
+      check :func:`flatten_straight_runs` uses).
+
+    Merged single cubic preserves the original end-segment tangents
+    exactly: ``[A0, ps[1], ps[-2], A_last]`` — i.e. reuse the first
+    segment's ``cp1`` (the tail-side curvature) and the last segment's
+    ``cp2`` (the head-side curvature), discarding the now-redundant
+    intermediate anchors.  Schneider's recursive fit would split such
+    polylines back into multiple cubics, which defeats the purpose.
+    """
+    _ALIGN_EPS = 0.5  # pt — anchors within this distance count as
+                       # "on the chord", so a degenerate cubic registers
+                       # despite floating-point drift in the routed
+                       # coordinates.
+
+    clusters = getattr(layout, "_clusters", None) or []
+
+    def _seg_is_degenerate(a0, c1, c2, a1):
+        """True when the cubic ``a0→c1→c2→a1`` collapses to the chord
+        ``a0 → a1`` (control points lie on the anchor segment)."""
+        dx, dy = a1[0] - a0[0], a1[1] - a0[1]
+        seg_len = (dx * dx + dy * dy) ** 0.5
+        if seg_len < 1e-9:
+            return True
+        nx, ny = -dy / seg_len, dx / seg_len  # unit normal
+        for c in (c1, c2):
+            d = (c[0] - a0[0]) * nx + (c[1] - a0[1]) * ny
+            if abs(d) > _ALIGN_EPS:
+                return False
+        return True
+
+    def _chord_crosses_offender(p0, p1, offenders):
+        for cl in offenders:
+            if not cl.bb:
+                continue
+            bx0, by0, bx1, by1 = cl.bb
+            from gvpy.engines.layout.dot.dotsplines import clip_to_bb
+            hit = clip_to_bb(p0, p1, (bx0, by0, bx1, by1))
+            if hit is not None:
+                return True
+        return False
+
+    def _bezier_crosses_offender(cubic, offenders):
+        """Densify the cubic to a polyline and report whether any
+        polyline segment crosses a non-member cluster bbox.
+
+        Identical to the audit harness in
+        ``porting_scripts/count_cluster_crossings.py`` (12 samples per
+        cubic + segment-vs-bbox AABB overlap), so smoothing can't
+        silently raise the audit's crossing count.  If the merged
+        curve would cross, keep the original multi-piece routing.
+        """
+        a0, c1, c2, a1 = cubic
+        samples = [a0]
+        for k in range(1, 13):
+            t = k / 12.0
+            s = 1.0 - t
+            x = s*s*s * a0[0] + 3*s*s*t * c1[0] + 3*s*t*t * c2[0] + t*t*t * a1[0]
+            y = s*s*s * a0[1] + 3*s*s*t * c1[1] + 3*s*t*t * c2[1] + t*t*t * a1[1]
+            samples.append((x, y))
+        offenders_with_bb = [(cl.bb[0], cl.bb[1], cl.bb[2], cl.bb[3])
+                              for cl in offenders if cl.bb]
+        for (ax, ay), (bx, by) in zip(samples, samples[1:]):
+            smin_x, smax_x = min(ax, bx), max(ax, bx)
+            smin_y, smax_y = min(ay, by), max(ay, by)
+            for x1, y1, x2, y2 in offenders_with_bb:
+                if smax_x < x1 or smin_x > x2 or smax_y < y1 or smin_y > y2:
+                    continue
+                return True
+        return False
+
+    all_edges = ([le for le in layout.ledges if not le.virtual]
+                 + layout._chain_edges)
+    for le in all_edges:
+        if le.spline_type != "bezier":
+            continue
+        # Self-loops are multi-piece by construction — the loop's
+        # whole point is to leave and re-enter the same node, so
+        # collapsing the segments destroys the geometry.
+        if le.tail_name == le.head_name:
+            continue
+        ps = le.points
+        if not ps or len(ps) < 7:  # need ≥ 2 segments (1+3+3 = 7 pts)
+            continue
+        n_segs = (len(ps) - 1) // 3
+        if n_segs < 2:
+            continue
+
+        # Anchors at indices 0, 3, 6, ... ; one cubic between each pair.
+        anchors = [ps[i * 3] for i in range(n_segs + 1)]
+
+        # Refit only when the curvature is at the ends — middle
+        # segments must all collapse to their chord.  A single
+        # non-degenerate middle segment means the routing wove around
+        # something, and we leave the edge alone.
+        all_middle_degenerate = True
+        for k in range(1, n_segs - 1):
+            a0, a1 = anchors[k], anchors[k + 1]
+            c1, c2 = ps[k * 3 + 1], ps[k * 3 + 2]
+            if not _seg_is_degenerate(a0, c1, c2, a1):
+                all_middle_degenerate = False
+                break
+        if not all_middle_degenerate:
+            continue
+
+        # Cluster-safety: extreme-anchor chord must not cut a
+        # non-member cluster.
+        member_names: set[str] = set()
+        for cl in clusters:
+            if le.tail_name in cl.nodes or le.head_name in cl.nodes:
+                member_names.add(cl.name)
+        offenders = [cl for cl in clusters if cl.name not in member_names]
+        if _chord_crosses_offender(anchors[0], anchors[-1], offenders):
+            continue
+
+        # Build the merged cubic that would replace the multi-piece
+        # spline.  Reuse the first segment's ``cp1`` (tail-side
+        # curvature) and the last segment's ``cp2`` (head-side
+        # curvature) so the merged curve enters and leaves the
+        # anchors with the same tangent direction the router chose.
+        merged = [anchors[0], ps[1], ps[-2], anchors[-1]]
+
+        # The chord check above only constrains the straight line
+        # between extreme anchors; the actual cubic can bow well
+        # outside that line because ``cp1`` / ``cp2`` are offset
+        # perpendicular to the chord.  Sample the merged cubic and
+        # reject if any sample lands inside a non-member cluster.
+        # This mirrors the audit metric's bezier-vs-bbox check, so
+        # smoothing decisions can't silently increase the cluster-
+        # crossing count.
+        if _bezier_crosses_offender(merged, offenders):
+            continue
+
+        le.points = merged
 
 
 def _apply_parallel_offsets(layout):

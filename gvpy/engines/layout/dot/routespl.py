@@ -306,6 +306,31 @@ def routesplines_(pp: Path, polyline: bool = False,
     else:
         flip = False
 
+    # ── Pre-validate y-monotonicity (2-box vertical corridor only) ─
+    # The polygon builder below assumes adjacent boxes are stacked
+    # in y.  When two NODE bboxes from adjacent ranks overlap —
+    # because Python's HTML-label + image bboxes grew past the
+    # rank separation — the resulting 8-vertex polygon is
+    # self-intersecting and Pshortestpath returns -2 ("triangulation
+    # failed").  Observed on 1879.dot ≈ 34 edges.
+    #
+    # Restricted to the 2-box case to avoid touching flat-edge arc
+    # corridors (5+ boxes by design, x varies more than y) where
+    # the y-monotonicity assumption never held.
+    if boxn == 2:
+        _a = boxes[0]
+        _b = boxes[1]
+        _Y_GAP = 1.0
+        if _a.ur_y > _b.ll_y - _Y_GAP and _a.ll_y < _b.ur_y:
+            _mid = (_a.ll_y + _b.ur_y) / 2.0
+            _new_a_top = _mid - _Y_GAP / 2.0
+            _new_b_bot = _mid + _Y_GAP / 2.0
+            # Only apply if both boxes stay at least 1pt thick.
+            if (_new_a_top - _a.ll_y >= _Y_GAP
+                    and _b.ur_y - _new_b_bot >= _Y_GAP):
+                _a.ur_y = _new_a_top
+                _b.ll_y = _new_b_bot
+
     # Build polygon from boxes: forward walk (left side) then backward
     # walk (right side), forming a CCW polygon around the corridor.
     polypoints: list[Ppoint] = []
@@ -379,6 +404,19 @@ def routesplines_(pp: Path, polyline: bool = False,
     sx, sy = pp.start.np
     ex, ey = pp.end.np
     eps = [Ppoint(sx, sy), Ppoint(ex, ey)]
+
+    # Probe diagnostic: emit the polygon when the corridor is small
+    # enough that a degenerate / self-intersecting shape is likely.
+    # Channel: spline_route.
+    from gvpy.engines.layout.dot.trace import trace_on as _t_on, trace as _t_tr
+    if len(polypoints) <= 12 and _t_on("spline_route"):
+        _bs = " ".join(
+            f"[{b.ll_x:.1f},{b.ll_y:.1f},{b.ur_x:.1f},{b.ur_y:.1f}]"
+            for b in boxes
+        )
+        _ps = " ".join(f"({p.x:.1f},{p.y:.1f})" for p in polypoints)
+        _t_tr("spline_route",
+              f"corridor edge={edge_name or '?'} boxes={_bs} poly={_ps}")
 
     status, pl = Pshortestpath(poly, eps)
     if status < 0:
