@@ -1158,7 +1158,56 @@ def skeleton_mincross(layout):
         for r in layout.ranks.values():
             active.update(r)
         from gvpy.engines.layout.dot.rank import build_ranks_on_skeleton
-        build_ranks_on_skeleton(layout, active)
+        # §1.5.42: tell build_ranks_on_skeleton to run a final
+        # transpose pass on its output, mirroring C's
+        # ``mincross.c:1700-1701`` ``transpose(g, false)`` at the
+        # tail of build_ranks.  Use a dynamic attribute so rank.py
+        # doesn't import from mincross (avoids the layered cycle).
+        # Use ``_dd`` (alias for the module-level ``defaultdict``)
+        # so the local block doesn't shadow the import name and
+        # break unrelated callers further in this function.
+        _dd = defaultdict
+        all_active = active
+        node_cl_post: dict[str, str] = {}
+        if layout._clusters:
+            for cl in sorted(layout._clusters,
+                             key=lambda c: len(c.nodes), reverse=True):
+                for n in cl.nodes:
+                    if n in layout.lnodes:
+                        node_cl_post[n] = cl.name
+        fg_out_post: dict[str, list[str]] = _dd(list)
+        fg_in_post: dict[str, list[str]] = _dd(list)
+        fg_xpenalty_post: dict[tuple[str, str], int] = {}
+        seen_pairs_post: set[tuple[str, str]] = set()
+        for le in layout.ledges:
+            t, h = le.tail_name, le.head_name
+            if t == h:
+                continue
+            if t not in layout.lnodes or h not in layout.lnodes:
+                continue
+            pair = (t, h)
+            xp = getattr(le, "xpenalty", 1) or 1
+            if pair in seen_pairs_post:
+                if xp > fg_xpenalty_post.get(pair, 0):
+                    fg_xpenalty_post[pair] = xp
+                continue
+            seen_pairs_post.add(pair)
+            fg_out_post[t].append(h)
+            fg_in_post[h].append(t)
+            fg_xpenalty_post[pair] = xp
+
+        def _post_xpose(layout):
+            layout._transpose_all_ranks(
+                all_active, node_cl_post,
+                reverse=False,
+                fg_out=fg_out_post, fg_in=fg_in_post,
+                fg_xpenalty=fg_xpenalty_post,
+            )
+        layout._skeleton_post_build_transpose = _post_xpose
+        try:
+            build_ranks_on_skeleton(layout, active)
+        finally:
+            del layout._skeleton_post_build_transpose
 
     # ── Run mincross on fully collapsed graph ──
     layout._run_mincross()

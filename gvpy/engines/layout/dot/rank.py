@@ -1269,6 +1269,26 @@ def build_ranks_on_skeleton(layout, active_nodes: set[str]) -> None:
             if name in layout.lnodes:
                 layout.lnodes[name].order = i
 
+    # §1.5.42: C's build_ranks calls ``transpose(g, false)`` at the
+    # very end if ncross() > 0 (mincross.c:1700-1701), BEFORE any
+    # reorder/mincross_step iteration runs.  This pre-transpose
+    # walks every rank and swaps adjacent pairs to reduce
+    # crossings, so the input C feeds into mincross is already
+    # locally optimised — not pure BFS output.  Without this step,
+    # Py's BFS-output rank arrays (correct as far as BFS goes)
+    # carry into mincross with different crossing patterns than C,
+    # and downstream median/reorder/transpose decisions diverge.
+    # On 1879.dot, C's pre-transpose swaps (cluster_7504x7505,
+    # cluster_7506x7507) at rank 0 immediately after BFS — Py was
+    # missing that swap until this hook landed.
+    #
+    # Implemented via a callback to mincross.transpose_all_ranks
+    # (avoids importing it directly here — the layered import would
+    # create a cycle since mincross imports from rank).
+    _post_xpose = getattr(layout, "_skeleton_post_build_transpose", None)
+    if _post_xpose is not None:
+        _post_xpose(layout)
+
 
 def _reposition_rank_internal_sources(layout, in_count, out_adj):
     """Move rank-internal sources (no in-edges, rank > 0) to a position
