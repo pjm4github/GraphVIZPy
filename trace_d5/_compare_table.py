@@ -139,7 +139,7 @@ def side_by_side_detail(c_first, p_first, ranks, label_c="C", label_p="Py"):
                   f"{pn:<28} {str(pv):>10}  {mark}")
 
 
-def pass_progression(c_events, p_events, max_passes=10):
+def pass_progression(c_events, p_events, max_passes=10, show_detail=False):
     """Compare paired events sequentially up to max_passes per direction.
 
     Identifies the FIRST paired event where C and Py disagree; prior
@@ -176,6 +176,22 @@ def pass_progression(c_events, p_events, max_passes=10):
         print(f"  → first divergence at paired event #{first_div}: "
               f"C line {c_ln} (rank={c_r} reverse={c_rev}) "
               f"vs Py line {p_ln} (rank={p_r} reverse={p_rev})")
+        if show_detail:
+            print()
+            print(f"  Event #{first_div} side-by-side (rank={c_r}):")
+            print(f"  {'idx':>3}  {'C name':<28} {'C mv':>10}  "
+                  f"{'Py name':<28} {'Py mv':>10}  match")
+            n = max(len(c_e), len(p_e))
+            for k in range(n):
+                cn = c_e[k][0] if k < len(c_e) else "—"
+                cv = c_e[k][2] if k < len(c_e) else "—"
+                pn = p_e[k][0] if k < len(p_e) else "—"
+                pv = p_e[k][2] if k < len(p_e) else "—"
+                same = (cn == pn and cv == pv)
+                if same:
+                    continue  # only show diff rows for compactness
+                print(f"  {k:>3}  {cn:<28} {str(cv):>10}  "
+                      f"{pn:<28} {str(pv):>10}  ✗")
 
 
 def main():
@@ -188,6 +204,15 @@ def main():
     diverged = per_rank_summary(c_first, p_first)
     side_by_side_detail(c_first, p_first, diverged)
     pass_progression(c_events, p_events)
+    # Top-level pass progression: filter out C's cluster-expand-mincross
+    # 3-node events so the pairing aligns with Py's mincross_step
+    # cadence (Py's _cluster_reorder operates on the FULL rank during
+    # expand; it doesn't scope to cluster interior the way C does).
+    c_top = [e for e in c_events if len(e[4]) >= 4]
+    p_top = [e for e in p_events if len(e[4]) >= 4]
+    print()
+    print(f"=== Top-level (≥4 entries) pass progression ===")
+    pass_progression(c_top, p_top, show_detail=True)
 
 
 if __name__ == "__main__":
