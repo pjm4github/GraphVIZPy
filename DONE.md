@@ -5,6 +5,267 @@ short.  Ordered newest → oldest.
 
 ---
 
+## §1.5.51–53 — Position-phase overlap audit + fixes — 2026-04-27
+
+Built `trace_d5/_position_compare.py` overlap audit harness and
+closed three position-phase bugs on 1879.dot.
+
+**§1.5.51 — Overlap audit harness** (commit `9624dab`).  Compares
+1879.dot's C and Py SVG outputs at the position-phase level
+(post-mincross, post-coordinate-assignment).  Three measures:
+
+1. Structural — rank-bucket count, per-rank node populations,
+   per-rank Y-gap ratio (Py/C).  On 1879: both engines emit 9
+   rank buckets; average gap ratio 1.67× (Py inflates due to
+   HTML-table rendering; C doesn't render `<TABLE>`).
+2. Per-engine overlap audit — counts node-node, cluster-NON-
+   member-node, and cluster-cluster sibling overlaps separately.
+   C is the reference; Py overlaps that exceed C's count flag
+   real positioning bugs vs HTML-inflation noise.
+3. Side-by-side summary table.
+
+Bbox extraction handles `<rect>`/`<ellipse>`/`<polygon>`/`<image>`/
+`<text>` (C's HTML-label nodes render as `<image>` + `<text>`,
+not `<rect>`).  Depth-balanced `<g>...</g>` matching for C's nested
+`a_nodeN` wrappers.
+
+**§1.5.52 — Stack nodes pushed past same cluster boundary**
+(commit `25bf6e8`).  `post_rankdir_keepout` pushed each node
+independently to the boundary of overlapping non-member clusters.
+Multiple sibling nodes whose NS-positioned X all fell inside the
+same cluster bbox got pushed to the SAME boundary X — collapsing
+onto each other.  On 1879.dot rank 5: NS placed sibling leaves
+of `couple_330x331` distinctly (`node_420_420` x=4303,
+`node_390_390` x=4450), but both fell inside `cluster_52x715`'s
+bbox (4244-4741) and got pushed past `cluster_74x75`'s right edge
+to `x = 4222 + gap + hw = 4294.66` — exact-bbox duplicates in
+the SVG.  Fix: track `_exit_slot[(cluster_name, side)]` =
+next-available boundary X.  When pushing a node past a cluster
+face, place it at the slot's current target and bump the slot
+by `node_width + nodesep` so subsequent nodes stack rather than
+collide.
+
+**§1.5.53 — Final per-rank separation pass after keepout**
+(commit `d9b5cef`).  `post_rankdir_keepout` pushes nodes out of
+non-member cluster bboxes but doesn't enforce inter-node spacing
+among the pushed nodes.  Pairs of orphan rank-N siblings whose
+NS positions fell inside the same sibling cluster got pushed by
+DIFFERENT clusters and landed in the same region.  Fix: after
+`post_rankdir_keepout` + `post_resolve_align`, walk each rank
+in cross-rank order; for any pair of consecutive nodes overlapping
+or closer than `nodesep`, bump the right node so its left edge
+sits `nodesep` past the prior's right edge.
+
+**Cumulative result on 1879.dot**:
+
+| measure | baseline | post §1.5.53 |
+|---|---|---|
+| Exact-bbox dup groups | 3 (6 nodes) | **0** ✓ |
+| Node-node overlaps | 123 | **24** (within 2 of C's 22) |
+| Cluster-non-member | 37 | **10** (vs C's 0) |
+| Cluster-cluster sibling | 0 | 0 ✓ |
+| 1879 default crossings | 100 | 96 (-4) |
+
+Broader corpus default-path crossings: 1213-1 4→3, 1213-2 unchanged,
+1472 14→13, 2796 22→20, aa1332 unchanged, 2239 0→1.  1141 main
+tests pass; d5_regression yellow warning unchanged.
+
+---
+
+## §1.5.40–50 — Mincross + remincross fully aligned with C on 1879.dot — 2026-04-26 → 2026-04-27
+
+Cumulative chain that achieved **100% pass-by-pass match
+(10326/10326 entries across all 25 mincross + remincross passes)**
+on 1879.dot.  Built on §1.5.21–39's build_ranks-source-pick
+closure.
+
+**§1.5.40 — Investigated downstream divergence post-build_ranks.**
+First-reorder match was 100% but pass-1+ diverged.  Identified the
+chain below.
+
+**§1.5.42 — Post-build_ranks transpose** (mirrors C
+`mincross.c:1700-1701`).  C's `build_ranks` calls
+`transpose(g, false)` if `ncross() > 0` — so the input C feeds
+into mincross is already locally optimised, not pure BFS output.
+Without this, Py's pure-BFS rank arrays carried into mincross
+with different crossing patterns, and downstream median/reorder
+decisions diverged.
+
+**§1.5.43 — Iterate edges by tail node in `layout.graph.nodes`
+order** (mirrors C `class2.c` `agfstnode → agfstout`).  Was
+walking raw DOT-edge-line order; for clusters with multiple
+member nodes, edges interleave by DOT line.  C's by-node walk
+aggregates each member's edges as a block.
+
+**§1.5.44 — Substitute hidden cluster-member ends with their
+proxies AT THE ORIGINAL EDGE'S POSITION in `layout.ledges`**.
+Real edges with hidden heads (cluster members) were filtered
+out; the chain edge `t → cluster_proxy` got appended LAST in
+out_adj.  C's `class2` inserts the chain head in `agfstout`'s
+iteration position.  With seen_pairs dedup, substituted
+(early-position) entry now wins over late-position chain edge.
+
+**§1.5.45 — Skeleton cluster proxies trigger sawclust.**
+Mapped `_skel_<cluster>_<rank>` keys back to their cluster name
+in `node_cl` so `cluster_reorder`'s sawclust check fires for
+skeleton cluster proxies — matches C's `ND_clust(*rp)` at
+`mincross.c:1493-1503`.
+
+**§1.5.46 — Bottom-up build_ranks(pass=1).**  C's
+`mincross.c:1617 build_ranks(g, pass)` has TWO modes selected
+by `pass`: pass=0 sources are no-in-edges (DAG roots), BFS walks
+out-edges (top-down); pass=1 sources are no-out-edges (DAG sinks),
+BFS walks in-edges (bottom-up).  C calls both at outer pass=0
+and outer pass=1; Py implemented only pass=0.  Added `pass_idx`
+parameter and called pass=1 at outer pass_n=1 boundary in
+`_multi_pass_loop`.  Kept `_skeleton_post_build_transpose` alive
+across `_run_mincross` so the pass=1 BFS output also gets the
+post-build transpose.
+
+**§1.5.47 — Transpose candidate flags fire on tie-break swaps.**
+C's `transpose_step` returns `int64_t` delta; tie-break swaps
+where `c_before == c_after` contribute 0 to delta but still set
+the rank's candidate flag (`mincross.c:991`).  Py's
+`transpose_all_ranks` was keying candidate-propagation on `d > 0`,
+so tie-break swaps got lost — cluster proxies got stuck early in
+their bounce sequence past runs of fixed (-1) nodes.  Fixed by
+tracking `swap_count` (incl. tie-break) and stashing on
+`layout._last_transpose_swap_count`; outer loop still terminates
+on `delta < 1` so tie-break-only sweeps don't oscillate.
+
+**§1.5.48 — Remincross sawclust + mark_lowclusters.**  Two-part
+fix: (a) sawclust fires only on virtual cluster proxies during
+cluster expand-mincross (real members can swap within the
+cluster); (b) populate `node_cl` with EVERY node during
+`remincross_full` (mirrors C's `mark_lowclusters` at
+`cluster.c:433` called before ReMincross), and gate sawclust on
+`(rn_virt OR remincross_phase)` so reorder is a near-no-op in
+ReMincross matching C's "transpose-only" semantics.  C's
+ReMincross emits 0 reorder_cmp events at rank=4 pass 16; Py was
+emitting 6860.
+
+**§1.5.49 — Sort cluster interior by external in-edge median at
+expand-splice.**  C's `mincross_clust(g)` calls `expand_cluster`
++ `mincross(g, 2)` per cluster.  The per-cluster mincross runs
+medians using `ND_in/ND_out` which include EXTERNAL edges,
+sorting interior by external position.  Py's expand-mincross loop
+gated to `len(cl_ranks) >= 2` skipped single-rank clusters
+(1879's 3-member family-tree clusters — `cluster_20x21`,
+`cluster_7499x7500`, `cluster_622x627`, `cluster_630x633`,
+`cluster_6x7`).  Fix: at the splice step, compute external
+in-edge median for each member from `layout.ranks[r-1]`, sort
+unfixed positions by mval ascending while leaving -1 fixed
+positions in place.  Hidden in-edge tails substituted with their
+cluster's currently-active proxy at the tail's rank.
+
+**§1.5.50 — Fix cl_node_set leak in expand-splice sort.**
+§1.5.49's sort used the wrong variable for the intra-cluster
+filter — `cl_node_set` is assigned at line ~1582 (post-expansion
+mincross block) and PERSISTS across iterations of the `for cl_name
+in cluster_dfs_order` loop.  At the splice step (lines 1420-1450),
+`cl_node_set` therefore referred to the PREVIOUS cluster's
+members.  On `cluster_7499x7500`'s expand: `cl_node_set` contained
+`cluster_7504x7505`'s members from the prior iteration; the
+intra-cluster check `if t in cl_node_set: continue` falsely
+skipped the legitimate external edge `couple_7504x7505 →
+node_7499x7500_7499`.  Fix: use `cl_member_set` (= `node_sets[cl_name]`)
+which IS the current cluster's members.
+
+**Cumulative result on 1879.dot**:
+
+| measure | result |
+|---|---|
+| First-reorder match (top-level events) | **100% (353/353 across 9 ranks)** ✓ |
+| Pass-by-pass match (top-level events, 25 passes) | **100% (10326/10326)** ✓ |
+| Default-path cluster crossings | 106 → 100 (-6) |
+| Skeleton-path cluster crossings | 133 → 115 (-18) |
+
+`couple_630x633` + children spread drops 17× (6950pt → 400pt
+range).  d5_regression yellow warning (2 vs baseline 1) tracked
+under §1.5.41+ chain.
+
+Commits: `dd3037c` (§1.5.45), `99516eb` (§1.5.46), `f854f80`
+(§1.5.47), `c2d8b97`/`67ed916` (§1.5.48), `ccc7431` (§1.5.49),
+`3afbfbe` (§1.5.50), plus several earlier commits for §1.5.40-44.
+
+Four analysis helpers under `trace_d5/`: `_event_categories.py`,
+`_pass_compare.py`, `_compare_table.py`, `_per_rank_diverge.py`,
+`_position_compare.py`.
+
+Channels: `[TRACE d5_step]`, `[TRACE d5_edges]`, `[TRACE bfs]`,
+`[TRACE skeleton_nlist]`, `[TRACE nd_out_emit]`, `[TRACE gd_clust]`,
+`[TRACE nd_in_emit]` — both engines.
+
+---
+
+## §1.5.21–39 — D5 build_ranks closure on 1879.dot — 2026-04-25 → 2026-04-26
+
+Investigated and **closed** 1879.dot's parent-vs-children placement
+gap at the build_ranks level.  Root cause traced to `build_ranks()`
+divergence (rank-0 cluster ordering).  Fixes shipped in two layers.
+
+**§1.5.21 — D5 baseline measurement.**  Identified 1879.dot's
+mincross-output distance as the largest single divergence in the
+corpus.  Established the comparison harness against C's traces.
+
+**Build_ranks side**:
+
+- **§1.5.22 — install_cluster recursion.**  Mirrors C's
+  `install_cluster` which recursively installs all rank-leaders
+  of a cluster (not just its top leader) when a cluster is the
+  BFS source.
+
+- **§1.5.23 — Rank-then-DOT source ordering.**  Walk
+  `layout.graph.nodes` in DOT order, sorted by `lnodes[n].rank`,
+  then by DOT index within rank — matching C's `agfstnode → agnxtnode`
+  + cluster-leader prepending order.
+
+- **§1.5.24/25 — Rank-internal source repositioning.**  Sources
+  inside a rank get repositioned to the children-median X
+  (iterated to convergence) so source nodes track their downstream
+  neighbours rather than landing at left-end of rank.
+
+**Mincross side**:
+
+- **§1.5.27 — C-faithful 3-pass loop.**  Replaced legacy
+  multi-pass loop with C's outer-3 + MinQuit/Convergence early-stop.
+
+- **§1.5.29 — Cross-rank transpose with candidate flags.**
+  Mirrors `mincross.c:1006-1021` candidate-flag propagation.
+  Adds reverse tie-break (`c0 > 0 && reverse && c1 == c0`).
+  Adds `flat_mval`/`hasfixed` semantics.
+
+- **§1.5.30 — CL_CROSS guard for weighted ties.**  Restrict
+  reverse-tie-break swap to unweighted ties (`c_before <
+  CL_CROSS=1000`); avoids over-firing on virtual edges where Py
+  weight bookkeeping diverges from C's.
+
+- **§1.5.31 — Per-pass restart from build_ranks snapshot.**
+  Mirrors C's pass=0/1 `build_ranks` re-call at
+  `mincross.c:1086-1095`.
+
+- **§1.5.33 — Removed redundant remincross loop.**  Was
+  triple-counting iterations (skeleton mincross hit 48 iters vs
+  C's 16 on 1879.dot).
+
+**Architectural deep-dive — build_ranks_on_skeleton (gated behind
+`GVPY_SKELETON_BUILD_RANKS=1`)**:
+
+- **§1.5.34–39** — added `build_ranks_on_skeleton` operating on
+  post-class2 skeleton + DFS pre-order through out + in edges +
+  ND_in tail-DOT-sort, mirroring C's `decompose()` exactly.
+  Closed via 5-channel C instrumentation: `[TRACE skeleton_nlist]`,
+  `[TRACE nd_out_emit]`, `[TRACE gd_clust]`, `[TRACE nd_in_emit]`,
+  `[TRACE bfs]`.
+
+**Result**: all **42 BFS source picks on 1879 now match C exactly
+by name AND iter_order index** (28, 29, 30, 32, ..., 352).
+d5_regression baseline matched C exactly (1 cluster crossing).
+1879.dot `couple_630x633` + children spread dropped 17× (6950pt
+→ 400pt range).
+
+---
+
 ## §1.5.11–20 — D5 mincross scope correctness + parser semantics — 2026-04-22 → 2026-04-24
 
 Twenty session deep-dive on the D5 cluster-straddle divergence,
