@@ -1441,6 +1441,98 @@ def skeleton_mincross(layout):
                 restore = [n for n in bfs_order.get(r, [])
                            if n in layout.lnodes
                            and layout.lnodes[n].rank == r]
+                # §1.5.49: sort cluster interior by external in-edge
+                # median position to mirror C's mincross_clust(g) +
+                # mincross(g, 2) which runs reorder on cluster scope
+                # using ND_in (which includes external in-edges from
+                # outside the cluster).  Without this, single-rank
+                # clusters (Py's expand mincross loop is gated to
+                # ``len(cl_ranks) >= 2``) keep BFS / DOT-declaration
+                # order, while C produces mval-sorted order.  E.g.
+                # 1879 cluster_20x21 (3 members at rank 6): C output
+                # is (node_21@mv768, couple@-1, node_20@mv2304) =
+                # mval-ascending, Py was producing DOT order.
+                #
+                # The sort respects fixed -1 anchors (no in-neighbors
+                # in r-1): they stay in their BFS-installed position;
+                # only positive-mval nodes between -1 anchors get
+                # sorted.  Mirrors C's reorder bubble sort which
+                # leaves fixed nodes alone.
+                if restore and r - 1 in layout.ranks:
+                    _prev_pos = {nm: i for i, nm in
+                                 enumerate(layout.ranks[r - 1])}
+                    _by_pair: dict[tuple[str, str], list] = {}
+                    for le in layout.ledges:
+                        if le.head_name not in cl_node_set:
+                            continue
+                        if le.tail_name not in _prev_pos:
+                            continue
+                        _by_pair.setdefault(
+                            (le.tail_name, le.head_name), []).append(le)
+
+                    def _ext_mval(member: str) -> float:
+                        """Median of external in-neighbor positions
+                        in layout.ranks[r-1].  Returns -1 if none.
+                        Substitutes hidden in-edge tails with their
+                        cluster's currently-active proxy at rank
+                        ``r-1`` (mirrors C's medians lookup which
+                        uses ``ND_order(agtail(e))`` even when agtail
+                        is currently hidden — it has the proxy's
+                        order via the rank-leader replacement).
+                        """
+                        positions = []
+                        for le in layout.ledges:
+                            if le.head_name != member:
+                                continue
+                            t = le.tail_name
+                            if t in cl_node_set:
+                                continue  # intra-cluster edge
+                            p = _prev_pos.get(t)
+                            if p is None:
+                                # Hidden — substitute with proxy at
+                                # tail's rank if available.
+                                _hider = hidden_by.get(t)
+                                if _hider:
+                                    _t_rank = (
+                                        layout.lnodes[t].rank
+                                        if t in layout.lnodes else None)
+                                    if _t_rank is not None:
+                                        _proxy = (
+                                            skeleton_nodes
+                                            .get(_hider, {})
+                                            .get(_t_rank))
+                                        if _proxy:
+                                            p = _prev_pos.get(_proxy)
+                            if p is not None:
+                                positions.append(p)
+                        if not positions:
+                            return -1.0
+                        positions.sort()
+                        n = len(positions)
+                        return float(positions[n // 2] if n % 2 else
+                                     (positions[n // 2 - 1]
+                                      + positions[n // 2]) / 2.0)
+
+                    # Sort unfixed positions by mval (ascending),
+                    # leaving -1 fixed positions in place.  Mirrors
+                    # C's reorder bubble-sort: scans PAST -1 anchors
+                    # to compare adjacent unfixed nodes (mincross.c
+                    # lp/rp loop with mv<0 continue).  E.g. for
+                    # cluster_20x21 [A:mv9, couple:mv-1, B:mv3]:
+                    # unfixed positions = [0, 2], unfixed values =
+                    # [9, 3] sorted ascending = [3, 9] placed back
+                    # at positions [0, 2] → [B, couple, A].
+                    _mvals = [_ext_mval(nm) for nm in restore]
+                    _unfixed_idxs = [i for i, mv in enumerate(_mvals)
+                                     if mv >= 0]
+                    _sorted_unfixed = sorted(
+                        _unfixed_idxs,
+                        key=lambda i: _mvals[i])
+                    _new_restore = list(restore)
+                    for _slot_i, _src_i in zip(
+                            _unfixed_idxs, _sorted_unfixed):
+                        _new_restore[_slot_i] = restore[_src_i]
+                    restore = _new_restore
                 if restore:
                     rank_list[skel_pos:skel_pos + 1] = restore
                 else:
