@@ -997,9 +997,49 @@ def skeleton_mincross(layout):
             layout.ledges.append(ce)
             prev_name = next_name
 
+    # §1.5.43: walk edges in C ``class2.c``'s ``for n in agfstnode:
+    # for e in agfstout(n)`` order — by tail node first, then by
+    # the tail's out-edges in DOT-line order.  This mirrors how
+    # C's ``ND_out`` linked list gets populated, so the resulting
+    # cluster-proxy ND_out matches C's exactly.
+    #
+    # Earlier iteration was ``for le in layout.ledges`` which is
+    # raw DOT-edge-line order — for clusters with multiple member
+    # nodes (e.g. ``cluster_446x447`` has ``node_446x447_446``
+    # alongside ``couple_446x447``), the dot file may interleave
+    # member edges (couple's edges at lines 8813-8819, then a
+    # node_446x447_446 edge at line 8817 in 1879.dot).  C's
+    # by-node iteration aggregates each member's edges as a block
+    # — node_446x447_446's single edge to node_5506 gets emitted
+    # FIRST in the proxy's ND_out (because node_446x447_446 is
+    # declared first in the cluster), before couple_446x447's
+    # block.  Without matching this, rank-2 reorder picks up
+    # different node order and propagates downstream.
+    _by_tail_edges: dict[str, list[LayoutEdge]] = {}
     for le in layout.ledges:
         if le.virtual:
             continue
+        _by_tail_edges.setdefault(le.tail_name, []).append(le)
+
+    # Tail-node iteration order: walk ``layout.graph.nodes`` (DOT
+    # declaration order) so the resulting ND_out mirrors C's
+    # agfstnode/agnxtnode walk.  Edges from a tail not in
+    # graph.nodes (synthetic) come last in arbitrary order.
+    _ordered_tails: list[str] = []
+    _seen_tail_pos: set[str] = set()
+    for n in layout.graph.nodes:
+        if n in _by_tail_edges and n not in _seen_tail_pos:
+            _seen_tail_pos.add(n)
+            _ordered_tails.append(n)
+    for n in _by_tail_edges:
+        if n not in _seen_tail_pos:
+            _ordered_tails.append(n)
+
+    _edges_by_tail_node: list[LayoutEdge] = []
+    for tail_name in _ordered_tails:
+        _edges_by_tail_node.extend(_by_tail_edges[tail_name])
+
+    for le in _edges_by_tail_node:
         t_cl = _node_skel_cluster.get(le.tail_name)
         h_cl = _node_skel_cluster.get(le.head_name)
         # Intra-cluster edge (both in the same cluster OR neither in
