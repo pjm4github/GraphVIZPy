@@ -1844,6 +1844,21 @@ def post_rankdir_keepout(layout):
     # For LR/RL: cross-rank is Y (vertical).  For TB/BT: cross-rank is X.
     push_y = layout.rankdir in ("LR", "RL")
 
+    # §1.5.52: track which (cluster, side) "exit slot" each node is
+    # pushed onto, so multiple nodes pushed past the same cluster
+    # face don't collapse onto each other.  Without this, several
+    # rank-N nodes whose natural NS positions all fall inside the
+    # same sibling cluster get pushed to the same boundary X — e.g.
+    # on 1879.dot rank 5, sibling leaves of couple_330x331 get
+    # pushed past cluster_74x75's right edge and ALL settle at
+    # x=4294.66 (overlapping each other).  The slot map records
+    # the next free boundary X; subsequent nodes pushed to the
+    # same side get offset by ``their width + nodesep`` so they
+    # stack rather than collide.
+    nodesep = float(getattr(layout, "nodesep", 18.0))
+    # Map: (cluster_name, "left"|"right") → next available boundary X.
+    _exit_slot: dict[tuple[str, str], float] = {}
+
     for _pass in range(4):
         layout._compute_cluster_boxes()
         moved = False
@@ -1926,12 +1941,24 @@ def post_rankdir_keepout(layout):
                             ln.y = by2 + hh + gap
                     else:
                         # TB/BT: push in X only — symmetric fix.
+                        # §1.5.52: stack nodes pushed to same side
+                        # so siblings don't collapse onto each other.
                         exit_left = (ln.x + hw) - bx1
                         exit_right = bx2 - (ln.x - hw)
                         if exit_left <= exit_right:
-                            ln.x = bx1 - hw - gap
+                            slot_key = (cl.name, "left")
+                            target = _exit_slot.get(
+                                slot_key, bx1 - gap)
+                            ln.x = target - hw
+                            _exit_slot[slot_key] = (
+                                target - ln.width - nodesep)
                         else:
-                            ln.x = bx2 + hw + gap
+                            slot_key = (cl.name, "right")
+                            target = _exit_slot.get(
+                                slot_key, bx2 + gap)
+                            ln.x = target + hw
+                            _exit_slot[slot_key] = (
+                                target + ln.width + nodesep)
                     moved = True
 
         if not moved:
