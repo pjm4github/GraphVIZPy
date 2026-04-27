@@ -1461,6 +1461,14 @@ def skeleton_mincross(layout):
                 if restore and r - 1 in layout.ranks:
                     _prev_pos = {nm: i for i, nm in
                                  enumerate(layout.ranks[r - 1])}
+                    # §1.5.50: use ``cl_member_set`` for the
+                    # intra-cluster filter — it's the CURRENT
+                    # cluster's members.  ``cl_node_set`` at this
+                    # point in the loop is leftover from the previous
+                    # iteration's expand-mincross block (line ~1582)
+                    # and refers to the previous cluster's nodes,
+                    # which would mis-classify external in-edges as
+                    # intra-cluster.
                     _by_pair: dict[tuple[str, str], list] = {}
                     for le in layout.ledges:
                         if le.head_name not in cl_node_set:
@@ -1485,7 +1493,7 @@ def skeleton_mincross(layout):
                             if le.head_name != member:
                                 continue
                             t = le.tail_name
-                            if t in cl_node_set:
+                            if t in cl_member_set:
                                 continue  # intra-cluster edge
                             p = _prev_pos.get(t)
                             if p is None:
