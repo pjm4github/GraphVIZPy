@@ -479,6 +479,22 @@ def run_mincross(layout):
             for n in cl.nodes:
                 if n in layout.lnodes:
                     node_cl[n] = cl.name  # innermost wins
+    # §1.5.45: also map skeleton cluster proxies (``_skel_<cluster>_<rank>``)
+    # back to their cluster name so reorder's ``sawclust`` check fires
+    # for them.  C's ``reorder()`` (mincross.c:1493-1503) uses
+    # ``ND_clust(*rp)`` which is non-null on cluster rank-leader nodes
+    # (= our ``_skel_*`` proxies) — these get skipped when scanning ``rp``
+    # rightward after the first cluster has been seen.  Without this
+    # mapping, Py classified proxies as non-cluster, never set sawclust,
+    # and compared/swapped pairs C would have skipped — causing rank-1
+    # to drift from C's output (cluster_789x5469 moved from idx 12 to
+    # idx 13 in pass 0, propagating into rank-2's ND_in medians).
+    for n in layout.lnodes:
+        if n.startswith("_skel_") and n not in node_cl:
+            rest = n[len("_skel_"):]
+            u = rest.rfind("_")
+            if u > 0 and rest[u + 1:].isdigit():
+                node_cl[n] = rest[:u]
     fg_out: dict[str, list[str]] = defaultdict(list)
     fg_in: dict[str, list[str]] = defaultdict(list)
     fg_xpenalty: dict[tuple[str, str], int] = {}
