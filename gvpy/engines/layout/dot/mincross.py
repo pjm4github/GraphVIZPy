@@ -954,13 +954,27 @@ def skeleton_mincross(layout):
             return node_name
         return skeleton_nodes.get(cl, {}).get(rank)
 
+    # §1.5.41 — when GVPY_SKELETON_BUILD_RANKS=1 (the §1.5.34
+    # skeleton-aware path) is active, use xpenalty=1 for inter-
+    # cluster chain edges, matching C's behaviour: ``class2.c``'s
+    # ``virtual_edge`` defaults to xpenalty=1 in interclrep, and
+    # only the rank-leader chain WITHIN a cluster gets the
+    # ``*= CL_CROSS`` multiplier (cluster.c:391).  Trace
+    # ``[TRACE nd_out_emit]`` confirmed C's ND_out edges from
+    # cluster proxies have xpenalty=1.  Default path keeps the
+    # legacy CL_CROSS multiplier — flipping it there regresses
+    # d5_regression (1 → 2 crossings) because the legacy
+    # build_ranks output relied on the inflated cost to push
+    # transpose into specific swap decisions.
+    import os as _os_xp
+    _xp_inter = (1 if _os_xp.environ.get("GVPY_SKELETON_BUILD_RANKS", "") == "1"
+                 else layout._CL_CROSS)
+
     def _make_chain(t_skel: str, h_skel: str,
                     t_rank: int, h_rank: int, weight: float) -> None:
         """Build a chain of virtual nodes from ``t_skel`` (at
         ``t_rank``) to ``h_skel`` (at ``h_rank``), one per
         intermediate rank.  Mirrors C ``class2.c: make_chain``.
-        Caller must have ensured ``t_rank < h_rank`` and that no
-        chain with these endpoints already exists.
         """
         prev_name = t_skel
         for cr in range(t_rank + 1, h_rank + 1):
@@ -977,7 +991,7 @@ def skeleton_mincross(layout):
                 head_name=next_name,
                 minlen=1, weight=weight,
                 virtual=True,
-                xpenalty=layout._CL_CROSS,
+                xpenalty=_xp_inter,
             )
             skeleton_edges.append(ce)
             layout.ledges.append(ce)
