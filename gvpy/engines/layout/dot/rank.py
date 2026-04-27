@@ -973,7 +973,8 @@ def build_ranks(layout):
         _reposition_rank_internal_sources(layout, in_count, out_adj)
 
 
-def build_ranks_on_skeleton(layout, active_nodes: set[str]) -> None:
+def build_ranks_on_skeleton(layout, active_nodes: set[str],
+                              pass_idx: int = 0) -> None:
     """Re-run BFS-based rank ordering restricted to a skeleton view.
 
     Mirrors C's ``mincross.c:build_ranks(g, 0)`` when ``g`` is the
@@ -1021,6 +1022,7 @@ def build_ranks_on_skeleton(layout, active_nodes: set[str]) -> None:
     out_adj: dict[str, list[str]] = _dd(list)
     in_adj: dict[str, list[str]] = _dd(list)
     in_count: dict[str, int] = _dd(int)
+    out_count: dict[str, int] = _dd(int)
     seen_pairs: set[tuple[str, str]] = set()
 
     # §1.5.44: build a hidden-node→cluster-proxy substitution map so
@@ -1085,6 +1087,7 @@ def build_ranks_on_skeleton(layout, active_nodes: set[str]) -> None:
         out_adj[t].append(h)
         in_adj[h].append(t)
         in_count[h] += 1
+        out_count[t] += 1
 
     # Pass 1 — real (non-virtual) edges in tail-grouped DOT order
     # with hidden-end substitution to cluster rank-leader proxies.
@@ -1168,6 +1171,16 @@ def build_ranks_on_skeleton(layout, active_nodes: set[str]) -> None:
     visited: set[str] = set()
     installed: set[str] = set()
 
+    # §1.5.46: C ``mincross.c:1617 build_ranks(g, pass)`` switches
+    # BFS direction by ``pass``: pass=0 sources are nodes with no
+    # in-edges (DAG roots), BFS walks out-edges (top-down); pass=1
+    # sources are nodes with no out-edges (DAG sinks), BFS walks
+    # in-edges (bottom-up).  C calls build_ranks twice — once with
+    # pass=0 at outer pass=0, once with pass=1 at outer pass=1 — so
+    # the two BFS variants produce different fresh-state orderings
+    # for mincross_step to optimise from.
+    _walk_adj = in_adj if pass_idx == 1 else out_adj
+
     def _bfs(start: str) -> None:
         if start in visited or start not in layout.lnodes:
             return
@@ -1187,7 +1200,7 @@ def build_ranks_on_skeleton(layout, active_nodes: set[str]) -> None:
                 _bfs_trace(
                     "bfs",
                     f"install {name} rank={layout.lnodes[name].rank}")
-            for nbr in out_adj.get(name, []):
+            for nbr in _walk_adj.get(name, []):
                 if nbr in active_nodes and nbr not in visited:
                     visited.add(nbr)
                     queue.append(nbr)
@@ -1346,9 +1359,13 @@ def build_ranks_on_skeleton(layout, active_nodes: set[str]) -> None:
             f"build_ranks_on_skeleton active={len(active_nodes)} "
             f"order_mode={_order_mode}")
 
-    # Phase 1: sources with in_count == 0 in our iteration order.
+    # Phase 1: sources in our iteration order.  At pass=0, sources
+    # are no-in-edges (DAG roots); at pass=1, no-out-edges (DAG
+    # sinks).  Mirrors C ``mincross.c:1757`` ``otheredges = pass==0
+    # ? ND_in : ND_out; if (otheredges[0] != NULL) continue``.
+    _src_count = out_count if pass_idx == 1 else in_count
     for name in iter_order:
-        if in_count.get(name, 0) == 0:
+        if _src_count.get(name, 0) == 0:
             _bfs(name)
 
     # Phase 2: any residual (cycle-only components).

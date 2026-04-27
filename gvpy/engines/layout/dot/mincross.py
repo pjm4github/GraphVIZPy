@@ -611,6 +611,19 @@ def run_mincross(layout):
         for pass_n in range(3):
             if pass_n <= 1:
                 maxthispass = min(4, MaxIter)
+                # §1.5.46: at pass_n=1 boundary, mirror C's
+                # ``build_ranks(g, 1)`` re-call (mincross.c:1090) by
+                # invoking the closure stashed by skeleton_mincross.
+                # Bottom-up BFS produces a different fresh state than
+                # the pass_n=0 top-down BFS — C exploits this for
+                # cycle 2 of the mincross optimiser.  Without this
+                # call, Py kept iterating from the pass_n=0 state and
+                # diverged from C at outer pass=1 onwards.
+                _build_pass1 = getattr(
+                    layout, "_skeleton_build_ranks_pass1", None)
+                if pass_n == 1 and _build_pass1 is not None:
+                    _build_pass1(layout)
+                    fresh_order = layout._save_ordering()
                 # ── Optional restart from the fresh build_ranks state ─
                 # Mirrors C ``mincross.c:1086-1095`` — passes 0 and 1
                 # each reset the rank arrays before iterating, so a
@@ -1273,15 +1286,32 @@ def skeleton_mincross(layout):
         # (tail, proxy) pair, restoring DOT-declaration order.
         layout._post_collapse_hidden_by = hidden_by
         layout._post_collapse_skeleton_nodes = skeleton_nodes
-        try:
-            build_ranks_on_skeleton(layout, active)
-        finally:
-            del layout._skeleton_post_build_transpose
-            del layout._post_collapse_hidden_by
-            del layout._post_collapse_skeleton_nodes
+        # §1.5.46: expose a closure that re-runs build_ranks_on_skeleton
+        # with the bottom-up BFS direction (mirrors C's
+        # ``build_ranks(g, 1)`` at outer pass=1; mincross.c:1090).  The
+        # multi-pass mincross loop calls this at pass_n=1 boundary so
+        # Py reaches the same fresh state C does for the second cycle.
+        def _build_ranks_pass1(layout):
+            layout.ranks = defaultdict(list)
+            build_ranks_on_skeleton(layout, active, pass_idx=1)
+        layout._skeleton_build_ranks_pass1 = _build_ranks_pass1
+        # Keep _skeleton_post_build_transpose ALIVE through
+        # _run_mincross so the pass=1 re-call also gets the post-
+        # build transpose (mirrors C's ``transpose(g, false)`` at
+        # the end of build_ranks; mincross.c:1806).  Cleanup happens
+        # below after _run_mincross returns.
+        build_ranks_on_skeleton(layout, active, pass_idx=0)
 
     # ── Run mincross on fully collapsed graph ──
     layout._run_mincross()
+    # ── Cleanup: only after _run_mincross finishes consuming
+    # _skeleton_build_ranks_pass1 + _post_collapse_* ──
+    for _attr in ("_skeleton_build_ranks_pass1",
+                  "_skeleton_post_build_transpose",
+                  "_post_collapse_hidden_by",
+                  "_post_collapse_skeleton_nodes"):
+        if hasattr(layout, _attr):
+            delattr(layout, _attr)
     d5_stage_crossings(layout, "post_collapsed_mincross")
 
     # Trace skeleton ordering (just skeleton node positions)
