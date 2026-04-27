@@ -2207,6 +2207,16 @@ def cluster_transpose(layout, rank: int, cl_nodes: set[str],
                  f"transpose_enter rank={rank} reverse={1 if reverse else 0} "
                  f"rmx={1 if remincross_phase else 0} nodes=[{_ns}]")
     rv = 0  # cumulative delta across all swaps (C's ``rv`` in transpose_step)
+    # §1.5.47: also track whether ANY swap fired (incl. tie-break
+    # swaps where c_before == c_after, contributing 0 to ``rv``).  C's
+    # transpose_step returns a boolean, not a delta — so its outer
+    # candidate-flag loop in ``transpose()`` (mincross.c:1006-1021)
+    # picks up tie-break swaps too.  Without this counter, Py's
+    # ``transpose_all_ranks`` only marks candidates when ``rv > 0``,
+    # missing the cascade triggered by tie-break swaps that move
+    # cluster proxies past runs of fixed (-1) nodes.  Stash on
+    # ``layout`` so the outer driver can read it after the call.
+    swap_count = 0
     improved = True
     while improved:
         improved = False
@@ -2284,11 +2294,13 @@ def cluster_transpose(layout, rank: int, cl_nodes: set[str],
                 layout.lnodes[w].order = i
                 layout.lnodes[v].order = i + 1
                 rv += c_before - c_after
+                swap_count += 1
                 improved = True
         if single_pass:
             # C's transpose_step: single pass per call.  Outer loop
             # in ``transpose_all_ranks`` drives the do-while.
             break
+    layout._last_transpose_swap_count = swap_count
     return rv
 
 
@@ -2329,7 +2341,19 @@ def transpose_all_ranks(layout, cl_nodes: set[str], child_cl_map,
                 fg_out=fg_out, fg_in=fg_in, fg_xpenalty=fg_xpenalty,
                 reverse=reverse, single_pass=True,
             )
-            if d > 0:
+            # §1.5.47: candidate-propagation fires on ANY swap (incl.
+            # tie-break with c_before == c_after that contributes 0
+            # to delta) — mirrors C's transpose_step setting
+            # ``GD_rank[r].candidate = true`` on every swap
+            # (mincross.c:991).  Without this, cluster proxies got
+            # stuck early in their bounce sequence past runs of fixed
+            # (-1) nodes because tie-break swaps weren't propagating.
+            # The OUTER loop still terminates on ``delta < 1``
+            # (strict improvement), matching C's ``while (delta >= 1)``
+            # at mincross.c:1020 — so tie-break-only sweeps don't
+            # cause infinite oscillation.
+            swaps = getattr(layout, "_last_transpose_swap_count", 0)
+            if swaps > 0:
                 # A swap fired — this rank may swap again, and so may
                 # its neighbours (their crossing counts changed).
                 candidate[r] = True
