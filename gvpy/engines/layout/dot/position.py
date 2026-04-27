@@ -72,7 +72,6 @@ def phase3_position(layout: "DotGraphInfo") -> None:
     # matching Graphviz position.c create_aux_edges + rank().
     if layout._clusters:
         if not ns_x_position(layout):
-            # Fallback to bottom-up if NS fails
             layout._bottomup_ns_x_position()
         # Post-NS median improvement: iteratively pull nodes toward
         # the median cross-rank position of their adjacent-rank
@@ -122,6 +121,20 @@ def phase3_position(layout: "DotGraphInfo") -> None:
         # pulls every such "orphan" node back toward its
         # neighbours' new positions.
         post_resolve_align(layout)
+        # §1.5.53: final per-rank separation pass.  Walks each rank
+        # in mincross order; if two consecutive nodes overlap (or
+        # are closer than nodesep), bumps the right node so its left
+        # edge sits ``nodesep`` past the previous node's right edge.
+        # The post_rankdir_keepout pushes nodes out of cluster
+        # bboxes but doesn't enforce inter-node spacing among the
+        # pushed nodes — pairs of orphan rank-N siblings whose NS
+        # positions both fall inside the same sibling cluster get
+        # pushed to similar X (with §1.5.52's slot bookkeeping
+        # only covering same-cluster-same-side pushes).  This pass
+        # guarantees no within-rank overlap regardless of which
+        # cluster pushed each node.  Cross-rank axis (Y for TB,
+        # X for LR) only — never moves in rank direction.
+        _enforce_rank_separation(layout)
 
     # Log post-rankdir positions
     for name in sorted(layout.lnodes.keys()):
@@ -1846,17 +1859,8 @@ def post_rankdir_keepout(layout):
 
     # §1.5.52: track which (cluster, side) "exit slot" each node is
     # pushed onto, so multiple nodes pushed past the same cluster
-    # face don't collapse onto each other.  Without this, several
-    # rank-N nodes whose natural NS positions all fall inside the
-    # same sibling cluster get pushed to the same boundary X — e.g.
-    # on 1879.dot rank 5, sibling leaves of couple_330x331 get
-    # pushed past cluster_74x75's right edge and ALL settle at
-    # x=4294.66 (overlapping each other).  The slot map records
-    # the next free boundary X; subsequent nodes pushed to the
-    # same side get offset by ``their width + nodesep`` so they
-    # stack rather than collide.
+    # face don't collapse onto each other.
     nodesep = float(getattr(layout, "nodesep", 18.0))
-    # Map: (cluster_name, "left"|"right") → next available boundary X.
     _exit_slot: dict[tuple[str, str], float] = {}
 
     for _pass in range(4):
@@ -1990,6 +1994,59 @@ def center_ranks(layout):
         offset = (max_width - rank_widths[rank_val]) / 2.0
         for name in rank_nodes:
             layout.lnodes[name].x += offset
+
+
+def _enforce_rank_separation(layout):
+    """§1.5.53: final pass that guarantees no within-rank overlap.
+
+    After ``post_rankdir_keepout`` and ``post_resolve_align`` finish,
+    walk each rank in mincross order along the cross-rank axis;
+    sort the rank's nodes by current cross-rank position; if two
+    consecutive nodes' bboxes overlap or are closer than
+    ``nodesep``, bump the right-side node so its left edge sits
+    ``nodesep`` past the prior node's right edge.
+
+    Cross-rank axis is X for TB/BT and Y for LR/RL — same axis
+    that ``post_rankdir_keepout`` operates on.  Rank-direction
+    (Y for TB/BT) is preserved because ``set_ycoords`` already
+    fixed it; we only adjust the cross-rank.
+    """
+    if not layout.ranks:
+        return
+    nodesep = float(getattr(layout, "nodesep", 18.0))
+    is_lr = layout.rankdir in ("LR", "RL")
+    for rank_val, rank_nodes in layout.ranks.items():
+        # Build a list of (current_cross_rank, name, half_extent_along_cross_rank).
+        # For LR/RL: cross-rank is Y (using ln.height for extent).
+        # For TB/BT: cross-rank is X (using ln.width for extent).
+        items = []
+        for name in rank_nodes:
+            ln = layout.lnodes.get(name)
+            if ln is None or ln.virtual:
+                continue
+            if is_lr:
+                items.append((name, ln.y, ln.height / 2.0))
+            else:
+                items.append((name, ln.x, ln.width / 2.0))
+        if len(items) < 2:
+            continue
+        items.sort(key=lambda t: t[1])
+        # Sweep left-to-right (or top-to-bottom): each next node
+        # must start at least ``nodesep`` past the prior's far edge.
+        prev_far = None
+        for name, pos, half in items:
+            near = pos - half
+            far = pos + half
+            if prev_far is not None and near < prev_far + nodesep:
+                shift = (prev_far + nodesep) - near
+                pos += shift
+                far += shift
+                ln = layout.lnodes[name]
+                if is_lr:
+                    ln.y = pos
+                else:
+                    ln.x = pos
+            prev_far = far
 
 
 def apply_rankdir(layout):
