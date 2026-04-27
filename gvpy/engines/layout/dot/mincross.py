@@ -1244,10 +1244,25 @@ def skeleton_mincross(layout):
                 fg_xpenalty=fg_xpenalty_post,
             )
         layout._skeleton_post_build_transpose = _post_xpose
+        # §1.5.44: expose collapse state so build_ranks_on_skeleton can
+        # substitute hidden heads with their cluster proxies AT THE
+        # ORIGINAL EDGE'S POSITION in layout.ledges.  Without this,
+        # chain edges sit at the END of layout.ledges (appended by
+        # _make_chain after originals), so for a real tail like
+        # node_193_193 the cluster-proxy out-edge ends up LAST in
+        # out_adj — but in C, ND_out's class2 walk inserts the chain
+        # head at the position the original (now-hidden) edge held.
+        # The seen_pairs dedup downstream then makes the substituted
+        # head win over the late-positioned chain edge for the same
+        # (tail, proxy) pair, restoring DOT-declaration order.
+        layout._post_collapse_hidden_by = hidden_by
+        layout._post_collapse_skeleton_nodes = skeleton_nodes
         try:
             build_ranks_on_skeleton(layout, active)
         finally:
             del layout._skeleton_post_build_transpose
+            del layout._post_collapse_hidden_by
+            del layout._post_collapse_skeleton_nodes
 
     # ── Run mincross on fully collapsed graph ──
     layout._run_mincross()

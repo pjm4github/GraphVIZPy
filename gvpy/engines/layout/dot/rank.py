@@ -1022,16 +1022,115 @@ def build_ranks_on_skeleton(layout, active_nodes: set[str]) -> None:
     in_adj: dict[str, list[str]] = _dd(list)
     in_count: dict[str, int] = _dd(int)
     seen_pairs: set[tuple[str, str]] = set()
+
+    # §1.5.44: build a hidden-node→cluster-proxy substitution map so
+    # we can substitute hidden ends with their proxies AT THE ORIGINAL
+    # EDGE'S POSITION in layout.ledges.  Without this, real edges
+    # whose head got hidden by a cluster collapse get filtered out by
+    # ``h not in active_nodes`` here, and the only adjacency entry for
+    # that (tail, proxy) pair comes from the chain edge appended at
+    # the END of layout.ledges by _make_chain.  For a real tail like
+    # ``node_193_193`` whose first DOT-declared out-edge is to a
+    # cluster member, this puts the cluster proxy LAST in
+    # out_adj[node_193_193] instead of FIRST as C's class2 ND_out
+    # has it (the chain head is inserted in agfstout's iteration
+    # order, in place of the original edge).  With substitution +
+    # seen_pairs dedup, the substituted entry wins (earlier position
+    # in layout.ledges), restoring C's per-tail order.
+    _hidden_by = getattr(layout, "_post_collapse_hidden_by", None) or {}
+    _skel_nodes_map = getattr(
+        layout, "_post_collapse_skeleton_nodes", None) or {}
+    hidden_to_proxy: dict[str, str] = {}
+    for _hn, _cl in _hidden_by.items():
+        if _hn not in layout.lnodes:
+            continue
+        _r = layout.lnodes[_hn].rank
+        _proxy = _skel_nodes_map.get(_cl, {}).get(_r)
+        if _proxy and _proxy in active_nodes:
+            hidden_to_proxy[_hn] = _proxy
+
+    # §1.5.44: walk REAL edges in tail-grouped layout.graph.nodes
+    # order (mirroring §1.5.43 in skeleton_mincross), substituting
+    # hidden ends with their cluster proxies.  This mirrors C's
+    # class2 ``agfstnode → agfstout`` walk: per-node, then per-edge
+    # in DOT-line order.  For a cluster (multiple member nodes),
+    # ND_out's first entry is the FIRST out-edge of the FIRST
+    # DOT-declared member, not the first DOT-line edge across all
+    # members.  E.g. cluster_446x447 has members
+    # ``node_446x447_446`` (line 3454) and ``couple_446x447``
+    # (line 3471) — node_446x447_446's edge to node_5506 (line 8817)
+    # is the proxy's FIRST ND_out entry, ahead of couple_446x447's
+    # edges to 5502/5505/etc. (lines 8813-8819, earlier in DOT) —
+    # because class2 walks node-by-node, not edge-by-edge.
+    _real_by_tail: dict[str, list] = _dd(list)
     for le in layout.ledges:
-        t, h = le.tail_name, le.head_name
-        if t not in active_nodes or h not in active_nodes:
+        if le.virtual:
             continue
+        _real_by_tail[le.tail_name].append(le)
+
+    _dot_tails: list[str] = []
+    _seen_tails: set[str] = set()
+    for n in layout.graph.nodes:
+        if n in _real_by_tail and n not in _seen_tails:
+            _seen_tails.add(n)
+            _dot_tails.append(n)
+    for n in _real_by_tail:
+        if n not in _seen_tails:
+            _dot_tails.append(n)
+
+    def _add_pair(t: str, h: str) -> None:
         if (t, h) in seen_pairs:
-            continue
+            return
         seen_pairs.add((t, h))
         out_adj[t].append(h)
         in_adj[h].append(t)
         in_count[h] += 1
+
+    # Pass 1 — real (non-virtual) edges in tail-grouped DOT order
+    # with hidden-end substitution to cluster rank-leader proxies.
+    for tail_name in _dot_tails:
+        for le in _real_by_tail[tail_name]:
+            t, h = le.tail_name, le.head_name
+            if t not in active_nodes:
+                t_sub = hidden_to_proxy.get(t)
+                if t_sub is None or t_sub not in active_nodes:
+                    continue
+                t = t_sub
+            if h not in active_nodes:
+                h_sub = hidden_to_proxy.get(h)
+                if h_sub is None or h_sub not in active_nodes:
+                    continue
+                h = h_sub
+            if t == h:
+                # Both substituted to the same proxy — intra-cluster
+                # edge, collapsed; drop.
+                continue
+            # Skip back-edges from the post-substitution rank
+            # perspective.  C's ND_out only contains forward edges
+            # (t_rank < h_rank); back-edges land in ND_in.  When BFS
+            # walks out_adj for source ordering, including back-edges
+            # would let BFS descend across ranks in the wrong
+            # direction.
+            t_rank = layout.lnodes[t].rank if t in layout.lnodes else None
+            h_rank = layout.lnodes[h].rank if h in layout.lnodes else None
+            if (t_rank is not None and h_rank is not None
+                    and t_rank > h_rank):
+                continue
+            _add_pair(t, h)
+
+    # Pass 2 — virtual (chain) edges in layout.ledges insertion
+    # order.  These provide adjacency for synthetic tails (cluster
+    # rank-leader proxies for chain steps within a cluster, and
+    # ``_icv_*`` chain virtuals between cluster proxies at non-
+    # adjacent ranks).  Real-tail chain edges duplicating Pass 1
+    # substitutions are filtered by ``seen_pairs``.
+    for le in layout.ledges:
+        if not le.virtual:
+            continue
+        t, h = le.tail_name, le.head_name
+        if t not in active_nodes or h not in active_nodes:
+            continue
+        _add_pair(t, h)
     # §1.5.38: sort in_adj entries by their tail's DOT-declaration
     # position to match C's ND_in order.  Class2 walks
     # ``agfstnode → agfstout`` to populate ND_in, so the in-edges
