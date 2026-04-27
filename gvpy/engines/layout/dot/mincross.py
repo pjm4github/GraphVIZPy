@@ -1528,32 +1528,34 @@ def skeleton_mincross(layout):
                 _own_children_set = set(children_of.get(cl_name, []))
 
                 def _skel_sub(name: str) -> str:
-                    """Map a real node that's currently hidden by one
-                    of ``cl_name``'s *direct-child* clusters to that
-                    child's skeleton at the node's rank.
+                    """Map a hidden node to its currently active
+                    skeleton proxy at the node's rank.  §1.5.48
+                    extension: substitute hidden nodes from ANY
+                    cluster (direct child OR sibling), so when
+                    ``cluster_medians`` walks ``layout.ranks[adj_rank]``
+                    it finds the proxy at the right order — matching
+                    C's medians at expand time, which uses
+                    ``VAL(agtail(e), port)`` where ``agtail(e)`` may
+                    be a hidden real node represented by its still-
+                    visible proxy in ``GD_rank``.
 
-                    During ``cl_name``'s local mincross, every direct
-                    child sub-cluster is collapsed to a row of
-                    ``_skel_*`` nodes and its real members are recorded
-                    in ``hidden_by``.  When we hand ``mc_fg_in`` /
-                    ``mc_fg_out`` to ``cluster_medians`` it walks
-                    ``layout.ranks[adj_rank]`` looking for neighbours;
-                    a hidden real node will not be there, so its mval
-                    contribution gets silently dropped.  Substitute
-                    the live skeleton representation so the median
-                    computation sees something at the right order.
-
-                    Only DIRECT children qualify — a sibling cluster
-                    (e.g. clusterc4251 hiding c4251 while we're
-                    expanding cluster_4250) isn't in our scope, and
-                    substituting there would pull non-scoped edges into
-                    ``mc_fg_out``.  C's ND_out keeps the real node in
-                    this case (see aa1332 cluster_4250's edge
-                    ``clusterc4249 → c4251`` which Python was emitting
-                    as ``clusterc4249 → _skel_clusterc4251_11``).
+                    Earlier (pre-§1.5.48) we only substituted for
+                    direct-child clusters because sibling-cluster
+                    substitution pulled out-of-scope edges into
+                    ``mc_fg_out`` (regressing aa1332 cluster_4250).
+                    With the §1.5.46/§1.5.47 chain in place,
+                    sibling-substitution is needed for in-edge
+                    medians at expand time — an external in-edge
+                    like ``couple_52x51 → node_20x21_20`` (couple
+                    hidden in sibling cluster_52x51) would otherwise
+                    contribute mval=-1 instead of the sibling proxy's
+                    actual rank-5 position.  Cluster_20x21's interior
+                    members then sit at mval=-1 (fixed) and the
+                    interior reorder skips them, leaving them in BFS
+                    order rather than median-sorted as C does.
                     """
                     hider = hidden_by.get(name)
-                    if hider is None or hider not in _own_children_set:
+                    if hider is None:
                         return name
                     r = layout.lnodes[name].rank
                     skel = skeleton_nodes.get(hider, {}).get(r)
@@ -2089,9 +2091,24 @@ def cluster_reorder(layout, rank: int, cl_nodes: set[str],
             while ri < ep:
                 rn = nodes[ri]
                 # sawclust: skip consecutive cluster nodes
-                # (C mincross.c:1494-1495)
+                # (C mincross.c:1494-1495).  §1.5.48: fires only on
+                # VIRTUAL skeleton proxies (``_skel_*`` cluster rank-
+                # leaders), NOT on real cluster members.  C's
+                # ``ND_clust(*rp)`` is non-null on cluster proxies
+                # but mark_clusters resets it to NULL on real members
+                # within the cluster's expand-mincross scope —
+                # cluster.c:355-359 sets it for outer-graph members
+                # only.  By the time ReMincross runs, real members
+                # in expanded clusters have ND_clust=NULL and
+                # sawclust no longer fires for them.  Earlier (pre-
+                # §1.5.48) Py kept all cluster members in node_cl
+                # globally, so sawclust fired on real members during
+                # ReMincross — preventing legitimate same-cluster
+                # swaps like ``node_20x21_20`` ↔ ``node_20x21_21``
+                # past their couple node.
                 r_cl = (child_cl_map or {}).get(rn)
-                if sawclust and r_cl:
+                rn_virt = rn in layout.lnodes and layout.lnodes[rn].virtual
+                if sawclust and r_cl and rn_virt:
                     ri += 1
                     continue
                 # left2right check (C mincross.c:1496-1498).  In the
@@ -2114,8 +2131,9 @@ def cluster_reorder(layout, rank: int, cl_nodes: set[str],
                 # Found node with mval >= 0 (C mincross.c:1500)
                 if mval.get(rn, -1) >= 0:
                     break
-                # Mark cluster encounter (C mincross.c:1502-1503)
-                if r_cl:
+                # Mark cluster encounter (C mincross.c:1502-1503).
+                # Only virtual proxies set sawclust (see above).
+                if r_cl and rn_virt:
                     sawclust = True
                 ri += 1
 
