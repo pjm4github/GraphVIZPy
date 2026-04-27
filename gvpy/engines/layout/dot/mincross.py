@@ -788,15 +788,35 @@ def remincross_full(layout):
     fg_in: dict[str, list[str]] = defaultdict(list)
     fg_xpenalty: dict[tuple[str, str], int] = {}
     seen: set[tuple[str, str]] = set()
-    # mark_clusters for ReMincross: left2right blocks ALL
-    # cross-cluster swaps (mincross.c:612-613)
+    # §1.5.48b: mirror C's mark_lowclusters call (cluster.c:433)
+    # which fires BEFORE ReMincross (mincross.c:421).  It sets
+    # ND_clust on EVERY node — leaf-cluster members tagged with
+    # their cluster, non-cluster nodes tagged with the root graph.
+    # In ReMincross's reorder, sawclust then fires on the first rp
+    # encountered (since ND_clust != NULL for all rp's) and SKIPS
+    # all subsequent rp's via the continue branch
+    # (mincross.c:1494-1495), making reorder effectively a no-op.
+    # Only transpose performs swaps in ReMincross.
+    #
+    # Without tagging non-cluster nodes, Py's reorder during
+    # remincross_full kept finding rp partners with mv>=0 break,
+    # firing thousands of reorder_cmp swaps that C never performs.
+    # On 1879 pass 16 rank 4: C does 0 reorder_cmp, Py was doing
+    # 6860 — completely diverging from C's "transpose-only"
+    # ReMincross behaviour.
     node_cl: dict[str, str] = {}
+    _root_tag = "__root__"
     if layout._clusters:
         for cl in sorted(layout._clusters,
                          key=lambda c: len(c.nodes), reverse=True):
             for n in cl.nodes:
                 if n in layout.lnodes:
                     node_cl[n] = cl.name  # innermost cluster
+    # Tag every other node (incl. virtual / skeleton chain nodes)
+    # with the root-graph sentinel so sawclust fires on them too.
+    for n in layout.lnodes:
+        if n not in node_cl:
+            node_cl[n] = _root_tag
 
     for le in layout.ledges:
         t, h = le.tail_name, le.head_name
@@ -2091,24 +2111,30 @@ def cluster_reorder(layout, rank: int, cl_nodes: set[str],
             while ri < ep:
                 rn = nodes[ri]
                 # sawclust: skip consecutive cluster nodes
-                # (C mincross.c:1494-1495).  §1.5.48: fires only on
-                # VIRTUAL skeleton proxies (``_skel_*`` cluster rank-
-                # leaders), NOT on real cluster members.  C's
-                # ``ND_clust(*rp)`` is non-null on cluster proxies
-                # but mark_clusters resets it to NULL on real members
-                # within the cluster's expand-mincross scope —
-                # cluster.c:355-359 sets it for outer-graph members
-                # only.  By the time ReMincross runs, real members
-                # in expanded clusters have ND_clust=NULL and
-                # sawclust no longer fires for them.  Earlier (pre-
-                # §1.5.48) Py kept all cluster members in node_cl
-                # globally, so sawclust fired on real members during
-                # ReMincross — preventing legitimate same-cluster
-                # swaps like ``node_20x21_20`` ↔ ``node_20x21_21``
-                # past their couple node.
+                # (C mincross.c:1494-1495).  §1.5.48: gating depends
+                # on phase.  C's ``ND_clust(*rp)`` is reset to NULL
+                # within a cluster's own expand-mincross scope by
+                # mark_clusters (class2.c:339-343), but mark_lowclusters
+                # (cluster.c:433) re-tags EVERY node before ReMincross
+                # — leaf-cluster members get their cluster, non-cluster
+                # nodes get the root graph.  In ReMincross, sawclust
+                # then fires on every rp's first encounter (since
+                # ND_clust != NULL for all), making reorder a no-op
+                # (only transpose drives ReMincross changes).  In
+                # cluster expand-mincross, members have ND_clust=NULL
+                # so sawclust doesn't fire — same-cluster swaps like
+                # ``node_20x21_20`` ↔ ``node_20x21_21`` past their
+                # couple are allowed.  In main mincross, cluster
+                # proxies are virtual and trigger sawclust normally.
+                #
+                # Py distinguishes via ``remincross_phase``: in
+                # ReMincross, fire on any r_cl entry; otherwise fire
+                # only on virtual-tagged r_cl entries (= cluster
+                # proxies during main mincross).
                 r_cl = (child_cl_map or {}).get(rn)
                 rn_virt = rn in layout.lnodes and layout.lnodes[rn].virtual
-                if sawclust and r_cl and rn_virt:
+                _saw_fire = r_cl and (rn_virt or remincross_phase)
+                if sawclust and _saw_fire:
                     ri += 1
                     continue
                 # left2right check (C mincross.c:1496-1498).  In the
@@ -2132,8 +2158,8 @@ def cluster_reorder(layout, rank: int, cl_nodes: set[str],
                 if mval.get(rn, -1) >= 0:
                     break
                 # Mark cluster encounter (C mincross.c:1502-1503).
-                # Only virtual proxies set sawclust (see above).
-                if r_cl and rn_virt:
+                # Same gating as the skip check above.
+                if r_cl and (rn_virt or remincross_phase):
                     sawclust = True
                 ri += 1
 
