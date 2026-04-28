@@ -40,10 +40,12 @@ class UnsupportedPortRoutingWarning(UserWarning):
 
     The route still installs but uses a best-effort attach point (the
     node's compass boundary if a compass is present, else the node
-    centre).  A faithful fix is option E+.2-**A**: clone the two-node
-    subgraph and re-run ``rank`` → ``mincross`` → ``position`` →
-    ``dot_splines_`` on it with ``rank=source``, then transform the
-    resulting splines back.  See ``TODO_dot_splines_port.md``.
+    centre).  A faithful fix would be option E+.2-**A**: clone the
+    two-node subgraph and re-run ``rank`` → ``mincross`` →
+    ``position`` → ``dot_splines_`` on it with ``rank=source``, then
+    transform the resulting splines back.  Closed-out as won't-fix
+    in DONE.md §1.5.58 — the warning now documents the limitation
+    rather than tracking an in-flight port effort.
     """
 
 
@@ -179,9 +181,8 @@ def _warn_port_a_gap(edges, tn, hn) -> None:
     warnings.warn(
         f"Adjacent flat edge {offender.tail_name}:{offender.tailport} -> "
         f"{offender.head_name}:{offender.headport}: {reason} — routing "
-        "with compass/centre fallback. A faithful fix (option E+.2-A) "
-        "requires recursive clone + re-layout of the two-node "
-        "subgraph; see TODO_dot_splines_port.md.",
+        "with compass/centre fallback (E+.2-A clone-and-rerun is "
+        "won't-fix; see DONE.md §1.5.58).",
         UnsupportedPortRoutingWarning,
         stacklevel=3,
     )

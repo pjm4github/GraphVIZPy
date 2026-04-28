@@ -16,12 +16,11 @@ C dotgen.  Reference table — not a priority list (see §2 for priority).
 
 | # | Divergence | Python status | Impact |
 |---|---|---|---|
-| D2 | `make_flat_adj_edges` lacks subgraph clone + re-layout | `flat_edge.make_flat_adj_edges` partial (E+.2-B); record-field ports warn | narrow (record-port same-rank only) |
 | D4 | Cluster-clipping gives sub-pixel corner-grazing on bezier interior; also control-point-deep-inside cases where tail/head straddle a non-member cluster on adjacent ranks | `make_regular_edge` + `flat_edge` + `self_edge` all call `cluster_detour.reshape_around_clusters` (post-hoc detour reshape with 8-pt rounded corners, anchor-projection pre-pass, self-loop direction picker — see DONE.md §1.5.54–56).  Partial cover — residuals are D5/D6 positioning symptoms | was 86, now ~12 regression cases.  Post-§1.5.56 corpus totals: 1879=96 (HTML-IMG compat), 2796=9, 1332_ref=16, 1472=3, aa1332=3, 1436=3, 2183=3, 1213-1=0, 1213-2=0, d5_regression=0 |
 | D5 | Mincross places multi-rank edges on opposite sides of a cluster where C keeps them same-side.  **§1.5.1–§1.5.53 closed on 1879.dot — see DONE.md**.  Pass-by-pass mincross+remincross is 100% aligned with C (10326/10326 entries across 25 passes).  Position-phase overlap audit gives Py within 2 node-node, 10 cluster-non-member of C with no exact-bbox dups.  **Residual**: full corpus alignment beyond 1879 — visible regressions on 1213/1332/1472/2796/aa1332/2239 (smaller than 1879's residual was).  Next sessions should re-run the corpus and pick the next-largest divergence file. | `mincross.py` + `rank.py` + `position.py` aligned with `lib/dotgen/{mincross.c, position.c}`.  Channels: `[TRACE d5_step]`, `[TRACE d5_edges]`, `[TRACE bfs]`.  Helpers: `trace_d5/_pass_compare.py`, `_position_compare.py` etc. | broader-corpus residual; pick next-largest divergence file |
 | D6 | Phase 3 position lacks hard keep-out constraints for virtuals vs. non-member cluster y-bands | MVP corridor-carve shipped 2026-04-27 (§1.5.57): `rank_box_gapped` shrinks the x-extent of regular-edge rank boxes for same-side non-member clusters when `GVPY_CLUSTER_CARVE=1` is set.  Effect: 2796 9→7, 1879 96→95 (net -3 corpus crossings).  Trade-off: ~9 new triangulation failures fall back to polylines.  Kept opt-in until rank_box/maximal_bbox compatibility is hardened.  Straddle cases (prev/next on opposite sides) remain D5 territory. | compounds D4 |
 | D7 | Font metrics are Times-Roman AFM, not the rendering font | Layout-side already uses TNR via ``text_width_system`` (tkinter) for record port sizing.  Render-side: emits the ANTLR-parsed ``record_fields`` tree on the layout-output node dict (``record_tree``) and svg_renderer consumes it in place of its hand-written ``_parse_record_label`` — single-parser consistency between layout and render.  ``_parse_record_label`` kept as fallback for older node dicts.  **Investigated 2026-04-20: the "C=42 vs Python=99" claim doesn't reproduce — running C with ``GV_TRACE=port`` on 1332's c0.Out1 gives ``order=99``, same as Python.  Python's compass math in ``RecordField.port_fraction`` matches C's ``compassPort`` (shapes.c:2870) byte-for-byte.  The real residual divergence is in record-field SIZING — C's GDI+ text widths differ from Python's tkinter/TNR widths by a few points per glyph, which compounds into different subfield bboxes, different port positions, and per-port order drift of ~2-6 units (not 50+).  Closing this means matching C's text widths exactly, which is a much deeper project than anything the "compass rotation" framing suggested.** | record-node mincross divergence only |
-| D8 | Recursive layout pipeline can't be invoked on a subgraph clone | `DotGraphInfo.__init__` assumes root-graph state | blocks E+.2-A |
+| D8 | Recursive layout pipeline can't be invoked on a subgraph clone | `DotGraphInfo.__init__` assumes root-graph state | dormant — no live consumer after D2 / E+.2-A closure |
 
 **Tool-side caveats the audit currently absorbs:**
 - `count_cluster_crossings.py` uses `le.route.spline_type` to pick
@@ -74,9 +73,11 @@ Ordered by payoff.  Each item is independently shippable.
 
 ## 3. Priority 2 — Splines Port Deferred Items
 
-| Bucket | Status | Notes |
-|---|---|---|
-| E+.2-A full recursive clone + re-layout | deferred | Requires `DotGraphInfo` to support sub-graph instantiation (blocks on D8) |
+_None._  E+.2-A (record-field-port faithful flat-edge routing) is
+closed-out as won't-fix; the existing E+.2-B compass/centre fallback
+covers the common case and emits
+:class:`UnsupportedPortRoutingWarning` on the narrow record-port
+adjacent-flat case.  See DONE.md §1.5.58.
 
 ---
 

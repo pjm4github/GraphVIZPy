@@ -5,6 +5,36 @@ short.  Ordered newest → oldest.
 
 ---
 
+## §1.5.58 — D2 / E+.2-A closed-out as won't-fix — 2026-04-27
+
+D2 (record-field-port faithful flat-edge routing) had been parked
+on the TODO since the splines port — its faithful fix is option
+**E+.2-A**: clone the two-node subgraph, run the full
+``rank`` → ``mincross`` → ``position`` → ``dot_splines_`` pipeline
+with ``rank=source`` on the clone, then transform the resulting
+splines back.  E+.2-A is itself blocked on D8 (``DotGraphInfo``
+can't be invoked recursively on a subgraph clone).
+
+**Decision**: close out as won't-fix.  The current E+.2-B fallback
+(compass-port attach points + corridor) covers the common case and
+the residual narrow case (record-field port on adjacent flat edge)
+fires :class:`UnsupportedPortRoutingWarning` so users see the
+limitation.  Closing D2 lets us drop:
+
+- the D2 row from the TODO §1 divergence table
+- the E+.2-A entry from §3 deferred items
+- the stale ``TODO_dot_splines_port.md`` pointer in
+  ``flat_edge.py``'s :class:`UnsupportedPortRoutingWarning`
+  docstring + emit text
+
+D8 stays in the divergence table as **dormant** — it has no live
+consumer once E+.2-A is closed, but the underlying gap (recursive
+`DotGraphInfo` instantiation) might re-surface later (e.g., for
+nested-graph features).  No code changes besides the warning text.
+1141 tests pass, no regression suite movement.
+
+---
+
 ## §1.5.57 — D6 corridor-carve MVP (opt-in) — 2026-04-27
 
 First cut of the D6 corridor-carve fix promised in TODO §2.2.
