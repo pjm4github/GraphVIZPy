@@ -630,6 +630,15 @@ def make_flat_labeled_edge(layout, sp: SplineInfo, P: Path,
     if not ps:
         return
 
+    # §1.5.55: post-hoc detour reshape around any non-member cluster
+    # whose interior the routed flat-edge spline still pierces.  Same
+    # guard regular_edge applies — flat edges between same-rank nodes
+    # in a tightly-clustered LR graph (e.g. 2796.dot's rank-7 chain)
+    # frequently route through several clusters' bboxes when the
+    # corridor between flat endpoints traverses them.
+    from gvpy.engines.layout.dot.cluster_detour import reshape_around_clusters
+    ps = reshape_around_clusters(ps, le, layout)
+
     clipped = clip_and_install(
         ps,
         tail_x=tail.x, tail_y=tail.y,
@@ -722,6 +731,10 @@ def make_flat_bottom_edges(layout, sp: SplineInfo, P: Path,
               else routepolylines(P, edge_name=_edge_label))
         if not ps:
             return
+
+        # §1.5.55: same post-hoc cluster-detour as the main flat path.
+        from gvpy.engines.layout.dot.cluster_detour import reshape_around_clusters
+        ps = reshape_around_clusters(ps, le, layout)
 
         clipped = clip_and_install(
             ps,
@@ -871,6 +884,10 @@ def make_flat_edge(layout, sp: SplineInfo, P: Path,
               else routepolylines(P, edge_name=_edge_label))
         if not ps:
             return
+
+        # §1.5.55: same post-hoc cluster-detour as the main flat path.
+        from gvpy.engines.layout.dot.cluster_detour import reshape_around_clusters
+        ps = reshape_around_clusters(ps, le, layout)
 
         clipped = clip_and_install(
             ps,
