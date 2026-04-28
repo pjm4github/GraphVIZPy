@@ -16,11 +16,20 @@ C dotgen.  Reference table — not a priority list (see §2 for priority).
 
 | # | Divergence | Python status | Impact |
 |---|---|---|---|
-| D4 | Cluster-clipping gives sub-pixel corner-grazing on bezier interior; also control-point-deep-inside cases where tail/head straddle a non-member cluster on adjacent ranks | `make_regular_edge` + `flat_edge` + `self_edge` all call `cluster_detour.reshape_around_clusters` (post-hoc detour reshape with 8-pt rounded corners, anchor-projection pre-pass, self-loop direction picker — see DONE.md §1.5.54–56).  Partial cover — residuals are D5/D6 positioning symptoms | was 86, now ~12 regression cases.  Post-§1.5.56 corpus totals: 1879=96 (HTML-IMG compat), 2796=9, 1332_ref=16, 1472=3, aa1332=3, 1436=3, 2183=3, 1213-1=0, 1213-2=0, d5_regression=0 |
-| D5 | Mincross places multi-rank edges on opposite sides of a cluster where C keeps them same-side.  **§1.5.1–§1.5.53 closed on 1879.dot — see DONE.md**.  Pass-by-pass mincross+remincross is 100% aligned with C (10326/10326 entries across 25 passes).  Position-phase overlap audit gives Py within 2 node-node, 10 cluster-non-member of C with no exact-bbox dups.  **Residual**: full corpus alignment beyond 1879 — visible regressions on 1213/1332/1472/2796/aa1332/2239 (smaller than 1879's residual was).  Next sessions should re-run the corpus and pick the next-largest divergence file. | `mincross.py` + `rank.py` + `position.py` aligned with `lib/dotgen/{mincross.c, position.c}`.  Channels: `[TRACE d5_step]`, `[TRACE d5_edges]`, `[TRACE bfs]`.  Helpers: `trace_d5/_pass_compare.py`, `_position_compare.py` etc. | broader-corpus residual; pick next-largest divergence file |
-| D6 | Phase 3 position lacks hard keep-out constraints for virtuals vs. non-member cluster y-bands | MVP corridor-carve shipped 2026-04-27 (§1.5.57): `rank_box_gapped` shrinks the x-extent of regular-edge rank boxes for same-side non-member clusters when `GVPY_CLUSTER_CARVE=1` is set.  Effect: 2796 9→7, 1879 96→95 (net -3 corpus crossings).  Trade-off: ~9 new triangulation failures fall back to polylines.  Kept opt-in until rank_box/maximal_bbox compatibility is hardened.  Straddle cases (prev/next on opposite sides) remain D5 territory. | compounds D4 |
-| D7 | Font metrics are Times-Roman AFM, not the rendering font | Layout-side already uses TNR via ``text_width_system`` (tkinter) for record port sizing.  Render-side: emits the ANTLR-parsed ``record_fields`` tree on the layout-output node dict (``record_tree``) and svg_renderer consumes it in place of its hand-written ``_parse_record_label`` — single-parser consistency between layout and render.  ``_parse_record_label`` kept as fallback for older node dicts.  **Investigated 2026-04-20: the "C=42 vs Python=99" claim doesn't reproduce — running C with ``GV_TRACE=port`` on 1332's c0.Out1 gives ``order=99``, same as Python.  Python's compass math in ``RecordField.port_fraction`` matches C's ``compassPort`` (shapes.c:2870) byte-for-byte.  The real residual divergence is in record-field SIZING — C's GDI+ text widths differ from Python's tkinter/TNR widths by a few points per glyph, which compounds into different subfield bboxes, different port positions, and per-port order drift of ~2-6 units (not 50+).  Closing this means matching C's text widths exactly, which is a much deeper project than anything the "compass rotation" framing suggested.** | record-node mincross divergence only |
+| D5 | Mincross / position layout-level placement: Python places nodes such that an edge geometrically crosses a non-member cluster.  Closed on 1879.dot (mincross + remincross 100% aligned with C across 25 passes; position-phase overlap audit within 2 of C — see DONE.md §1.5.21–53).  Splines-level covers (D4 detour reshape, D6 corridor-carve) absorb most of the residuals; what's left needs the same alignment workflow on the next-largest file. | `mincross.py` + `rank.py` + `position.py` aligned with `lib/dotgen/{mincross.c, position.c}`.  Channels: `[TRACE d5_step]`, `[TRACE d5_edges]`, `[TRACE bfs]`.  Helpers: `trace_d5/_pass_compare.py`, `_position_compare.py`, etc. | Corpus residual after D4 splines-level cover (post-§1.5.56): 1879=96 (HTML-IMG compat, see §2.3), 1332_ref=16, 2796=9, 1472=3, aa1332=3, 1436=3, 2183=3, 2620=2, 2470=4, others ≤ 2 |
+| D6 | Phase 3 position lacks hard keep-out constraints for virtuals vs. non-member cluster y-bands | MVP corridor-carve shipped 2026-04-27 (§1.5.57): `rank_box_gapped` shrinks the x-extent of regular-edge rank boxes for same-side non-member clusters when `GVPY_CLUSTER_CARVE=1` is set.  Effect: 2796 9→7, 1879 96→95 (net -3 corpus crossings).  Trade-off: ~9 new triangulation failures fall back to polylines.  Kept opt-in until rank_box / maximal_bbox compatibility is hardened.  Straddle cases (prev/next on opposite sides) remain D5 territory. | compounds D5 |
+| D7 | Font metrics are Times-Roman AFM, not the rendering font | Layout-side uses TNR via `text_width_system` (tkinter).  Render-side emits the ANTLR-parsed `record_fields` tree on the layout-output node dict and svg_renderer consumes it in place of its hand-written `_parse_record_label`.  Residual: C's GDI+ text widths differ from Python's tkinter/TNR by 2-6 units per glyph, compounding into per-port order drift.  Investigated 2026-04-20 — closing this means matching C's GDI+ text widths exactly. | record-node mincross only |
 | D8 | Recursive layout pipeline can't be invoked on a subgraph clone | `DotGraphInfo.__init__` assumes root-graph state | dormant — no live consumer after D2 / E+.2-A closure |
+
+**Closed divergences** (rolled out of this table):
+
+- **D2** (record-field-port flat-edge routing) — closed-out 2026-04-27
+  as won't-fix; see DONE.md §1.5.58.
+- **D4** (cluster corner-grazing) — splines-level cover shipped via
+  the `cluster_detour` pass (§1.5.20) plus follow-ups through
+  §1.5.57.  86 → ~150 raw bbox-cross signals, but every remaining
+  case is a D5 mincross/position symptom rather than a D4 clipping
+  issue.  See DONE.md §1.5.59.
 
 **Tool-side caveats the audit currently absorbs:**
 - `count_cluster_crossings.py` uses `le.route.spline_type` to pick
@@ -29,10 +38,8 @@ C dotgen.  Reference table — not a priority list (see §2 for priority).
 - `visual_audit.py` infers C-side bezier-vs-polyline from `"C"` command
   letters; a Graphviz output-format change could silently re-introduce
   phantom crossings.
-- Timeout budget is 60 s per graph per side; remaining timeouts in the
-  corpus fall into very-large-graph territory (≥ 20k lines, bounded by
-  algorithmic complexity not overhead) and medium graphs where phase-4
-  splines triangulation dominates (see §8).
+- Timeout budget is 60 s per graph per side; remaining timeouts fall
+  into very-large-graph territory (see §7).
 
 ---
 
@@ -40,55 +47,39 @@ C dotgen.  Reference table — not a priority list (see §2 for priority).
 
 Ordered by payoff.  Each item is independently shippable.
 
-1. **Cluster corner-grazing** (D4).  Reduced from 86 to ~10 visible
-   regressions after the post-hoc detour reshape (`cluster_detour.py`)
-   shipped 2026-04-20.  Detour polylines render with 8-pt rounded
-   corners (arc radius > typical 4.5-pt rounded-rect node radius),
-   detour margin 20 pt to guarantee ≥ 4-pt clearance.  Residuals split
-   between (a) anchor-inside-non-member-cluster cases (pure D5/D6
-   positioning issue; not fixable at the splines layer) and (b)
-   nested-overlap cases where no detour side clears all other
-   non-member clusters near the edge.  Closing the rest means tackling
-   D5/D6 directly.
-2. **Layout-level fixes** (D5, D6).  D5 fully aligned with C on
-   1879.dot (mincross 100% pass-by-pass, position-phase overlaps
-   within 2 of C — see DONE.md §1.5.21–53).  Remaining: rerun the
-   corpus, find the next-largest divergence file, and apply the
-   same alignment workflow.  D6 is ~80–120 lines in `position.py`
-   for the corridor-carve fix.
-3. **Font metrics refinement** (D7).  Try Times New Roman metrics,
-   replace `svg_renderer._parse_record_label` with `Node.record_fields`
-   (ANTLR4).  Closing the 2-6 unit per-glyph drift means matching C's
-   GDI+ text widths exactly.
-4. **HTML-label IMG fallback compat (D4 / 1879)**.  C silently falls
-   back to the node name when an embedded ``<IMG SRC>`` fails to
-   resolve, collapsing the node bbox.  Python honors the full table
-   (correct per its own HTML interpretation), producing larger nodes
-   that tangle with the cluster layout.  1879.dot = 105 crossings on
-   that pattern.  Either match C's silent-fallback behaviour (bug
-   compatibility) or push through D5 deep enough that correctly-sized
-   HTML nodes don't force crossings.
+1. **D5 alignment on the next-largest divergence file**.  The
+   §1.5.21–53 workflow (pass-by-pass mincross + remincross trace
+   compare → position-phase overlap audit) is the proven recipe.
+   1879.dot is closed; current corpus residuals are 1332_ref=16,
+   2796=9, 1472=3, then the long tail.  Pick 1332_ref next.
+2. **D6 corridor-carve hardening**.  §1.5.57 shipped the MVP
+   opt-in (`GVPY_CLUSTER_CARVE=1`).  Promoting to default-on
+   needs (a) a guard so the carve doesn't disconnect the rank_box
+   from adjacent maximal_bbox / tend / hend boxes (~9 spurious
+   triangulation failures on 2796 today), and (b) extension to flat
+   and self-edge corridors.  Estimated 80-120 lines.
+3. **HTML-label `<IMG>` fallback compat** (1879.dot, ~96 crossings).
+   C silently falls back to the node name when an embedded
+   `<IMG SRC>` fails to resolve, collapsing the node bbox; Python
+   renders the full table.  Python's behaviour is correct per its
+   own HTML interpretation but produces oversized nodes that the
+   cluster layout can't accommodate.  Decide: bug-compat with C
+   (silent fallback) vs push D5 deeper so correctly-sized HTML nodes
+   stop forcing crossings.
+4. **Font metrics refinement** (D7).  Match C's GDI+ text widths
+   exactly to close the 2-6 unit per-glyph drift that compounds
+   into per-port order divergence on record nodes.
 
 ---
 
-## 3. Priority 2 — Splines Port Deferred Items
-
-_None._  E+.2-A (record-field-port faithful flat-edge routing) is
-closed-out as won't-fix; the existing E+.2-B compass/centre fallback
-covers the common case and emits
-:class:`UnsupportedPortRoutingWarning` on the narrow record-port
-adjacent-flat case.  See DONE.md §1.5.58.
-
----
-
-## 4. Core Refactor
+## 3. Core Refactor
 
 **Deferred:** `PictoGraphInfo` — planned as Phase 1 of the pictosync merge
-(see §7).
+(see §6).
 
 ---
 
-## 5. Other Layout Engines — Stubs
+## 4. Other Layout Engines — Stubs
 
 Priority order:
 
@@ -106,7 +97,7 @@ port via `lib/ortho/`, 18+12+18+4+4+12 module tests).
 
 ---
 
-## 6. MainGraphvisPy GUI
+## 5. MainGraphvisPy GUI
 
 Five-phase plan, none started:
 
@@ -124,7 +115,7 @@ Five-phase plan, none started:
 
 ---
 
-## 7. Pictosync Merge
+## 6. Pictosync Merge
 
 | Phase | Description | Status |
 |---|---|---|
@@ -136,14 +127,14 @@ Five-phase plan, none started:
 | 6 | `SimNode(Node)` subclass with 4-phase execution | new work |
 | 7 | `DiscreteTimeSimulator` engine on a Graph of SimNodes | depends on Phase 6 |
 | 8 | MNAM matrix builder from cgraph topology | depends on Phase 7 |
-| 9 | MainGraphvisPy cgraph integration | depends on §6 |
+| 9 | MainGraphvisPy cgraph integration | depends on §5 |
 
 Order 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9.  Phases 1–5 unblock pictosync's
 diagram UI; 6–9 add simulation.
 
 ---
 
-## 8. Diagnostics & Tooling
+## 7. Diagnostics & Tooling
 
 - `tools/visual_audit.py` — corpus-wide Python vs. C crossings audit.
   Reruns in ~25-30 min.  `audit_report.md` is the baseline snapshot.
@@ -154,26 +145,21 @@ diagram UI; 6–9 add simulation.
   `trace.py`; C: `lib/dotgen/mincross.c`, `lib/dotgen/class2.c`).
 
 **Remaining timeout work:**
-- Very large graphs (≥ 20 k lines, bounded by algorithmic complexity
-  not overhead).
+- Very large graphs (≥ 20 k lines) — algorithmic complexity, not
+  overhead.
 - Medium graphs (~500 nodes like 2343.dot) where phase-4 splines
-  shortest-path triangulation now dominates: 94 % of the post-fix
-  2343.dot runtime is ``routespl.routesplines_`` →
-  ``shortest.Pshortestpath`` → ``_triangulate_pnls`` →
-  ``isdiagonal`` (236 M ``ccw`` calls on obstacle polygons per run).
-  Algorithmic (C's ear-clip triangulation is the same shape, just
-  faster per-call); not a cache miss.  Next triage target would
-  attack the triangulation itself — memoise per-obstacle, cache-once-
-  per-edge the clip-box, or swap in a different visibility algorithm.
-  Also note a large volume of ``routesplines, Pshortestpath failed``
-  fallback messages on 2343.dot (~40 per run) — each failed call still
-  costs the full triangulation and then routes to a straight fallback;
-  fixing whatever makes ``Pshortestpath`` fail could cut those
-  triangulations entirely.
+  shortest-path triangulation dominates (94% of the runtime is
+  `routespl.routesplines_` → `shortest.Pshortestpath` →
+  `_triangulate_pnls` → `isdiagonal`, ~236 M `ccw` calls per run).
+  Triage targets: memoise per-obstacle, cache clip-box once per
+  edge, or swap in a different visibility algorithm.  Also: ~40
+  `Pshortestpath failed` fallbacks per 2343.dot run each pay full
+  triangulation cost — fixing whatever causes the failures would
+  cut the work entirely.
 
 ---
 
-## 9. HTML-like Labels — open follow-ups
+## 8. HTML-like Labels — open follow-ups
 
 Phase 1-3 (text styling) and Phase 4 (`<TABLE>` / `<TR>` / `<TD>` core)
 shipped earlier; Phase 4+ spec-completeness pass shipped 2026-04-21
@@ -181,13 +167,11 @@ shipped earlier; Phase 4+ spec-completeness pass shipped 2026-04-21
 
 Open items:
 
-1. **Entity coverage beyond the big five** — currently
-   ``html.parser.HTMLParser`` with ``convert_charrefs=True``
-   handles every named HTML5 entity, so ``&rarr;`` etc. work for
-   free.  No action needed; noted for completeness only.
-2. **`<IMG>` follow-ups** — remote-URL ``SRC`` (currently file-path
-   only), SVG file size probe (currently PNG/JPEG/GIF only).
-3. **Spline-side port-exit geometry through cell edges** — PORT
+1. **`<IMG>` follow-ups** — remote-URL ``SRC`` (currently file-path
+   only), SVG file size probe (currently PNG/JPEG/GIF only).  Note:
+   the ``<IMG SRC>`` *resolution-failure* fallback is tracked
+   separately as TODO §2.3 (1879.dot bug-compat with C).
+2. **Spline-side port-exit geometry through cell edges** — PORT
    captures cell geometry on ``Node.html_table`` so mincross's
    port-order hook can resolve ``node:port`` consistently with
    records, but the spline endpoint still funnels through the node's

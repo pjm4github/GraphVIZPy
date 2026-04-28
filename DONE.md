@@ -5,6 +5,48 @@ short.  Ordered newest → oldest.
 
 ---
 
+## §1.5.59 — D4 closed; TODO.md cleanup — 2026-04-27
+
+D4 (cluster-clipping sub-pixel corner-grazing + control-point-deep-
+inside cases) is closed-out as splines-level-resolved.  The
+cluster-detour pass (`gvpy/engines/layout/dot/cluster_detour.py`)
+plus its follow-ups cover the D4 cases:
+
+| Step | Coverage |
+|---|---|
+| §1.5.20 (2026-04-20) | Initial post-hoc detour reshape with 8-pt rounded corners, 20-pt detour margin, member-cluster identity-keying. |
+| §1.5.55 (2026-04-27) | Wired into flat-edge variants (was regular-edge only). |
+| §1.5.56 (2026-04-27) | Self-loop direction picker; interior-anchor projection for control-point-deep-inside cases. |
+| §1.5.57 (2026-04-27) | D6 corridor-carve MVP (opt-in `GVPY_CLUSTER_CARVE=1`) for same-side rank-box constraints. |
+
+**What's left in the audit isn't D4.**  Verified by sampling
+`audit_report.md`'s top regression files:
+
+- 1879 (96 crossings) — the `<IMG SRC>` fallback compat bug, see
+  TODO §2.3.  Not D4.
+- 1332_ref (16 crossings), 2796 (9), 2620 (2), 2470 (4) — every
+  remaining crossing is an edge whose tail and head straddle a
+  non-member cluster on adjacent ranks.  That's a D5 mincross /
+  position decision: C tightens same-cluster nodes so the straddle
+  doesn't arise.  Splines-level reshape can't undo that.
+
+**Cleanup to TODO.md** done in this session:
+
+- Drop D4 from §1 divergence table; record in a "closed
+  divergences" sub-section.
+- Re-attribute the per-file residual stats from D4 to D5.
+- Rewrite §2 priorities to drop the D4 entry, promote D5 alignment
+  on next-largest file (1332_ref), keep D6 hardening + HTML-IMG
+  compat + D7 font metrics.
+- Drop the empty §3 "Splines Port Deferred Items" section
+  (E+.2-A closed in §1.5.58).
+- Renumber §4–§9 to §3–§8; fix internal cross-refs (§7 phase 9,
+  §1 tool-side caveats).
+
+No code changes; documentation-only.  1141 tests still pass.
+
+---
+
 ## §1.5.58 — D2 / E+.2-A closed-out as won't-fix — 2026-04-27
 
 D2 (record-field-port faithful flat-edge routing) had been parked
