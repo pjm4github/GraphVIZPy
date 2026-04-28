@@ -5,6 +5,78 @@ short.  Ordered newest → oldest.
 
 ---
 
+## §1.5.54–56 — Splines-level cluster-detour follow-ups — 2026-04-27
+
+Three splines/channel-routing-level passes after §1.5.53 closed
+1879.dot.  Constraint: only spline-routing code, no mincross /
+position changes.
+
+**§1.5.54 — Corpus rerun, picked next-largest divergence.**  After
+§1.5.53 the `Δ_py − c` totals across the regression corpus were
+1879=96, 2796=20, 1332_ref=17, 1472=13, aa1332=5, 1213-1=3,
+1436=3, 2183=3, 1213-2=2, d5_regression=0.  Selected 2796.dot
+(rankdir=LR, 59 nodes, 91 edges, 43 clusters) as the next target
+since 1879's residual is dominated by HTML-IMG fallback noise.
+
+**§1.5.55 — flat-edge cluster-detour reshape** (commit `7964b12`).
+`reshape_around_clusters` was wired into `regular_edge.py` only;
+flat-edge variants in `flat_edge.py` skipped it, leaving any flat
+edge whose corridor straddled a non-member cluster un-detoured.
+Added the reshape call at three sites in `flat_edge.py` (between
+`routesplines/routepolylines` and `clip_and_install`).  Result:
+2796 20→14, 1472 13→3, 1213-1 3→1, 1213-2 2→0.
+
+**§1.5.56 — Self-edge direction picker + anchor projection.**
+Two complementary follow-ups in `cluster_detour.py` and
+`self_edge.py`:
+
+*(a) Self-loop direction picker* (`_pick_self_loop_direction`).
+`make_self_edge` defaults to a right-side loop when no port is
+specified.  On 2796.dot three self-loops (`2->2`, `30->30`,
+`43->43`) had a non-member cluster sitting inside the right-loop
+bbox.  Reshape can't fix it because all 7 polyline points are
+inside the cluster.  Fix: when port-free, score each direction's
+candidate loop bbox against non-member cluster bboxes, pick the
+direction with fewest overlaps.  Result on 2796: 14→11.
+
+*(b) Interior anchor projection* (`_project_interior_anchors_outside`).
+`routesplines` builds cubic bezier anchors that can fall straight
+into a non-member cluster's bbox; the via-insertion loop can't
+detour because both endpoints of the offending segment are inside.
+Pre-pass: for each interior anchor (endpoints stay pinned to node
+ports), if it lies inside any non-member cluster, project it onto
+the nearest outside wall plus `_DETOUR_MARGIN`.  Bounded by 8
+iterations per anchor for pinball cases.  Result on 2796: 11→9;
+also 1213-1 1→0, 1332_ref 17→16, aa1332 5→3.
+
+Also added a polyline-aware reshape variant
+(`reshape_polyline_around_clusters`) for self-loop pts which is a
+7-point CORNER POLYLINE rather than a Graphviz cubic bezier — the
+bezier-aware variant misses anchor-on-vertex crossings.  Used as
+defense-in-depth even though direction picking covers the bulk.
+
+**Cumulative result across the regression corpus**:
+
+| File | post §1.5.53 | post §1.5.55 | post §1.5.56 |
+|---|---:|---:|---:|
+| 1213-1.dot | 3 | 1 | **0** |
+| 1213-2.dot | 2 | 0 | **0** |
+| 1332_ref.dot | 17 | 17 | **16** |
+| 1436.dot | 3 | 3 | 3 |
+| 1472.dot | 13 | 3 | 3 |
+| 1879.dot | 96 | 96 | 96 |
+| 2183.dot | 3 | 3 | 3 |
+| 2796.dot | 20 | 14 | **9** |
+| aa1332.dot | 5 | 5 | **3** |
+| **Total** | **162** | **142** | **133** |
+
+1141 main tests pass (1 pre-existing parser test failure
+unrelated).  Residual on 2796 (9 crossings) and 1879 (96 crossings,
+HTML-IMG fallback compat) needs D5/D6 layout-level work, not
+splines-level patches.
+
+---
+
 ## §1.5.51–53 — Position-phase overlap audit + fixes — 2026-04-27
 
 Built `trace_d5/_position_compare.py` overlap audit harness and

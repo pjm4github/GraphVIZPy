@@ -35,7 +35,6 @@ baseline.
 
 from __future__ import annotations
 
-import sys
 from typing import TYPE_CHECKING
 
 from gvpy.engines.layout.pathplan import Ppoint
@@ -115,6 +114,16 @@ def reshape_around_clusters(
 
     # Start from the anchor polyline extracted from the bezier.
     poly: list[tuple[float, float]] = _anchors(ps)
+    n_orig = len(poly)
+
+    # §1.5.56(b): pre-pass — project interior anchors that landed
+    # inside a non-member cluster onto the nearest outside wall.
+    # ``routesplines`` doesn't know about clusters, so cubic-spline
+    # anchors can fall straight through a cluster bbox, leaving the
+    # subsequent via-insertion loop with no clean detour (because
+    # both endpoints of the offending segment must be outside).
+    # Endpoints are NEVER moved — they're attached to node ports.
+    poly = _project_interior_anchors_outside(poly, offenders)
 
     for _ in range(_MAX_ITERATIONS):
         crossing = _find_first_crossing(poly, offenders)
@@ -129,8 +138,8 @@ def reshape_around_clusters(
             break
         poly = poly[: seg_idx + 1] + list(vias) + poly[seg_idx + 1:]
 
-    if len(poly) <= len(_anchors(ps)):
-        # Never inserted a via-point — return original spline.
+    if len(poly) == n_orig and poly == _anchors(ps):
+        # Never altered the anchor polyline — return original spline.
         return ps
 
     # Convert the detoured polyline to a bezier control-point list
@@ -142,6 +151,94 @@ def reshape_around_clusters(
     # it re-smooths the corners and re-bulges into the very cluster
     # we just steered around.
     return _make_rounded_bezier(poly, _CORNER_RADIUS)
+
+
+def reshape_polyline_around_clusters(
+    pts: list[Ppoint],
+    le: "LayoutEdge",
+    layout: "DotGraphInfo",
+) -> list[Ppoint]:
+    """§1.5.56 — polyline-format counterpart of
+    :func:`reshape_around_clusters`.
+
+    self_edge.py emits a 7-point CORNER POLYLINE (start → corner1 →
+    corner2 → mid → corner3 → corner4 → end), not a Graphviz cubic
+    bezier.  Treating it as a bezier (anchors at indices 0/3/6)
+    misses the loop's corner-region crossings — the bezier-sampled
+    arc between mid and start/end may miss a cluster bbox the
+    actual polyline-corner pierces.
+
+    This variant treats EVERY ``pts[i]`` as a polyline anchor, runs
+    the same find-crossing / pick-detour loop, then returns the
+    extended polyline as Ppoints (no rounded-bezier conversion —
+    self_edge expects polyline format on the way to clip_and_install).
+    """
+    if len(pts) < 2:
+        return pts
+    clusters = getattr(layout, "_clusters", None) or []
+    if not clusters:
+        return pts
+    member_ids = _member_cluster_ids(le, clusters)
+    offenders = [cl for cl in clusters
+                 if cl.bb and id(cl) not in member_ids]
+    if not offenders:
+        return pts
+
+    poly: list[tuple[float, float]] = [(p.x, p.y) for p in pts]
+    n0 = len(poly)
+    for _ in range(_MAX_ITERATIONS):
+        crossing = _find_first_polyline_crossing(poly, offenders)
+        if crossing is None:
+            break
+        seg_idx, cl_bb = crossing
+        vias = _pick_detour_waypoints(poly[seg_idx],
+                                      poly[seg_idx + 1],
+                                      cl_bb, offenders)
+        if not vias:
+            break
+        poly = poly[: seg_idx + 1] + list(vias) + poly[seg_idx + 1:]
+
+    if len(poly) <= n0:
+        return pts
+    return [Ppoint(x, y) for (x, y) in poly]
+
+
+def _find_first_polyline_crossing(poly, offenders):
+    """Like :func:`_find_first_crossing` but treats consecutive
+    ``poly`` entries as STRAIGHT-LINE segments rather than cubic
+    beziers with linearly-interpolated controls.  Used by the
+    polyline reshape variant for self-edges.
+
+    Also checks anchor POINTS themselves (not just inter-anchor
+    samples) — for a polyline whose vertices lie inside a cluster's
+    bbox, the renderer draws a curve THROUGH those points so they
+    must be detected as crossings even when the linear segments
+    between them happen to skim the bbox.
+    """
+    for i in range(len(poly)):
+        # Check anchor itself.
+        sx, sy = poly[i][0], poly[i][1]
+        for cl in offenders:
+            bb = cl.bb
+            if bb[0] < sx < bb[2] and bb[1] < sy < bb[3]:
+                # Return the segment whose end IS this anchor (or
+                # whose start is, for the very first anchor).
+                seg = max(0, i - 1) if i > 0 else 0
+                return (seg, bb)
+        # Check sub-samples of segment ending at this anchor.
+        if i == 0:
+            continue
+        p0 = poly[i - 1]
+        p1 = poly[i]
+        for t_step in range(1, _SAMPLES_PER_SEG + 1):
+            t = t_step / (_SAMPLES_PER_SEG + 1)
+            sx = p0[0] + t * (p1[0] - p0[0])
+            sy = p0[1] + t * (p1[1] - p0[1])
+            for cl in offenders:
+                bb = cl.bb
+                if bb[0] < sx < bb[2] and bb[1] < sy < bb[3]:
+                    return (i - 1, bb)
+    return None
 
 
 # --- member clusters ---------------------------------------------------
@@ -200,6 +297,61 @@ def _sample_segment(p0, c1, c2, p3, n: int = _SAMPLES_PER_SEG):
              + 3*s*t*t*c2[1] + t*t*t*p3[1])
         pts.append((x, y))
     return pts
+
+
+# --- anchor projection (§1.5.56b) -------------------------------------
+
+
+def _project_interior_anchors_outside(poly, offenders):
+    """Push interior polyline anchors that fall inside any non-member
+    cluster's bbox onto the nearest outside wall (with detour margin).
+
+    The first and last anchors are pinned (node port attach points)
+    and never moved.  Each interior anchor is checked once per
+    offender; if multiple clusters contain it the closest-wall rule
+    is applied iteratively until the anchor is outside all of them.
+    A bounded outer loop guards against pathological pinball cases.
+    """
+    if len(poly) < 3:
+        return poly
+    out = [poly[0]]
+    for i in range(1, len(poly) - 1):
+        p = poly[i]
+        for _ in range(8):
+            inside = None
+            for cl in offenders:
+                bb = cl.bb
+                if bb[0] < p[0] < bb[2] and bb[1] < p[1] < bb[3]:
+                    inside = bb
+                    break
+            if inside is None:
+                break
+            p = _project_outside(p, inside)
+        out.append(p)
+    out.append(poly[-1])
+    return out
+
+
+def _project_outside(p, bb):
+    """Push ``p`` to the nearest outside edge of ``bb`` plus
+    :data:`_DETOUR_MARGIN`.  Picks the side requiring the smallest
+    move so the resulting polyline diverges minimally from the
+    original routing.
+    """
+    x, y = p
+    x1, y1, x2, y2 = bb
+    dx_left = x - x1
+    dx_right = x2 - x
+    dy_top = y - y1
+    dy_bot = y2 - y
+    options = [
+        (dx_left, (x1 - _DETOUR_MARGIN, y)),
+        (dx_right, (x2 + _DETOUR_MARGIN, y)),
+        (dy_top, (x, y1 - _DETOUR_MARGIN)),
+        (dy_bot, (x, y2 + _DETOUR_MARGIN)),
+    ]
+    options.sort(key=lambda o: o[0])
+    return options[0][1]
 
 
 # --- crossing detection ------------------------------------------------

@@ -44,6 +44,12 @@ def make_self_edge(layout, le, tail) -> None:
     """Route a self-loop edge and install on the LayoutEdge.
 
     See: /lib/common/splines.c @ 1164
+
+    §1.5.56: when no port is specified, pick the loop direction
+    (right/left/top/bottom) whose candidate bbox overlaps the fewest
+    non-member clusters.  This is the splines-level cover for D5
+    (mincross/position) where C's tighter cluster placement keeps
+    self-loop space free of foreign clusters.
     """
     tside = _port_side(le.tailport)
     hside = _port_side(le.headport)
@@ -51,7 +57,15 @@ def make_self_edge(layout, le, tail) -> None:
     if ((not le.tailport and not le.headport) or
         (not (tside & LEFT) and not (hside & LEFT) and
          (tside != hside or not (tside & (TOP | BOTTOM))))):
-        _self_right(layout, [le], tail)
+        direction = _pick_self_loop_direction(layout, le, tail)
+        if direction == "left":
+            _self_left(layout, [le], tail)
+        elif direction == "top":
+            _self_top(layout, [le], tail)
+        elif direction == "bottom":
+            _self_bottom(layout, [le], tail)
+        else:
+            _self_right(layout, [le], tail)
     elif (tside & LEFT) or (hside & LEFT):
         if (tside & RIGHT) or (hside & RIGHT):
             _self_top(layout, [le], tail)
@@ -63,6 +77,56 @@ def make_self_edge(layout, le, tail) -> None:
         _self_bottom(layout, [le], tail)
     else:
         _self_right(layout, [le], tail)
+
+
+def _pick_self_loop_direction(layout, le, n) -> str:
+    """Return one of "right" / "left" / "top" / "bottom" for the
+    self-loop direction whose candidate bbox overlaps the fewest
+    non-member clusters.  Ties broken in the order
+    right > left > top > bottom (right is the C default).
+
+    Each direction's candidate bbox is the axis-aligned region the
+    loop would occupy for a single edge with the standard step sizes.
+    """
+    clusters = getattr(layout, "_clusters", None) or []
+    if not clusters:
+        return "right"
+    from gvpy.engines.layout.dot.cluster_detour import (
+        _member_cluster_ids,
+    )
+    member_ids = _member_cluster_ids(le, clusters)
+    offenders = [cl for cl in clusters
+                 if cl.bb and id(cl) not in member_ids]
+    if not offenders:
+        return "right"
+    hw = n.width / 2
+    hh = n.height / 2
+    nx, ny = n.x, n.y
+    # Approximate loop bboxes, matching the geometry in
+    # _self_right/_left/_top/_bottom for a single edge (cnt==1):
+    #   right: x in [nx+hw, nx+2*hw], y in [ny-hh, ny+hh]
+    #   left:  x in [nx-2*hw, nx-hw], y in [ny-hh, ny+hh]
+    #   top:   x in [nx-hw, nx+hw],   y in [ny-2*hh, ny-hh]
+    #   bot:   x in [nx-hw, nx+hw],   y in [ny+hh,   ny+2*hh]
+    candidates = [
+        ("right", (nx + hw, ny - hh, nx + 2 * hw, ny + hh)),
+        ("left", (nx - 2 * hw, ny - hh, nx - hw, ny + hh)),
+        ("top", (nx - hw, ny - 2 * hh, nx + hw, ny - hh)),
+        ("bottom", (nx - hw, ny + hh, nx + hw, ny + 2 * hh)),
+    ]
+    best_name = "right"
+    best_score = None
+    for name, bb in candidates:
+        score = 0
+        for cl in offenders:
+            cb = cl.bb
+            if (bb[0] < cb[2] and bb[2] > cb[0]
+                    and bb[1] < cb[3] and bb[3] > cb[1]):
+                score += 1
+        if best_score is None or score < best_score:
+            best_score = score
+            best_name = name
+    return best_name
 
 
 def _self_right(layout, edges: list, n) -> None:
@@ -104,6 +168,13 @@ def _self_right(layout, edges: list, n) -> None:
             Ppoint(hp_x + hx / 3, hp_y + dy),
             Ppoint(hp_x, hp_y),
         ]
+        # §1.5.56: self-loop pts is a 7-point CORNER POLYLINE, not a
+        # bezier — use the polyline-aware reshape so vertices that
+        # land inside a cluster bbox are detected and detoured.
+        from gvpy.engines.layout.dot.cluster_detour import (
+            reshape_polyline_around_clusters,
+        )
+        pts = reshape_polyline_around_clusters(pts, le, layout)
         clipped = clip_and_install(
             pts,
             tail_x=np_x, tail_y=np_y,
@@ -150,6 +221,11 @@ def _self_left(layout, edges: list, n) -> None:
             Ppoint(hp_x - hx / 3, hp_y + dy),
             Ppoint(hp_x, hp_y),
         ]
+        # §1.5.56: polyline-aware detour reshape (see _self_right).
+        from gvpy.engines.layout.dot.cluster_detour import (
+            reshape_polyline_around_clusters,
+        )
+        pts = reshape_polyline_around_clusters(pts, le, layout)
         clipped = clip_and_install(
             pts,
             tail_x=np_x, tail_y=np_y,
@@ -196,6 +272,11 @@ def _self_top(layout, edges: list, n) -> None:
             Ppoint(hp_x - dx, hp_y - hy / 3),
             Ppoint(hp_x, hp_y),
         ]
+        # §1.5.56: polyline-aware detour reshape (see _self_right).
+        from gvpy.engines.layout.dot.cluster_detour import (
+            reshape_polyline_around_clusters,
+        )
+        pts = reshape_polyline_around_clusters(pts, le, layout)
         clipped = clip_and_install(
             pts,
             tail_x=np_x, tail_y=np_y,
@@ -242,6 +323,11 @@ def _self_bottom(layout, edges: list, n) -> None:
             Ppoint(hp_x - dx, hp_y + hy / 3),
             Ppoint(hp_x, hp_y),
         ]
+        # §1.5.56: polyline-aware detour reshape (see _self_right).
+        from gvpy.engines.layout.dot.cluster_detour import (
+            reshape_polyline_around_clusters,
+        )
+        pts = reshape_polyline_around_clusters(pts, le, layout)
         clipped = clip_and_install(
             pts,
             tail_x=np_x, tail_y=np_y,
