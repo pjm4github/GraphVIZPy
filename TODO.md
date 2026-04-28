@@ -16,7 +16,7 @@ C dotgen.  Reference table — not a priority list (see §2 for priority).
 
 | # | Divergence | Python status | Impact |
 |---|---|---|---|
-| D5 | Mincross / position layout-level placement: Python places nodes such that an edge geometrically crosses a non-member cluster.  Closed on 1879.dot (mincross + remincross 100% aligned with C across 25 passes; position-phase overlap audit within 2 of C — see DONE.md §1.5.21–53).  Splines-level covers (D4 detour reshape, D6 corridor-carve) absorb most of the residuals; what's left needs the same alignment workflow on the next-largest file. | `mincross.py` + `rank.py` + `position.py` aligned with `lib/dotgen/{mincross.c, position.c}`.  Channels: `[TRACE d5_step]`, `[TRACE d5_edges]`, `[TRACE bfs]`.  Helpers: `trace_d5/_pass_compare.py`, `_position_compare.py`, etc. | Corpus residual after D4 splines-level cover (post-§1.5.56): 1879=96 (HTML-IMG compat, see §2.3), 1332_ref=16, 2796=9, 1472=3, aa1332=3, 1436=3, 2183=3, 2620=2, 2470=4, others ≤ 2 |
+| D5 | Mincross / position layout-level placement: Python places nodes such that an edge geometrically crosses a non-member cluster.  Mincross + remincross 100% aligned with C across 25 passes on 1879.dot, position-phase overlap audit within 2 of C (see DONE.md §1.5.21–53).  Splines-level covers (D4 detour reshape, D6 corridor-carve) absorb most of the per-file residual.  **Corrected baseline (§1.5.60)**: on the 10-file regression subset Python = 133 crossings, C = 57; only 4 files have Py > C.  1879 dominates the delta (+94); on most of the corpus Py < C, i.e., Python's layout already routes around clusters better than C's. | `mincross.py` + `rank.py` + `position.py` aligned with `lib/dotgen/{mincross.c, position.c}`.  Channels: `[TRACE d5_step]`, `[TRACE d5_edges]`, `[TRACE bfs]`.  Helpers: `trace_d5/_pass_compare.py`, `_position_compare.py`, etc. | True regressions (post-§1.5.60 audit fix): 1879=+94, 1332_ref=+10, 2183=+3, 1436=+2 on the 10-file regression subset.  Full corpus rerun pending. |
 | D6 | Phase 3 position lacks hard keep-out constraints for virtuals vs. non-member cluster y-bands | MVP corridor-carve shipped 2026-04-27 (§1.5.57): `rank_box_gapped` shrinks the x-extent of regular-edge rank boxes for same-side non-member clusters when `GVPY_CLUSTER_CARVE=1` is set.  Effect: 2796 9→7, 1879 96→95 (net -3 corpus crossings).  Trade-off: ~9 new triangulation failures fall back to polylines.  Kept opt-in until rank_box / maximal_bbox compatibility is hardened.  Straddle cases (prev/next on opposite sides) remain D5 territory. | compounds D5 |
 | D7 | Font metrics are Times-Roman AFM, not the rendering font | Layout-side uses TNR via `text_width_system` (tkinter).  Render-side emits the ANTLR-parsed `record_fields` tree on the layout-output node dict and svg_renderer consumes it in place of its hand-written `_parse_record_label`.  Residual: C's GDI+ text widths differ from Python's tkinter/TNR by 2-6 units per glyph, compounding into per-port order drift.  Investigated 2026-04-20 — closing this means matching C's GDI+ text widths exactly. | record-node mincross only |
 | D8 | Recursive layout pipeline can't be invoked on a subgraph clone | `DotGraphInfo.__init__` assumes root-graph state | dormant — no live consumer after D2 / E+.2-A closure |
@@ -58,14 +58,16 @@ Ordered by payoff.  Each item is independently shippable.
    from adjacent maximal_bbox / tend / hend boxes (~9 spurious
    triangulation failures on 2796 today), and (b) extension to flat
    and self-edge corridors.  Estimated 80-120 lines.
-3. **HTML-label `<IMG>` fallback compat** (1879.dot, ~96 crossings).
-   C silently falls back to the node name when an embedded
-   `<IMG SRC>` fails to resolve, collapsing the node bbox; Python
-   renders the full table.  Python's behaviour is correct per its
-   own HTML interpretation but produces oversized nodes that the
-   cluster layout can't accommodate.  Decide: bug-compat with C
-   (silent fallback) vs push D5 deeper so correctly-sized HTML nodes
-   stop forcing crossings.
+3. **1879.dot D5 alignment** (96 crossings vs C's 2; +94 delta —
+   the only true outlier).  Earlier framing as an HTML-IMG fallback
+   bug was wrong: with libexpat-enabled dot.exe (system 14.x, see
+   §7), C *does* render the same `<TABLE>` as Python and produces
+   nearly identical node sizes (e.g. `node_325x326_325` is 108×79
+   pt in C, 110×80 pt in Python).  The 94-crossing delta comes
+   from layout decisions, not rendering.  Apply the §1.5.21–53
+   pass-by-pass mincross+remincross alignment workflow to find
+   where Python diverges from C on 1879's many-cluster genealogy
+   topology.
 4. **Font metrics refinement** (D7).  Match C's GDI+ text widths
    exactly to close the 2-6 unit per-glyph drift that compounds
    into per-port order divergence on record nodes.
@@ -138,6 +140,12 @@ diagram UI; 6–9 add simulation.
 
 - `tools/visual_audit.py` — corpus-wide Python vs. C crossings audit.
   Reruns in ~25-30 min.  `audit_report.md` is the baseline snapshot.
+  Override the C-side dot.exe with `GVPY_DOT_EXE=/path/to/dot.exe`;
+  the default is the local CLion-built dot, which lacks libexpat
+  (so HTML `<TABLE>` content isn't rendered, but the node footprints
+  still match because non-table sizing isn't very different).  The
+  upstream Windows distribution at `c:/tools/graphviz/bin/dot.exe`
+  has libexpat.
 - `tools/count_cluster_crossings.py` — per-graph Python counter.
   `use_channel` kwarg is a no-op (kept for back-compat).
 - `[TRACE d5_step]` / `[TRACE d5_edges]` / `[TRACE d5_icv]` — D5

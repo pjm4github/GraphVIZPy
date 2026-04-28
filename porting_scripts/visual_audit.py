@@ -32,9 +32,20 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-DOT_EXE = Path(
+_DEFAULT_DOT_EXE = Path(
     r"C:\Users\pmora\OneDrive\Documents\Git\GitHub\graphviz"
     r"\cmake-build-debug-mingw\cmd\dot\dot.exe"
+)
+# Override with ``GVPY_DOT_EXE`` to compare against a different
+# dot.exe build.  Useful when the local CLion-built dot lacks
+# libexpat (HTML <TABLE> support); in that case 1879.dot's C-side
+# trivially has 0 cluster crossings because its tables aren't
+# rendered, and the audit delta is misleading.  Point this at a
+# system dot.exe (e.g. ``c:/tools/graphviz/bin/dot.exe`` from the
+# upstream Windows distribution) for an apples-to-apples compare.
+import os as _os_dot_exe
+DOT_EXE = Path(
+    _os_dot_exe.environ.get("GVPY_DOT_EXE", str(_DEFAULT_DOT_EXE))
 )
 TEST_DIR = REPO_ROOT / "test_data"
 REPORT_PATH = REPO_ROOT / "audit_report.md"
@@ -58,7 +69,12 @@ _NUM_PAIR = re.compile(r'(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)')
 
 
 def _html_unescape(s: str) -> str:
-    return s.replace("&gt;", ">").replace("&lt;", "<").replace("&amp;", "&")
+    # Handle named entities + the most common numeric refs.  System
+    # dot 14.x encodes ``->`` as ``&#45;&gt;`` (numeric hyphen + named
+    # gt); the upstream ``html.unescape`` covers everything via
+    # the standard library at zero perf cost.
+    import html as _html
+    return _html.unescape(s)
 
 
 def _bbox_from_polygon(points_attr: str) -> tuple[float, float, float, float] | None:

@@ -5,6 +5,60 @@ short.  Ordered newest → oldest.
 
 ---
 
+## §1.5.60 — Audit C-side parser bug fix; TODO §2.3 retraction — 2026-04-27
+
+`porting_scripts/visual_audit.py`'s `_html_unescape` only handled
+the three named entities `&gt;`, `&lt;`, `&amp;`.  C dot.exe
+encodes the directed-edge arrow as `&#45;&gt;` (numeric hyphen +
+named gt) inside `<title>` tags.  After unescape the title was
+`couple_X&#45;>node_Y` — neither `->` nor `--` matched, so every
+edge was silently dropped from the C-side parse and the audit
+reported `c=0` for every file.
+
+**Fix**: replace the hand-rolled unescape with stdlib
+`html.unescape`, which handles all named + numeric entities at
+zero perf cost.
+
+**Impact** — running the 10-file regression subset with the fixed
+parser, comparing against the local CLion-built dot:
+
+| File | Py | C (was) | C (fixed) | Δ |
+|---|---:|---:|---:|---:|
+| 1213-1.dot | 0 | 0 | 3 | -3 |
+| 1213-2.dot | 0 | 0 | 3 | -3 |
+| 1332_ref.dot | 16 | 0 | 6 | +10 |
+| 1436.dot | 3 | 0 | 1 | +2 |
+| 1472.dot | 3 | 0 | 9 | -6 |
+| 1879.dot | 96 | 0 | 2 | +94 |
+| 2183.dot | 3 | 0 | 0 | +3 |
+| 2796.dot | 9 | 0 | 54 | -45 |
+| aa1332.dot | 3 | 0 | 15 | -12 |
+| d5_regression.dot | 0 | 0 | 2 | -2 |
+
+Total Py = 133, C = 57.  **Only 4 of 10 files have Py > C; the
+rest, Python's layout already routes around clusters better than
+C's.**  1879 is the lone real outlier (+94).
+
+Also added a `GVPY_DOT_EXE` env-var override so the audit can be
+re-run against the libexpat-enabled system dot
+(`c:/tools/graphviz/bin/dot.exe`) — useful for HTML-label-heavy
+graphs where the local CLion build wouldn't render `<TABLE>`.
+With the system dot the 1879 picture is identical (Py=96, C=2):
+verified C and Python both produce ~108×79 pt for `node_325x326_325`
+on 1879, so the +94 delta is layout-level, not rendering.
+
+**TODO.md retraction**: §2.3's "HTML-IMG fallback bug-compat"
+theory was wrong — based on the broken audit, not on actual
+behavioural inspection.  Replaced with "1879 D5 alignment" (apply
+the §1.5.21–53 workflow on 1879's genealogy topology).  D5 row
+in §1 now reflects the corrected baseline; the long-tail per-file
+residual list was almost entirely a parser artefact.
+
+1141 tests pass.  `audit_report.md` regenerated for the 10-file
+subset; full-corpus rerun pending.
+
+---
+
 ## §1.5.59 — D4 closed; TODO.md cleanup — 2026-04-27
 
 D4 (cluster-clipping sub-pixel corner-grazing + control-point-deep-
