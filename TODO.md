@@ -64,10 +64,32 @@ Ordered by payoff.  Each item is independently shippable.
    §7), C *does* render the same `<TABLE>` as Python and produces
    nearly identical node sizes (e.g. `node_325x326_325` is 108×79
    pt in C, 110×80 pt in Python).  The 94-crossing delta comes
-   from layout decisions, not rendering.  Apply the §1.5.21–53
-   pass-by-pass mincross+remincross alignment workflow to find
-   where Python diverges from C on 1879's many-cluster genealogy
-   topology.
+   from layout decisions, not rendering.
+
+   **Concrete first step — close the skeleton-mincross representation
+   gap.**  Inspection 2026-04-28 of `trace_d5/1879_c_order.txt` vs
+   Python's `[TRACE order]` output found:
+
+   - Python's skeleton rank 3 has **17 cluster proxies only**
+     (`_skel_cluster_*_3`).
+   - C's first-pass rank 3 has **~65 entities** — cluster proxies
+     PLUS bare (non-cluster) nodes mixed together.
+   - All 117 entries of the final `after_clust` rank 3 differ
+     between Py and C; `cluster_332x333` lands at Py indices 0-2
+     vs C indices 106-108.
+
+   §1.5.50's "100% aligned (10326/10326)" claim was for top-level
+   mincross *events*, not per-rank node lists — the per-rank
+   order was never byte-checked.  Plan: include bare non-cluster
+   nodes alongside cluster proxies in Python's skeleton mincross
+   (matching C's `class2()` skeleton build), re-run pass-by-pass
+   trace compare, fix divergences as they surface.  Then verify
+   per-rank `ranks[r]` parity with C's `after_clust` traces, not
+   just event-level parity.
+
+   Expected payoff: collapses 1879's +94 delta and likely the
+   bulk of remaining D5-class crossings on other files (1332_ref
+   +10, 2183 +3, 1436 +2 on the corrected baseline).
 4. **Font metrics refinement** (D7).  Match C's GDI+ text widths
    exactly to close the 2-6 unit per-glyph drift that compounds
    into per-port order divergence on record nodes.
