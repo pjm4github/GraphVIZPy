@@ -500,9 +500,15 @@ def make_regular_edge(layout, sp: SplineInfo, P: Path,
     Multi-edge offset (``Multisep``) is applied when ``len(edges) > 1``.
     """
     from gvpy.engines.layout.dot.dotsplines import (
-        maximal_bbox, rank_box, spline_merge,
+        maximal_bbox, rank_box, rank_box_gapped, spline_merge,
         _node_out_edges, )
     from gvpy.engines.layout.dot.path import BWDEDGE
+    import os as _os_carve
+
+    # §1.5.57: D6 corridor-carve flag.  When set, replaces
+    # ``rank_box`` with ``rank_box_gapped`` so the inter-rank corridor
+    # avoids same-side non-member clusters.
+    _carve = _os_carve.environ.get("GVPY_CLUSTER_CARVE") == "1"
 
     if not edges:
         return
@@ -553,12 +559,37 @@ def make_regular_edge(layout, sp: SplineInfo, P: Path,
         tend.boxes.append(b)
         tend.boxn += 1
 
+    # Pre-compute member cluster ids/names for the edge's tail/head,
+    # used by ``rank_box_gapped`` when the corridor-carve flag is on.
+    if _carve:
+        clusters = getattr(layout, "_clusters", None) or []
+        member_ids = set()
+        member_names = set()
+        for cl in clusters:
+            if (tail_name in cl.nodes
+                    or head_final_name in cl.nodes):
+                member_ids.add(id(cl))
+                member_names.add(cl.name)
+    else:
+        member_ids = set()
+        member_names = set()
+
+    def _rank_box_for(rank: int, prev_node, next_node):
+        if not _carve:
+            return rank_box(layout, sp, rank)
+        return rank_box_gapped(
+            layout, sp, rank,
+            prev_node.x, next_node.x,
+            member_ids, member_names,
+        )
+
     # Walk through virtual nodes, collecting interrank corridor boxes.
     corridor_boxes: list[Box] = []
     cur_rank_node = tn
 
     while hn.virtual and not spline_merge(layout, hn):
-        corridor_boxes.append(rank_box(layout, sp, cur_rank_node.rank))
+        corridor_boxes.append(_rank_box_for(cur_rank_node.rank,
+                                            cur_rank_node, hn))
 
         out_edges = _node_out_edges(layout, hn)
         if not out_edges:
@@ -573,7 +604,8 @@ def make_regular_edge(layout, sp: SplineInfo, P: Path,
         hn = next_hn
 
     # Final rank box.
-    corridor_boxes.append(rank_box(layout, sp, cur_rank_node.rank))
+    corridor_boxes.append(_rank_box_for(cur_rank_node.rank,
+                                        cur_rank_node, real_head))
 
     # End path at the real head node.
     hend = PathEnd(nb=maximal_bbox(layout, sp, real_head, None, None))

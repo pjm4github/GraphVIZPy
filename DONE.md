@@ -5,6 +5,57 @@ short.  Ordered newest → oldest.
 
 ---
 
+## §1.5.57 — D6 corridor-carve MVP (opt-in) — 2026-04-27
+
+First cut of the D6 corridor-carve fix promised in TODO §2.2.
+Replaces ``rank_box(rank)`` with ``rank_box_gapped(...)`` for
+regular-edge corridors when ``GVPY_CLUSTER_CARVE=1`` is set.  The
+gapped variant shrinks the rank-box x-extent so the spline corridor
+doesn't include non-member clusters that sit on the same side of
+both endpoints.
+
+**Wiring**: `regular_edge.make_regular_edge` reads
+``GVPY_CLUSTER_CARVE`` once per call.  When set, it pre-computes
+member cluster ids/names for the edge's tail/head and routes every
+``rank_box(...)`` call inside the virtual-chain walk through a local
+``_rank_box_for(rank, prev_node, next_node)`` helper that delegates
+to ``rank_box_gapped``.  Flat and self edges are unchanged — they
+already have their own cluster-avoidance via ``cluster_detour``.
+
+**Carve rules** (per non-member cluster ``cl`` whose y-range
+overlaps the rank strip):
+
+- ``prev_x ≤ cx1 - splinesep`` AND ``next_x ≤ cx1 - splinesep`` →
+  ``ur_x = min(ur_x, cx1 - splinesep)`` (path stays left).
+- ``prev_x ≥ cx2 + splinesep`` AND ``next_x ≥ cx2 + splinesep`` →
+  ``ll_x = max(ll_x, cx2 + splinesep)`` (path stays right).
+- Otherwise (straddle): unchanged — D5 mincross divergence, no
+  splines-level fix.
+
+**Effect across regression corpus** (``GVPY_CLUSTER_CARVE=1``):
+
+| File | post §1.5.56 | with carve |
+|---|---:|---:|
+| 1879.dot | 96 | 95 |
+| 2796.dot | 9 | 7 |
+| Total (10-file) | 133 | 130 |
+
+**Trade-off**: ~9 new ``Pshortestpath: triangulation failed``
+warnings on 2796 — the carve over-constrains some corridors,
+forcing polyline fallback.  Polyline fallback is a worse visual but
+doesn't introduce additional cluster crossings (the audit metric is
+unchanged or improved).  An attempted "natural-path-only" guardrail
+(skip clusters outside ``[min(prev_x, next_x), max(prev_x, next_x)]``)
+zeroed out the wins entirely — the helpful carves were exactly the
+"distant cluster" cases.
+
+Kept opt-in for now.  1141 tests pass with both flag states.
+Promoting to default would need a more careful rank_box / adjacent-
+maximal_bbox compatibility check to eliminate the new triangulation
+failures.
+
+---
+
 ## §1.5.54–56 — Splines-level cluster-detour follow-ups — 2026-04-27
 
 Three splines/channel-routing-level passes after §1.5.53 closed

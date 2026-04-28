@@ -2097,6 +2097,79 @@ def rank_box(layout, sp: SplineInfo, r: int) -> Box:
     return Box(ll_x=b.ll_x, ll_y=b.ll_y, ur_x=b.ur_x, ur_y=b.ur_y)
 
 
+# ── §1.5.57: D6 corridor-carve ──────────────────────────────────────
+
+
+def rank_box_gapped(layout, sp: SplineInfo, r: int,
+                    prev_x: float, next_x: float,
+                    member_cluster_ids: set,
+                    member_cluster_names: set) -> Box:
+    """Inter-rank corridor with non-member cluster bboxes carved out.
+
+    See: /lib/dotgen/dotsplines.c @ 2045 — Python-only D6 cover, the
+    C reference uses a single rank_box and lets the corridor span the
+    full graph width.
+
+    Returns a fresh :class:`Box` covering the rank strip (same y-extent
+    as :func:`rank_box`) with x-extent shrunk so the corridor doesn't
+    overlap any non-member cluster that lies BETWEEN ``prev_x`` and
+    ``next_x`` on the same side.  ``prev_x`` is the x of the node
+    feeding this strip from the previous rank (tail or upstream
+    virtual); ``next_x`` is the x of the node receiving from the next
+    rank (head or downstream virtual).
+
+    Carve rules per non-member cluster ``cl`` with bbox ``(cx1, cy1,
+    cx2, cy2)`` overlapping the rank strip's y-range:
+
+    - Both prev_x ≤ cx1 - splinesep  AND  next_x ≤ cx1 - splinesep:
+      path stays LEFT of cl → ``ur_x = min(ur_x, cx1 - splinesep)``.
+    - Both prev_x ≥ cx2 + splinesep  AND  next_x ≥ cx2 + splinesep:
+      path stays RIGHT of cl → ``ll_x = max(ll_x, cx2 + splinesep)``.
+    - Otherwise (straddle): leave the strip unchanged — the spline-
+      level fix can't help, this is a D5 mincross divergence.
+
+    Member clusters (containing tail or head) are skipped — the spline
+    is *expected* to enter them.  Identity-keyed via ``id(cl)`` AND
+    name-keyed for back-compat with callers that pass names; both
+    sets are unioned for membership.
+    """
+    base = rank_box(layout, sp, r)
+    clusters = getattr(layout, "_clusters", None)
+    if not clusters:
+        return base
+
+    sep = sp.splinesep
+
+    for cl in clusters:
+        if not cl.bb:
+            continue
+        if id(cl) in member_cluster_ids:
+            continue
+        if cl.name in member_cluster_names:
+            continue
+        cx1, cy1, cx2, cy2 = cl.bb
+        # Y-overlap with the rank strip.  If the cluster's y-range
+        # doesn't touch the strip, it can't intrude on the corridor.
+        if cy2 <= base.ll_y or cy1 >= base.ur_y:
+            continue
+        # X-overlap with the strip — if cluster sits entirely outside
+        # the corridor's x-extent, no carve needed (saves work).
+        if cx2 <= base.ll_x or cx1 >= base.ur_x:
+            continue
+        # Same-side decision: carve if both endpoints sit cleanly to
+        # the same side of the cluster (with splinesep margin).
+        if prev_x <= cx1 - sep and next_x <= cx1 - sep:
+            new_ur_x = cx1 - sep
+            if new_ur_x > base.ll_x and new_ur_x < base.ur_x:
+                base.ur_x = new_ur_x
+        elif prev_x >= cx2 + sep and next_x >= cx2 + sep:
+            new_ll_x = cx2 + sep
+            if new_ll_x < base.ur_x and new_ll_x > base.ll_x:
+                base.ll_x = new_ll_x
+        # else: straddle — D5 issue, no splines-level fix.
+    return base
+
+
 def classify_flat_edge(layout, le: LayoutEdge, tail: LayoutNode,
                         head: LayoutNode) -> str:
     """Classify a flat edge into a routing variant.
