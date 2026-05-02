@@ -91,6 +91,7 @@ from gvpy.engines.layout.neato.bfs import bfs_distances
 from gvpy.engines.layout.neato.dijkstra import dijkstra_distances
 from gvpy.engines.layout.neato.kkutils import kamada_kawai
 from gvpy.engines.layout.neato.sgd import sgd as sgd_layout
+from gvpy.engines.layout.neato.smart_ini import smart_init
 from gvpy.engines.layout.neato.stress import (
     circuit_distances,
     stress_majorization,
@@ -183,6 +184,7 @@ class NeatoLayout(LayoutEngine):
         self.overlap = "true"
         self.sep = 0.0
         self.pack = True
+        self.smart_init = True               # PivotMDS init; False = random
 
     # ── Public API ───────────────────────────────
 
@@ -272,9 +274,12 @@ class NeatoLayout(LayoutEngine):
             self.seed = int(start_str)
         elif start_str == "self":
             self.seed = 0  # use existing positions
+            self.smart_init = False  # honour user-supplied positions
         elif start_str == "random":
             import time
             self.seed = int(time.time())
+        elif start_str == "regular":
+            self.smart_init = False  # explicit random/regular init
         random.seed(self.seed)
 
         ov_str = (self.graph.get_graph_attr("overlap") or "true").lower()
@@ -391,7 +396,17 @@ class NeatoLayout(LayoutEngine):
         else:
             dist = _compute_distances(self, nodes, adj, edge_len)
 
-        self._initialize_positions(node_list, N)
+        # Smart-init via PivotMDS (Phase N2.4) — escapes the symmetric-
+        # graph local minima that random init + Newton/SMACOF descent
+        # otherwise gets stuck on (e.g. K5, triangle, Y-shape).
+        # Falls back to random for very small graphs or when explicitly
+        # disabled by the user (``self.smart_init = False``).
+        smart_applied = False
+        if self.smart_init:
+            smart_applied = smart_init(self, node_list, dist, N,
+                                       dim=2)
+        if not smart_applied:
+            self._initialize_positions(node_list, N)
 
         if self.mode == "kk":
             kamada_kawai(self, node_list, dist, N, idx)

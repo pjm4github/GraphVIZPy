@@ -340,6 +340,67 @@ class TestNeatoStressKernel:
             assert abs(n["x"]) < 1e6
             assert abs(n["y"]) < 1e6
 
+    def test_smart_init_unblocks_kk_y_shape(self):
+        """Smart-init lets KK escape the Y-shape saddle.
+
+        Random init + KK gets stuck (forces ≈ 0 but layout is off);
+        PivotMDS init places nodes near the analytical optimum and
+        KK's Newton steps then close the residual.
+        """
+        import math
+        r = neato_gv("graph G { mode=KK; root -- a; root -- b; root -- c; }")
+        positions = {n["name"]: (n["x"], n["y"]) for n in r["nodes"]}
+        for leaf in ("a", "b", "c"):
+            d = math.hypot(positions["root"][0] - positions[leaf][0],
+                           positions["root"][1] - positions[leaf][1])
+            assert 70.0 < d < 85.0, (
+                f"KK+smart-init: root-{leaf}={d:.1f}, "
+                f"expected near analytical optimum 76.8"
+            )
+
+    def test_smart_init_k5_pentagon(self):
+        """Smart-init + SGD on K5 finds the regular-pentagon
+        global optimum.
+
+        K5 has 10 pairwise distances; the regular pentagon
+        partitions them into 5 sides of length s and 5 diagonals
+        of length s × φ where φ = (1 + √5) / 2 ≈ 1.618.
+        """
+        import math
+        phi = (1 + math.sqrt(5)) / 2
+        r = neato_gv(
+            "graph G { mode=sgd; "
+            "a -- b; a -- c; a -- d; a -- e; "
+            "b -- c; b -- d; b -- e; "
+            "c -- d; c -- e; d -- e; }"
+        )
+        positions = {n["name"]: (n["x"], n["y"]) for n in r["nodes"]}
+        names = list(positions)
+        dists = sorted(
+            math.hypot(positions[a][0] - positions[b][0],
+                       positions[a][1] - positions[b][1])
+            for i, a in enumerate(names) for b in names[i + 1:]
+        )
+        short5 = sum(dists[:5]) / 5
+        long5 = sum(dists[5:]) / 5
+        ratio = long5 / short5
+        # Allow 5% off φ for stochastic SGD noise.
+        assert abs(ratio - phi) / phi < 0.05, (
+            f"K5 ratio {ratio:.3f} not within 5% of golden ratio "
+            f"{phi:.3f} — smart-init isn't reaching the pentagon optimum"
+        )
+
+    def test_pivot_mds_smoke(self):
+        """PivotMDS produces finite N×dim coordinates."""
+        import numpy as np
+        from gvpy.engines.layout.common.pivot_mds import pivot_mds
+        # Path-style distance matrix
+        N = 6
+        dist = [[float(abs(i - j)) for j in range(N)] for i in range(N)]
+        coords = pivot_mds(dist, N, n_pivots=4, dim=2, seed=42)
+        assert coords.shape == (N, 2)
+        assert np.all(np.isfinite(coords))
+
     def test_sgd_y_shape_near_optimal(self):
         """SGD on Y-shape converges to the analytical optimum r≈76.8.
 
