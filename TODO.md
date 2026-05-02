@@ -449,8 +449,8 @@ Ordered by payoff.  Each item is independently shippable.
 
 Priority order:
 
-1. **neato** — stress majorization / Kamada-Kawai.  Widely used,
-   well-documented.
+1. **neato** — stress majorization / Kamada-Kawai.  See §4.N below
+   for active scoping.
 2. **fdp** — Fruchterman-Reingold with cluster support.
 3. **twopi** — radial BFS; straightforward; good for trees / DAGs.
 4. **sfdp** — multiscale force-directed, Barnes-Hut for 10K+ nodes.
@@ -460,6 +460,134 @@ Priority order:
 
 Live today: **dot** (1141 tests), **circo** (25 tests), **ortho** (full
 port via `lib/ortho/`, 18+12+18+4+4+12 module tests).
+
+---
+
+### §4.N — Neato C-alignment port (active)
+
+The current Python neato is a single 826-line `neato_layout.py` that
+inlines all three modes (majorization, KK, SGD), distance models
+(BFS / Dijkstra / circuit), Gauss-Jordan inversion, and naive
+overlap removal.  27 functional tests pass (no-crash + basic
+separation only); zero algorithmic-correctness checks against C.
+
+The C reference (`lib/neatogen/`) is ~16K LOC across 25 .c files.
+Goal: refactor the Py implementation into a package mirroring the C
+file structure, then C-align mode-by-mode, replicating the dot
+trace-driven alignment workflow.
+
+**Phase N1 — directory restructure (low risk, mechanical).**
+
+Convert `gvpy/engines/layout/neato/` from one file to a package
+mirroring `lib/neatogen/`:
+
+```
+neato/
+├── __init__.py            (re-exports NeatoLayout)
+├── neato_layout.py        (orchestration only — port of
+│                            neatoinit.c::neato_layout, neatoLayout,
+│                            kkNeato dispatcher)
+├── stress.py              (stress.c — stress_majorization_kD_mkernel,
+│                            circuitModel, mdsModel, APSP)
+├── kkutils.py             (kkutils.c + solve.c — KK driver,
+│                            diffeq_model, solve_model)
+├── sgd.py                 (sgd.c)
+├── bfs.py                 (bfs.c — APSP BFS)
+├── dijkstra.py            (dijkstra.c)
+├── pca.py                 (pca.c — PCA initial placement)
+├── smart_ini.py           (smart_ini_x.c)
+├── adjust.py              (adjust.c — overlap removal dispatch)
+└── matrix_ops.py          (matrix_ops.c, lu.c, matinv.c,
+                             conjgrad.c)
+```
+
+Move engine-agnostic primitives to `common/`:
+
+- `common/matrix.py` — Gauss-Jordan, LU decomposition, simple
+  linalg.  Will also serve future fdp/sfdp.
+- `common/graph_dist.py` — BFS APSP and Dijkstra APSP on a generic
+  adjacency dict.  Could replace dot's inline BFS in
+  `mincross.py::build_ranks_on_skeleton` long-term.
+
+Behaviour-equivalent — no algorithmic changes; existing 27 tests
+must still pass.  Risk: low.  Estimate: 0.5 day.
+
+**Phase N2 — algorithmic alignment, mode by mode.**
+
+Port each mode from the C source, in priority order.  Add
+`[TRACE neato_*]` instrumentation tags to both Py and C; verify
+output against `dot -Kneato -Tplain` for fixture graphs.
+
+| Step | C source | Trace tag | Estimate | Risk |
+|---|---|---|---|---|
+| N2.1 | `stress.c::stress_majorization_kD_mkernel` (MODE_MAJOR — default) | `[TRACE neato_major]` | 2-3 days | medium |
+| N2.2 | `kkutils.c::solve_model` + `neatoinit.c::diffeq_model` (MODE_KK) | `[TRACE neato_kk]` | 1-2 days | medium |
+| N2.3 | `sgd.c::sgd` (MODE_SGD) | `[TRACE neato_sgd]` | 0.5-1 day | low |
+| N2.4 | `smart_ini_x.c` + `pca.c` (smart init) | `[TRACE neato_init]` | 1 day | low |
+
+The current Py `_stress_majorization` is a basic SMACOF in O(N²)
+per iteration; C's `stress_majorization_kD_mkernel` uses a kernel
+with sparse distance weights and Laplacian factorisation — large
+graphs converge in far fewer iterations.
+
+**Phase N3 — overlap removal alignment.**
+
+Port `adjust.c`, which dispatches between four+ overlap
+algorithms.  Current Py only has naive radial scaling.  C's default
+is *prism* (Voronoi-based).
+
+| Step | C source | Estimate | Risk |
+|---|---|---|---|
+| N3.1 | `adjust.c::removeOverlapWith` dispatcher | 0.5 day | low |
+| N3.2 | scaling (`scAdjust`) — current Py replacement | 0.5 day | low |
+| N3.3 | prism (Voronoi-based, default in C) — `delaunay.c`, `voronoi.c`, `site.c`, `hedges.c`, `heap.c`, `legal.c` | 4-5 days | high |
+| N3.4 | other (ortho_yx, scalexy, ipsep, vpsc) — defer until prism shipped | — | — |
+
+Phase N3.3 (prism) is the largest single chunk in the neato port —
+it pulls in the full Voronoi infrastructure.  Reasonable to defer
+behind a `GVPY_NEATO_PRISM=1` opt-in until N2 is complete.
+
+**Phase N4 — edge spline routing.**
+
+Currently Py renders neato edges as straight lines.  C runs
+`neatosplines.c` + `multispline.c` (~2300 LOC) to produce routed
+splines avoiding node bboxes.  Defer until N1-N3 are done; until
+then accept straight-line output.
+
+**Verification harness** (mirrors §1.5 dot workflow).
+
+- Add neato fixture graphs in `test_data/neato/`: `triangle.gv`,
+  `complete4.gv`, `path5.gv`, `tree8.gv`, `disconnected.gv`.  Each
+  has analytically-known stress-optimal coordinates (modulo
+  rotation/translation/reflection).
+- Helper `tools/compare_neato_traces.py` (sibling of
+  `compare_traces.py`) for `[TRACE neato_*]` line-diff.
+- Integration tests in `tests/test_neato_alignment.py` comparing
+  Py output to a reference C dot.exe `-Kneato -Tplain` capture
+  (similar to how `test_d5_regression.py` compares to dot).
+
+**Out of scope (deferred indefinitely):**
+
+- IPSEP / HIER constrained majorization (`constrained_majorization*.c`,
+  `quad_prog_*.c`, `constraint.c`) — adds ~3500 LOC, narrowly used.
+- 3D layout (`Ndim=3`) — Py is 2D-only.
+- `randomkit.c` MT19937 reproducibility — Py uses
+  `random.Random()`; output won't be byte-identical to C even with
+  same seed.
+
+**Definition of done (per phase):**
+
+- N1 (restructure): existing 27 tests pass, no behaviour change.
+- N2.1 (MODE_MAJOR): Py stress within 1% of C on the fixture
+  set (after rotation/reflection alignment).
+- N2.2 (MODE_KK), N2.3 (MODE_SGD), N2.4 (smart init): same.
+- N3 (overlap): prism produces non-overlapping output with
+  per-graph area within 10% of C's.
+- N4 (splines): out of scope for this milestone.
+
+Total estimated effort to reach "C-aligned neato MVP" (N1 +
+N2 + N3.1-3 + verification harness): **~12-15 days of focused
+work**.  Each phase is independently committable.
 
 ---
 
