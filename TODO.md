@@ -522,7 +522,7 @@ output against `dot -Kneato -Tplain` for fixture graphs.
 |---|---|---|---|---|---|
 | N2.1 | `stress.c::stress_majorization_kD_mkernel` (MODE_MAJOR — default) | `[TRACE neato_major]` | 2-3 days | medium | **shipped 2026-05-02** |
 | N2.2 | `stuff.c::solve_model` + `diffeq_model` + `move_node` + `D2E` (MODE_KK) | `[TRACE neato_kk]` | 1-2 days | medium | **shipped 2026-05-02** |
-| N2.3 | `sgd.c::sgd` (MODE_SGD) | `[TRACE neato_sgd]` | 0.5-1 day | low | pending |
+| N2.3 | `sgd.c::sgd` (MODE_SGD) | `[TRACE neato_sgd]` | 0.5-1 day | low | **shipped 2026-05-02** |
 | N2.4 | `smart_ini_x.c` + `pca.c` (smart init) | `[TRACE neato_init]` | 1 day | low | pending |
 
 **§4.N.2.1 status (2026-05-02).**  Ported the CG-based stress
@@ -560,6 +560,35 @@ case (triangle / Y-shape / K5) needs N2.4 smart-init to escape.
 
 35/35 neato tests pass (4 new alignment tests for gauss_solve, KK
 diffeq invariants, and path-5 uniform spacing).
+
+**§4.N.2.2.x note:** the same KK Newton driver is used for the
+``mode=KK`` graph attribute.  Its primary blocker is symmetric
+local minima.  ``mode=sgd`` is the recommended alternative until
+N2.4 ships.
+
+**§4.N.2.3 status (2026-05-02).**  Aligned SGD with C reference
+(sgd.c:142).  Three changes from the prior implementation:
+
+1. **Step cap** ``mu = min(eta * w, 1.0)`` (sgd.c:221) — bounds
+   per-term step to at most the full distance to the target.
+   Without it, early iterations with very high ``eta`` can fling
+   nodes arbitrarily far.
+2. **Sign convention** flipped to ``dx = pos_i - pos_j`` (i-to-j
+   relative, matching C); the previous code used ``j - i`` and
+   compensated with sign flips elsewhere.
+3. **Formula simplification** ``r = mu * (mag - d) / (2 mag)``
+   matches C exactly; was previously expressed as ``step = eta * w
+   * (d - eucl) / eucl * 0.5`` with mixed conventions.
+
+Y-shape converges to root-leaf radius 76.5 (analytical optimum
+76.8 — within 0.4%).  Path-5 adjacent spans 72.8/73.2/73.2/73.0
+(ratio 1.005 — essentially perfect).  37/37 neato tests pass (2
+new SGD alignment tests).
+
+SGD is now the most reliable mode for general graphs (no
+local-min sticking like KK).  Recommend setting it as the
+``mode=`` default once we have a corpus benchmark — but mirroring
+C means default stays ``major``.
 
 The current Py `_stress_majorization` is a basic SMACOF in O(N²)
 per iteration; C's `stress_majorization_kD_mkernel` uses a kernel

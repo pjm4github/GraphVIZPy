@@ -318,6 +318,48 @@ class TestNeatoStressKernel:
             row_sum = t[i].sum(axis=0)
             np.testing.assert_allclose(sum_t[i], row_sum, atol=1e-12)
 
+    def test_sgd_step_cap(self):
+        """SGD step factor mu must be capped at 1.0.
+
+        Mirrors C ``sgd.c:221``: ``mu = fmin(eta * w, 1)``.  Without
+        the cap, early-iteration eta * w can fling nodes far past
+        their target.  We can't directly inspect mu, but a synthetic
+        test passing extreme eta indirectly validates the cap.
+        """
+        import math
+        # K3 — three nodes forming a tight cluster.  With aggressive
+        # SGD (epsilon very small to maximise eta_max/eta_min ratio)
+        # the step cap is what keeps positions finite.
+        r = neato_gv("graph G { mode=sgd; a -- b -- c -- a; }",
+                     epsilon="0.0001")
+        for n in r["nodes"]:
+            assert math.isfinite(n["x"])
+            assert math.isfinite(n["y"])
+            # Positions should also be reasonably bounded — a runaway
+            # SGD without the cap can produce values in the millions.
+            assert abs(n["x"]) < 1e6
+            assert abs(n["y"]) < 1e6
+
+    def test_sgd_y_shape_near_optimal(self):
+        """SGD on Y-shape converges to the analytical optimum r≈76.8.
+
+        For a star with 3 leaves, distances root-leaf=72, leaf-leaf=144,
+        the energy minimum (computed analytically) is at radius r ≈
+        76.8 — slightly above 72 because leaf-leaf springs pull leaves
+        outward.  SGD should land within a few percent of that.
+        """
+        import math
+        r = neato_gv("graph G { mode=sgd; root -- a; root -- b; root -- c; }")
+        positions = {n["name"]: (n["x"], n["y"]) for n in r["nodes"]}
+        for leaf in ("a", "b", "c"):
+            d = math.hypot(positions["root"][0] - positions[leaf][0],
+                           positions["root"][1] - positions[leaf][1])
+            # Analytical optimum r ≈ 76.8; allow ±15% for SGD noise.
+            assert 65.0 < d < 88.0, (
+                f"root-{leaf}: {d:.1f} outside expected range "
+                f"[65, 88] (analytical optimum 76.8)"
+            )
+
     def test_kk_path_5_uniform_spacing(self):
         """KK on a 5-path produces near-uniform adjacent spacing.
 
