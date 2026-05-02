@@ -49,7 +49,10 @@ DOT_EXE = Path(
 )
 TEST_DIR = REPO_ROOT / "test_data"
 REPORT_PATH = REPO_ROOT / "audit_report.md"
-PER_FILE_TIMEOUT = 60.0   # seconds — per side
+PER_FILE_TIMEOUT = 90.0   # seconds — per side
+# Bumped from 60s on 2026-05-01: subprocess startup + imports add ~10s
+# on large graphs; 2470/2620 (each ~40s standalone) consistently hit
+# the prior 60s ceiling under audit-side multiprocessing.Process load.
 
 
 # ═══════════════════════════════════════════════════════════════════

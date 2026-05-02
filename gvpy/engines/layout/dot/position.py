@@ -38,6 +38,31 @@ if TYPE_CHECKING:
     from gvpy.engines.layout.dot.dot_layout import DotGraphInfo
 
 
+def aux_canreach(adj: dict[str, list[str]], src: str, dst: str) -> bool:
+    """Return True if ``dst`` is reachable from ``src`` via forward
+    edges in ``adj`` (an aux-graph adjacency dict).
+
+    Mirrors C ``lib/dotgen/position.c:217-232`` ``canreach()`` /
+    ``go()``: a simple DFS that asks whether the partial constraint
+    graph already encodes a path from ``src`` to ``dst``.  Used to
+    gate cycle-creating aux-edge additions in `ns_x_position`'s
+    flat-label and keepout phases.
+    """
+    if src == dst:
+        return True
+    seen = {src}
+    stack = [src]
+    while stack:
+        u = stack.pop()
+        for v in adj.get(u, ()):
+            if v == dst:
+                return True
+            if v not in seen:
+                seen.add(v)
+                stack.append(v)
+    return False
+
+
 def phase3_position(layout: "DotGraphInfo") -> None:
     """Top-level Phase 3 driver.
 
@@ -239,6 +264,57 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
             if min_gap > min_dist:
                 min_dist = min_gap
             aux_edges.append((left, right, max(1, min_dist), 0))
+
+    # ── 1b. Flat-edge label constraints ───────────────
+    # Mirrors C ``position.c:320-338`` with the canreach() guard at
+    # ``position.c:331,335``.  When a labeled flat edge has a label
+    # vnode in the rank above, add aux edges from the leftmost
+    # flat-edge endpoint to the label vnode and from the label vnode
+    # to the rightmost endpoint, gated by the canreach guard so we
+    # don't form cycles.
+    #
+    # Gated behind ``GVPY_FLAT_LABEL_CONSTRAINTS=1`` because Py's
+    # label widths exceed C's by ~2-6 units per glyph (TODO §1 D7
+    # font-metrics drift); the wider constraints push layouts past C's
+    # local optimum on graphs with many labeled flat edges (2470,
+    # 2796).  Re-enable after the font-metrics fix lands.
+    import os as _os_flbl
+    if _os_flbl.environ.get("GVPY_FLAT_LABEL_CONSTRAINTS", "") == "1":
+        nodesep_default = float(getattr(layout, "nodesep", 18.0))
+        # Build adjacency snapshot of section-1 separation edges.
+        _adj: dict[str, list[str]] = {}
+        for u, v, _ml, _w in aux_edges:
+            _adj.setdefault(u, []).append(v)
+
+        for le in layout.ledges:
+            vname = getattr(le, "_flat_label_vnode", None)
+            if not vname:
+                continue
+            if vname not in layout.lnodes:
+                continue
+            if (le.tail_name not in layout.lnodes
+                    or le.head_name not in layout.lnodes):
+                continue
+            t_ln = layout.lnodes[le.tail_name]
+            h_ln = layout.lnodes[le.head_name]
+            if t_ln.order <= h_ln.order:
+                left, right = le.tail_name, le.head_name
+            else:
+                left, right = le.head_name, le.tail_name
+            v_ln = layout.lnodes[vname]
+            ml = max(1, int(getattr(le, "minlen", 1) or 1))
+            m0 = int(ml * nodesep_default / 2)
+            wt = int(le.weight)
+            m1_left = m0 + int(layout.lnodes[left].width / 2.0
+                                + v_ln.width / 2.0)
+            if not aux_canreach(_adj, vname, left):
+                aux_edges.append((left, vname, max(1, m1_left), wt))
+                _adj.setdefault(left, []).append(vname)
+            m1_right = m0 + int(v_ln.width / 2.0
+                                 + layout.lnodes[right].width / 2.0)
+            if not aux_canreach(_adj, right, vname):
+                aux_edges.append((vname, right, max(1, m1_right), wt))
+                _adj.setdefault(vname, []).append(right)
 
     # ── 2. Alignment edges (make_edge_pairs) ──────────
     # For each real edge, a slack node pulls endpoints together.
@@ -484,9 +560,22 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
         # forced c6411 to sit ~240pt below its paired c6412 because
         # cluster_6409 has multiple rank-spanning members whose
         # rightmost boundary is far from c6412's rank neighbours.
+        # §2.5.10 Phase B: drop the historical
+        # ``ext not in any_cluster_members`` filter to mirror C's
+        # ``keepout_othernodes`` (position.c:443-475), which fires
+        # keepout for any NORMAL or unrelated-virtual node — even
+        # ones inside another cluster.  Set
+        # ``GVPY_LEGACY_KEEPOUT_FILTER=1`` to restore the filter
+        # for diagnostics (the filter was originally added to mask
+        # an aa1332 cluster_6409 240pt-compaction bug; if that
+        # re-emerges we'll diagnose its real root cause).
+        import os as _os_kpf
+        _legacy_filter = _os_kpf.environ.get(
+            "GVPY_LEGACY_KEEPOUT_FILTER", "") == "1"
         any_cluster_members: set[str] = set()
-        for _cs in node_sets.values():
-            any_cluster_members.update(_cs)
+        if _legacy_filter:
+            for _cs in node_sets.values():
+                any_cluster_members.update(_cs)
 
         for rank_val, rank_nodes in layout.ranks.items():
             for cl in layout._clusters:
@@ -508,8 +597,9 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
                 # Node to the LEFT of the cluster
                 if left_order > 0:
                     ext = rank_nodes[left_order - 1]
-                    if (ext not in node_sets[cl.name]
-                            and ext not in any_cluster_members):
+                    if ext not in node_sets[cl.name] and (
+                            not _legacy_filter
+                            or ext not in any_cluster_members):
                         rw = int(layout.lnodes[ext].width / 2.0)
                         aux_edges.append((ext, cl_ln[cl.name],
                                           max(1, rw + margin), 0))
@@ -517,8 +607,9 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
                 # Node to the RIGHT of the cluster
                 if right_order < len(rank_nodes) - 1:
                     ext = rank_nodes[right_order + 1]
-                    if (ext not in node_sets[cl.name]
-                            and ext not in any_cluster_members):
+                    if ext not in node_sets[cl.name] and (
+                            not _legacy_filter
+                            or ext not in any_cluster_members):
                         lw = int(layout.lnodes[ext].width / 2.0)
                         aux_edges.append((cl_rn[cl.name], ext,
                                           max(1, lw + margin), 0))
@@ -1860,6 +1951,16 @@ def post_rankdir_keepout(layout):
     # §1.5.52: track which (cluster, side) "exit slot" each node is
     # pushed onto, so multiple nodes pushed past the same cluster
     # face don't collapse onto each other.
+    #
+    # §2.5.11.1 (failed attempt): tried converting this from a
+    # cumulative accumulator into a minimum-clearance push, hoping
+    # to eliminate the 2025pt sprawl on 1879's node_5507_5507.
+    # Spot check showed 1879 +9, 1436 +6 — the cumulative push is
+    # actively preventing in-rank cluster-bbox crossings that
+    # _enforce_rank_separation doesn't catch in time.  The visible
+    # sprawl on extreme outliers is a separate failure mode from
+    # the corpus audit metric (bbox crossings), so we keep the
+    # cumulative behaviour.  See TODO.md §2.5.11.1.
     nodesep = float(getattr(layout, "nodesep", 18.0))
     _exit_slot: dict[tuple[str, str], float] = {}
 

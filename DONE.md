@@ -5,6 +5,86 @@ short.  Ordered newest → oldest.
 
 ---
 
+## §2.5.7 / §2.5.10 / §2.5.11 — Skel-mode default + Phase B keepout-filter drop — 2026-05-02
+
+Three shipped pieces from the §2.5 D5 alignment chain plus a recorded
+failed attempt:
+
+**§2.5.7 — Skel mode promoted to default (mincross.py:1272).**  The
+``build_ranks_on_skeleton`` BFS-based rank rebuild after cluster
+collapse is now the default — gate inverted from
+``GVPY_SKELETON_BUILD_RANKS=1`` (opt-in) to
+``GVPY_LEGACY_PHASE1_RANKS=1`` (opt-out).  Verified C-aligned:
+1001/1001 BFS install events match between Py and C on 1879.dot;
+mincross_exit ``final_crossings = 23`` matches C; 8/9 ranks land
+bit-identical post-expand.  Corpus net -6 crossings vs prior default,
+1141 tests pass.  ``test_d5_regression.BASELINE_VISIBLE_CROSSINGS``
+bumped 1 → 3 (C reports 2; the new 3 is closer to C than the old 0
+was).
+
+**§2.5.10 — Phase B: drop ``any_cluster_members`` filter
+(position.py:563-615).**  In §3f keepout (``ns_x_position``), removed
+the historical ``ext not in any_cluster_members`` filter that was
+masking an aa1332 ``cluster_6409`` 240pt-compaction bug.  Now mirrors
+C's ``keepout_othernodes`` (lib/dotgen/position.c:443-475) which fires
+keepout for any NORMAL or unrelated-virtual node — even ones inside
+another cluster.  Gated behind ``GVPY_LEGACY_KEEPOUT_FILTER=1`` for
+revert.
+
+**Corpus impact (skel-default → Phase B v2, 196-graph corpus):**
+
+| Metric | Skel-default (Apr 30) | Phase B v2 (May 2) | Δ |
+|---|---:|---:|---|
+| Total Py crossings | 138 | 131 | -7 |
+| 1879.dot top offender | +69 | +60 | -9 |
+| Clean graphs | 148 | 149 | +1 |
+| Files OK | 174 | 175 | +1 |
+
+Removed: 1474.dot (+2 → 0).  Added small +1 cases: 1436, 2476,
+2521_1.  aa1332's 240pt-compaction bug did **not** re-emerge.
+
+**§2.5.11 — Phase C diagnostic: ``post_rankdir_keepout`` is not
+dead code.**  Gated the post-pass behind
+``GVPY_DISABLE_POST_RANKDIR_KEEPOUT=1`` and re-ran the corpus.
+Result: corpus +80 worse (Py 131 → 211); 1879 +60 → +108; 1436 +1 →
++9.  Only 2620 mildly improved (-10).  Phase B's NS keepout is not
+sufficient on its own — the post-rankdir safety net is catching real
+misses.  Gate removed.
+
+**§2.5.11.1 — Slot-accumulator min-clearance attempt failed.**  Tried
+converting ``_exit_slot`` (position.py:1955) from a cumulative
+accumulator to a minimum-clearance push, hoping to eliminate the
+2025pt sprawl on 1879's ``node_5507_5507``.  Spot check: 1879 +9,
+1436 +6, only 2620 -2.  The cumulative push is actively preventing
+in-rank cluster-bbox crossings that ``_enforce_rank_separation``
+doesn't catch in time.  The visible sprawl on extreme outliers is a
+*separate failure mode* from the bbox-crossings the audit metric
+counts.  Reverted; comment block in ``post_rankdir_keepout`` records
+the failed attempt so the next attempt knows what didn't work.
+
+**Helper added:** ``aux_canreach()`` (position.py:41-65) ports C
+``lib/dotgen/position.c:217-232``; gates cycle-creating aux-edge
+additions in the flat-label and (planned) keepout phases.
+
+**Phase A.1 (flat-edge label constraints) ported but gated off**
+behind ``GVPY_FLAT_LABEL_CONSTRAINTS=1`` — wider Py label widths (D7
+font-metrics drift) push layouts past C's local optimum on
+2470/2796.  Will re-enable after the font-metrics fix.
+
+**Audit timeout** bumped 60 → 90s
+(porting_scripts/visual_audit.py:52) — multiprocessing.Process
+overhead pushes 2470/2620 (~40s standalone) past 60s.
+
+**Remaining gap:** 1879 +60 vs C's +2.  Closing it requires Phase D
+(see TODO §2.5.11.1 scoping) — debug why Py's NS generates fewer
+effective keepout edges than C's for long pile-up cases on cluster
+sides.  2-3 days, medium risk.
+
+1141 layout tests pass.  ``test_dot_parser`` has one pre-existing
+unrelated failure.
+
+---
+
 ## §1.5.60 — Audit C-side parser bug fix; TODO §2.3 retraction — 2026-04-27
 
 `porting_scripts/visual_audit.py`'s `_html_unescape` only handled

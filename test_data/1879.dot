@@ -21,7 +21,7 @@ subgraph cluster_325x326 {
    tooltip="Xxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 24.11.1841</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 26.11.1917</FONT></TD></TR>
@@ -48,7 +48,7 @@ subgraph cluster_325x326 {
    tooltip="Xxxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.10.1839</FONT></TD></TR>
@@ -68,7 +68,7 @@ subgraph cluster_791x792 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 21.10.1782</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -96,7 +96,7 @@ subgraph cluster_791x792 {
    tooltip="Xxxxx Xxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 14.06.1785</FONT></TD></TR>
@@ -118,7 +118,7 @@ subgraph cluster_567x568 {
    tooltip="Xxxxx Xxxxx Xxöxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xxxxx Xxöxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 02.01.1877</FONT></TD></TR>
@@ -147,7 +147,7 @@ subgraph cluster_567x568 {
    tooltip="Xxxx Xxxxxxx Xxöxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxx Xxxxxxx Xxöxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
@@ -171,7 +171,7 @@ subgraph cluster_52x715 {
    tooltip="Xxxxx Xxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 18.08.1893</FONT></TD></TR>
@@ -202,7 +202,7 @@ subgraph cluster_52x715 {
    tooltip="Xxxxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxxx</FONT></TD></TR>
@@ -225,7 +225,7 @@ subgraph cluster_634x635 {
    tooltip="Xxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1786</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1861</FONT></TD></TR>
@@ -250,7 +250,7 @@ subgraph cluster_634x635 {
    tooltip="Xxxxx Xxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1786</FONT></TD></TR>
@@ -270,7 +270,7 @@ subgraph cluster_198x199 {
    tooltip="Xxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 12.04.1810</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 24.03.1882</FONT></TD></TR>
@@ -297,7 +297,7 @@ subgraph cluster_198x199 {
    tooltip="Xxxx Xxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1817</FONT></TD></TR>
@@ -318,7 +318,7 @@ subgraph cluster_222x223 {
    tooltip="Xxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 05.09.1881</FONT></TD></TR>
@@ -345,7 +345,7 @@ subgraph cluster_222x223 {
    tooltip="Xxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 18.03.1884</FONT></TD></TR>
@@ -365,7 +365,7 @@ subgraph cluster_744x745 {
    tooltip="Xxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 17.12.1785</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxx</FONT></TD></TR>
@@ -394,7 +394,7 @@ subgraph cluster_744x745 {
    tooltip="Xxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.03.1796</FONT></TD></TR>
@@ -416,7 +416,7 @@ subgraph cluster_5395x270 {
    tooltip="Xxxxxxx Xxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 04.11.1823</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -444,7 +444,7 @@ subgraph cluster_5395x270 {
    tooltip="Xxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.08.1826</FONT></TD></TR>
@@ -465,7 +465,7 @@ subgraph cluster_742x743 {
    tooltip="Xxxxäxx Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxäxx Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 24.12.1815</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -494,7 +494,7 @@ subgraph cluster_742x743 {
    tooltip="Xxxxx Xxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 21.01.1820</FONT></TD></TR>
@@ -516,7 +516,7 @@ subgraph cluster_7504x7505 {
    tooltip="Xxxxx Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1763</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1838</FONT></TD></TR>
@@ -543,7 +543,7 @@ subgraph cluster_7504x7505 {
    tooltip="Xxxxx Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxäxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 1746</FONT></TD></TR>
@@ -564,7 +564,7 @@ subgraph cluster_7499x7500 {
    tooltip="Xxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 14.01.1786</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1861</FONT></TD></TR>
@@ -591,7 +591,7 @@ subgraph cluster_7499x7500 {
    tooltip="Xxxxx Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 19.10.1792</FONT></TD></TR>
@@ -612,7 +612,7 @@ subgraph cluster_7506x7507 {
    tooltip="Xxxxxäxx Xüxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxäxx Xüxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1767</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1842</FONT></TD></TR>
@@ -631,7 +631,7 @@ subgraph cluster_7506x7507 {
    tooltip="Xxxxxxx Xüxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xüxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1767</FONT></TD></TR>
@@ -651,7 +651,7 @@ subgraph cluster_7467x7468 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 1823</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1898</FONT></TD></TR>
@@ -679,7 +679,7 @@ subgraph cluster_7467x7468 {
    tooltip="Xxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 1843</FONT></TD></TR>
@@ -699,7 +699,7 @@ subgraph cluster_7491x7492 {
    tooltip="Xxxxx X Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx X Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1821</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1896</FONT></TD></TR>
@@ -718,7 +718,7 @@ subgraph cluster_7491x7492 {
    tooltip="Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1798</FONT></TD></TR>
@@ -738,7 +738,7 @@ subgraph cluster_7493x7494 {
    tooltip="Xxxxx Xxxxxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1818</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1893</FONT></TD></TR>
@@ -757,7 +757,7 @@ subgraph cluster_7493x7494 {
    tooltip="Xxxxxx Xxxxxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1818</FONT></TD></TR>
@@ -777,7 +777,7 @@ subgraph cluster_330x331 {
    tooltip="Xxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 03.06.1869</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 02.03.1953</FONT></TD></TR>
@@ -802,7 +802,7 @@ subgraph cluster_330x331 {
    tooltip="(Xxxxx) Xxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>(Xxxxx) Xxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 21.05.1871</FONT></TD></TR>
@@ -824,7 +824,7 @@ subgraph cluster_630x633 {
    tooltip="Xxxxxx Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 28.07.1808</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 28.08.1885</FONT></TD></TR>
@@ -851,7 +851,7 @@ subgraph cluster_630x633 {
    tooltip="Xxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 03.10.1808</FONT></TD></TR>
@@ -871,7 +871,7 @@ subgraph cluster_249x250 {
    tooltip="Xxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 06.05.1847</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -899,7 +899,7 @@ subgraph cluster_249x250 {
    tooltip="Xxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.01.1850</FONT></TD></TR>
@@ -920,7 +920,7 @@ subgraph cluster_631x632 {
    tooltip="Xxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1783</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1858</FONT></TD></TR>
@@ -945,7 +945,7 @@ subgraph cluster_631x632 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1783</FONT></TD></TR>
@@ -965,7 +965,7 @@ subgraph cluster_628x629 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1783</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1858</FONT></TD></TR>
@@ -990,7 +990,7 @@ subgraph cluster_628x629 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1783</FONT></TD></TR>
@@ -1010,7 +1010,7 @@ subgraph cluster_5381x5382 {
    tooltip="Xxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1830</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1905</FONT></TD></TR>
@@ -1037,7 +1037,7 @@ subgraph cluster_5381x5382 {
    tooltip="Xxxxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1830</FONT></TD></TR>
@@ -1057,7 +1057,7 @@ subgraph cluster_637x636 {
    tooltip="Xxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 13.12.1808</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 09.01.1879</FONT></TD></TR>
@@ -1082,7 +1082,7 @@ subgraph cluster_637x636 {
    tooltip="Xxxx Xxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 31.12.1811</FONT></TD></TR>
@@ -1102,7 +1102,7 @@ subgraph cluster_5378x5379 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1815</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1890</FONT></TD></TR>
@@ -1129,7 +1129,7 @@ subgraph cluster_5378x5379 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1815</FONT></TD></TR>
@@ -1149,7 +1149,7 @@ subgraph cluster_85x87 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 19.07.1796</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 23.08.1878</FONT></TD></TR>
@@ -1176,7 +1176,7 @@ subgraph cluster_85x87 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xöxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 18.03.1814</FONT></TD></TR>
@@ -1197,7 +1197,7 @@ subgraph cluster_258x259 {
    tooltip="Xxxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 14.02.1849</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -1225,7 +1225,7 @@ subgraph cluster_258x259 {
    tooltip="Xxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 06.12.1849</FONT></TD></TR>
@@ -1245,7 +1245,7 @@ subgraph cluster_903x904 {
    tooltip="Xxxxx Xxxxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 14.03.1804</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxx, Xxxxxxxxx</FONT></TD></TR>
@@ -1274,7 +1274,7 @@ subgraph cluster_903x904 {
    tooltip="Xxxxxxx Xxxxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xöxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 15.01.1810</FONT></TD></TR>
@@ -1295,7 +1295,7 @@ subgraph cluster_257x255 {
    tooltip="Xxxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 20.02.1874</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -1324,7 +1324,7 @@ subgraph cluster_257x255 {
    tooltip="Xxxxx Xxxxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 20.06.1874</FONT></TD></TR>
@@ -1346,7 +1346,7 @@ subgraph cluster_931x902 {
    tooltip="Xxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1824</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1899</FONT></TD></TR>
@@ -1365,7 +1365,7 @@ subgraph cluster_931x902 {
    tooltip="Xxxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 26.08.1824</FONT></TD></TR>
@@ -1386,7 +1386,7 @@ subgraph cluster_932x933 {
    tooltip="Xxxxxxx Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1799</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1874</FONT></TD></TR>
@@ -1405,7 +1405,7 @@ subgraph cluster_932x933 {
    tooltip="Xxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1799</FONT></TD></TR>
@@ -1425,7 +1425,7 @@ subgraph cluster_136x82 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 21.09.1880</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 17.12.1914</FONT></TD></TR>
@@ -1452,7 +1452,7 @@ subgraph cluster_136x82 {
    tooltip="Xxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 28.08.1881</FONT></TD></TR>
@@ -1472,7 +1472,7 @@ subgraph cluster_567x830 {
    tooltip="Xxxxx Xxxxx Xxöxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xxxxx Xxöxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 02.01.1877</FONT></TD></TR>
@@ -1501,7 +1501,7 @@ subgraph cluster_567x830 {
    tooltip="Xxxxxxx Xxöxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxöxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1884</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1959</FONT></TD></TR>
@@ -1520,7 +1520,7 @@ subgraph cluster_211x210 {
    tooltip="Xxxxxxxx Xxxxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 04.04.1839</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -1548,7 +1548,7 @@ subgraph cluster_211x210 {
    tooltip="Xxxx Xxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 27.11.1840</FONT></TD></TR>
@@ -1568,7 +1568,7 @@ subgraph cluster_598x597 {
    tooltip="Xxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 08.03.1812</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 06.11.1897</FONT></TD></TR>
@@ -1595,7 +1595,7 @@ subgraph cluster_598x597 {
    tooltip="Xxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 29.01.1816</FONT></TD></TR>
@@ -1616,7 +1616,7 @@ subgraph cluster_599x600 {
    tooltip="Xxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1791</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1866</FONT></TD></TR>
@@ -1641,7 +1641,7 @@ subgraph cluster_599x600 {
    tooltip="Xxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1791</FONT></TD></TR>
@@ -1661,7 +1661,7 @@ subgraph cluster_866x867 {
    tooltip="Xxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1814</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1889</FONT></TD></TR>
@@ -1686,7 +1686,7 @@ subgraph cluster_866x867 {
    tooltip="Xxxxx Xxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1814</FONT></TD></TR>
@@ -1706,7 +1706,7 @@ subgraph cluster_332x333 {
    tooltip="Xxxxxx (Xxxxx) Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx (Xxxxx) Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 02.05.1839</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxx, Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -1733,7 +1733,7 @@ subgraph cluster_332x333 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1839</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1914</FONT></TD></TR>
@@ -1752,7 +1752,7 @@ subgraph cluster_307x314 {
    tooltip="Xxxxxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 29.01.1817</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -1780,7 +1780,7 @@ subgraph cluster_307x314 {
    tooltip="Xxxxxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 16.03.1817</FONT></TD></TR>
@@ -1800,7 +1800,7 @@ subgraph cluster_734x735 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 24.07.1843</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxx</FONT></TD></TR>
@@ -1830,7 +1830,7 @@ subgraph cluster_734x735 {
    tooltip="Xxxxx Xxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 16.07.1845</FONT></TD></TR>
@@ -1852,7 +1852,7 @@ subgraph cluster_736x737 {
    tooltip="Xxxxx Xxöxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxöxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.05.1839</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx/Xxxxxxxxxxx</FONT></TD></TR>
@@ -1879,7 +1879,7 @@ subgraph cluster_736x737 {
    tooltip="Xxxxxxx Xxxxxxxx Xxöxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxx Xxxxxxxx Xxöxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
@@ -1902,7 +1902,7 @@ subgraph cluster_738x739 {
    tooltip="Xxxxx Xxxxx Xxöxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxx Xxöxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 30.08.1805</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxx/Xxxxxxxxxxx</FONT></TD></TR>
@@ -1929,7 +1929,7 @@ subgraph cluster_738x739 {
    tooltip="Xxxxxxxxx Xxöxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxöxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 09.05.1804</FONT></TD></TR>
@@ -1951,7 +1951,7 @@ subgraph cluster_689x690 {
    tooltip="Xxxxx-Xxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx-Xxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 21.07.1863</FONT></TD></TR>
@@ -1982,7 +1982,7 @@ subgraph cluster_689x690 {
    tooltip="Xxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 02.10.1871</FONT></TD></TR>
@@ -2005,7 +2005,7 @@ subgraph cluster_740x741 {
    tooltip="Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.02.1806</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxx</FONT></TD></TR>
@@ -2033,7 +2033,7 @@ subgraph cluster_740x741 {
    tooltip="Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 26.09.1810</FONT></TD></TR>
@@ -2056,7 +2056,7 @@ subgraph cluster_787x788 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 23.11.1765</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 13.01.1834</FONT></TD></TR>
@@ -2082,7 +2082,7 @@ subgraph cluster_787x788 {
    tooltip="Xxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 09.07.1766</FONT></TD></TR>
@@ -2104,7 +2104,7 @@ subgraph cluster_789x790 {
    tooltip="Xxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.09.1780</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -2133,7 +2133,7 @@ subgraph cluster_789x790 {
    tooltip="Xxxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 12.11.1785</FONT></TD></TR>
@@ -2155,7 +2155,7 @@ subgraph cluster_740x852 {
    tooltip="Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.02.1806</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxx</FONT></TD></TR>
@@ -2177,7 +2177,7 @@ subgraph cluster_740x852 {
    tooltip="Xxxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1829</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1904</FONT></TD></TR>
@@ -2196,7 +2196,7 @@ subgraph cluster_7474x7475 {
    tooltip="Xxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.06.1801</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxx, Xxxxxx</FONT></TD></TR>
@@ -2226,7 +2226,7 @@ subgraph cluster_7474x7475 {
    tooltip="Xxxxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 1799</FONT></TD></TR>
@@ -2246,7 +2246,7 @@ subgraph cluster_74x75 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 26.06.1906</FONT></TD></TR>
@@ -2277,7 +2277,7 @@ subgraph cluster_74x75 {
    tooltip="Xxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
@@ -2300,7 +2300,7 @@ subgraph cluster_52x51 {
    tooltip="Xxxxx Xxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 18.08.1893</FONT></TD></TR>
@@ -2331,7 +2331,7 @@ subgraph cluster_52x51 {
    tooltip="Xxxxx Xxxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xxxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxöxxxxx</FONT></TD></TR>
@@ -2353,7 +2353,7 @@ subgraph cluster_7469x7470 {
    tooltip="Xxxxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 08.12.1839</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxx, Xxxxxx</FONT></TD></TR>
@@ -2382,7 +2382,7 @@ subgraph cluster_7469x7470 {
    tooltip="Xxxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 1844</FONT></TD></TR>
@@ -2402,7 +2402,7 @@ subgraph cluster_20x21 {
    tooltip="Xxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 28.08.1937</FONT></TD></TR>
@@ -2430,7 +2430,7 @@ subgraph cluster_20x21 {
    tooltip="Xxxxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
@@ -2453,7 +2453,7 @@ subgraph cluster_7476x7477 {
    tooltip="Xxxxx Xxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1819</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1894</FONT></TD></TR>
@@ -2472,7 +2472,7 @@ subgraph cluster_7476x7477 {
    tooltip="Xxxxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1819</FONT></TD></TR>
@@ -2492,7 +2492,7 @@ subgraph cluster_7482x7483 {
    tooltip="Xxxxxxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1776</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1851</FONT></TD></TR>
@@ -2519,7 +2519,7 @@ subgraph cluster_7482x7483 {
    tooltip="Xxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1776</FONT></TD></TR>
@@ -2539,7 +2539,7 @@ subgraph cluster_7484x7485 {
    tooltip="Xxxxxxxx Xxxxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1774</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1849</FONT></TD></TR>
@@ -2558,7 +2558,7 @@ subgraph cluster_7484x7485 {
    tooltip="Xxxxx Xxxx Xxxxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1774</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1849</FONT></TD></TR>
@@ -2577,7 +2577,7 @@ subgraph cluster_5376x5377 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1790</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1865</FONT></TD></TR>
@@ -2596,7 +2596,7 @@ subgraph cluster_5376x5377 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1790</FONT></TD></TR>
@@ -2616,7 +2616,7 @@ subgraph cluster_5374x5375 {
    tooltip="Xxxxx Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 28.10.1815</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxx, Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -2636,7 +2636,7 @@ subgraph cluster_5374x5375 {
    tooltip="Xxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1814</FONT></TD></TR>
@@ -2656,7 +2656,7 @@ subgraph cluster_32x33 {
    tooltip="Xxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 17.08.1908</FONT></TD></TR>
@@ -2684,7 +2684,7 @@ subgraph cluster_32x33 {
    tooltip="Xxxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxx</FONT></TD></TR>
@@ -2705,7 +2705,7 @@ subgraph cluster_442x443 {
    tooltip="Xxxx Xxxxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 23.11.1872</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxxxx Xxxxxxxxxxxx</FONT></TD></TR>
@@ -2734,7 +2734,7 @@ subgraph cluster_442x443 {
    tooltip="Xxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 24.04.1875</FONT></TD></TR>
@@ -2757,7 +2757,7 @@ subgraph cluster_2x4 {
    tooltip="Xxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 19.07.1969</FONT></TD></TR>
@@ -2785,7 +2785,7 @@ subgraph cluster_2x4 {
    tooltip="Xxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xäxxxxxx</FONT></TD></TR>
@@ -2806,7 +2806,7 @@ subgraph cluster_789x5469 {
    tooltip="Xxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.09.1780</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -2835,7 +2835,7 @@ subgraph cluster_789x5469 {
    tooltip="Xxxx Xxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 15.09.1791</FONT></TD></TR>
@@ -2856,7 +2856,7 @@ subgraph cluster_5458x5459 {
    tooltip="Xxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1751</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1826</FONT></TD></TR>
@@ -2883,7 +2883,7 @@ subgraph cluster_5458x5459 {
    tooltip="Xxxxx Xxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1751</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1826</FONT></TD></TR>
@@ -2902,7 +2902,7 @@ subgraph cluster_5464x5465 {
    tooltip="Xxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1767</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1842</FONT></TD></TR>
@@ -2929,7 +2929,7 @@ subgraph cluster_5464x5465 {
    tooltip="Xxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1767</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1842</FONT></TD></TR>
@@ -2948,7 +2948,7 @@ subgraph cluster_440x441 {
    tooltip="Xxxxxx Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 1834</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1909</FONT></TD></TR>
@@ -2975,7 +2975,7 @@ subgraph cluster_440x441 {
    tooltip="Xxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxüxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 1838</FONT></TD></TR>
@@ -2995,7 +2995,7 @@ subgraph cluster_434x435 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1815</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1890</FONT></TD></TR>
@@ -3021,7 +3021,7 @@ subgraph cluster_434x435 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1815</FONT></TD></TR>
@@ -3042,7 +3042,7 @@ subgraph cluster_438x439 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 30.06.1840</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxx</FONT></TD></TR>
@@ -3071,7 +3071,7 @@ subgraph cluster_438x439 {
    tooltip="Xxxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 20.01.1841</FONT></TD></TR>
@@ -3093,7 +3093,7 @@ subgraph cluster_436x437 {
    tooltip="Xxxxxx Xxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1816</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1891</FONT></TD></TR>
@@ -3119,7 +3119,7 @@ subgraph cluster_436x437 {
    tooltip="Xxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1816</FONT></TD></TR>
@@ -3140,7 +3140,7 @@ subgraph cluster_452x453 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 22.09.1877</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxxxxxxx, Xxxxx-Xxxx</FONT></TD></TR>
@@ -3167,7 +3167,7 @@ subgraph cluster_452x453 {
    tooltip="Xxxxx Xxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1882</FONT></TD></TR>
@@ -3187,7 +3187,7 @@ subgraph cluster_312x313 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1792</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1867</FONT></TD></TR>
@@ -3213,7 +3213,7 @@ subgraph cluster_312x313 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1792</FONT></TD></TR>
@@ -3233,7 +3233,7 @@ subgraph cluster_7545x7546 {
    tooltip="Xxxxxxxx Xxxxxüxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxüxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1775</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1850</FONT></TD></TR>
@@ -3252,7 +3252,7 @@ subgraph cluster_7545x7546 {
    tooltip="Xxxxx Xxxx Xxxxxüxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxxüxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxäxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1775</FONT></TD></TR>
@@ -3272,7 +3272,7 @@ subgraph cluster_7547x7548 {
    tooltip="Xxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1778</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1853</FONT></TD></TR>
@@ -3291,7 +3291,7 @@ subgraph cluster_7547x7548 {
    tooltip="Xxxxx Xxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1778</FONT></TD></TR>
@@ -3311,7 +3311,7 @@ subgraph cluster_85x86 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 19.07.1796</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 23.08.1878</FONT></TD></TR>
@@ -3339,7 +3339,7 @@ subgraph cluster_85x86 {
    tooltip="Xxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1804</FONT></TD></TR>
@@ -3359,7 +3359,7 @@ subgraph cluster_84x83 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1785</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1860</FONT></TD></TR>
@@ -3387,7 +3387,7 @@ subgraph cluster_84x83 {
    tooltip="Xxxxx Xxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1785</FONT></TD></TR>
@@ -3408,7 +3408,7 @@ subgraph cluster_448x449 {
    tooltip="Xxxxxx Xxxxxxx Xxxxx Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx Xxxxx Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 31.08.1812</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx</FONT></TD></TR>
@@ -3435,7 +3435,7 @@ subgraph cluster_448x449 {
    tooltip="Xxxxxxx Xxxxxxxxxx Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxxxxx Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 26.07.1812</FONT></TD></TR>
@@ -3457,7 +3457,7 @@ subgraph cluster_446x447 {
    tooltip="Xxxxxx Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 17.02.1777</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xöxxxxxxäxx</FONT></TD></TR>
@@ -3487,7 +3487,7 @@ subgraph cluster_446x447 {
    tooltip="Xxxxxx Xxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 04.11.1785</FONT></TD></TR>
@@ -3509,7 +3509,7 @@ subgraph cluster_444x445 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 18.08.1785</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx</FONT></TD></TR>
@@ -3537,7 +3537,7 @@ subgraph cluster_444x445 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 18.06.1792</FONT></TD></TR>
@@ -3559,7 +3559,7 @@ subgraph cluster_317x320 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 26.04.1839</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 09.05.1907</FONT></TD></TR>
@@ -3586,7 +3586,7 @@ subgraph cluster_317x320 {
    tooltip="Xxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.05.1841</FONT></TD></TR>
@@ -3606,7 +3606,7 @@ subgraph cluster_24x25 {
    tooltip="Xxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 21.03.1911</FONT></TD></TR>
@@ -3636,7 +3636,7 @@ subgraph cluster_24x25 {
    tooltip="Xxxxx Xxxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xxxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
@@ -3658,7 +3658,7 @@ subgraph cluster_305x306 {
    tooltip="Xxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1793</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1868</FONT></TD></TR>
@@ -3684,7 +3684,7 @@ subgraph cluster_305x306 {
    tooltip="X. Xxxxxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>X. Xxxxxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1793</FONT></TD></TR>
@@ -3704,7 +3704,7 @@ subgraph cluster_6x7 {
    tooltip="Xxxxxx Xxxxxx (Xxxx) Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxx Xxxxxx (Xxxx) Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 21.09.1938</FONT></TD></TR>
@@ -3731,7 +3731,7 @@ subgraph cluster_6x7 {
    tooltip="Xxxx Xxxxxxxxx (Xxxx) Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxx Xxxxxxxxx (Xxxx) Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxxx</FONT></TD></TR>
@@ -3752,7 +3752,7 @@ subgraph cluster_315x316 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.06.1796</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 16.11.1854</FONT></TD></TR>
@@ -3779,7 +3779,7 @@ subgraph cluster_315x316 {
    tooltip="Xxxxx-Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx-Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 02.02.1803</FONT></TD></TR>
@@ -3799,7 +3799,7 @@ subgraph cluster_318x319 {
    tooltip="Xxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 23.01.1820</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 21.09.1875</FONT></TD></TR>
@@ -3825,7 +3825,7 @@ subgraph cluster_318x319 {
    tooltip="Xxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 23.01.1830</FONT></TD></TR>
@@ -3846,7 +3846,7 @@ subgraph cluster_608x609 {
    tooltip="Xxxxx Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1778</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1853</FONT></TD></TR>
@@ -3871,7 +3871,7 @@ subgraph cluster_608x609 {
    tooltip="Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1778</FONT></TD></TR>
@@ -3891,7 +3891,7 @@ subgraph cluster_614x615 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1771</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1846</FONT></TD></TR>
@@ -3916,7 +3916,7 @@ subgraph cluster_614x615 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xöxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1771</FONT></TD></TR>
@@ -3936,7 +3936,7 @@ subgraph cluster_273x638 {
    tooltip="Xxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 16.05.1857</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -3962,7 +3962,7 @@ subgraph cluster_273x638 {
    tooltip="Xxxx Xxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1858</FONT></TD></TR>
@@ -3982,7 +3982,7 @@ subgraph cluster_450x451 {
    tooltip="Xxxxxx Xxxxx Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxx Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 08.02.1836</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxx</FONT></TD></TR>
@@ -4009,7 +4009,7 @@ subgraph cluster_450x451 {
    tooltip="Xxxxxxxxxx Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxxx Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 13.10.1839</FONT></TD></TR>
@@ -4031,7 +4031,7 @@ subgraph cluster_93x109 {
    tooltip="Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 04.11.1849</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxx/Xxxxxxxxx</FONT></TD></TR>
@@ -4060,7 +4060,7 @@ subgraph cluster_93x109 {
    tooltip="Xxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
@@ -4082,7 +4082,7 @@ subgraph cluster_622x5402 {
    tooltip="Xxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 25.05.1792</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 26.05.1854</FONT></TD></TR>
@@ -4109,7 +4109,7 @@ subgraph cluster_622x5402 {
    tooltip="Xxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 04.01.1803</FONT></TD></TR>
@@ -4130,7 +4130,7 @@ subgraph cluster_271x272 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 15.02.1838</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 31.03.1910</FONT></TD></TR>
@@ -4156,7 +4156,7 @@ subgraph cluster_271x272 {
    tooltip="Xxxxx Xxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 13.03.1839</FONT></TD></TR>
@@ -4176,7 +4176,7 @@ subgraph cluster_273x274 {
    tooltip="Xxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 16.05.1857</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -4203,7 +4203,7 @@ subgraph cluster_273x274 {
    tooltip="Xxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 09.02.1867</FONT></TD></TR>
@@ -4223,7 +4223,7 @@ subgraph cluster_269x270 {
    tooltip="Xxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 08.05.1825</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 26.11.1890</FONT></TD></TR>
@@ -4250,7 +4250,7 @@ subgraph cluster_269x270 {
    tooltip="Xxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.08.1826</FONT></TD></TR>
@@ -4271,7 +4271,7 @@ subgraph cluster_623x624 {
    tooltip="Xxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 09.03.1797</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 17.04.1860</FONT></TD></TR>
@@ -4298,7 +4298,7 @@ subgraph cluster_623x624 {
    tooltip="Xxxxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">geb. Mößmer</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 02.03.1799</FONT></TD></TR>
@@ -4318,7 +4318,7 @@ subgraph cluster_622x5400 {
    tooltip="Xxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 25.05.1792</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 26.05.1854</FONT></TD></TR>
@@ -4345,7 +4345,7 @@ subgraph cluster_622x5400 {
    tooltip="Xxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1799</FONT></TD></TR>
@@ -4365,7 +4365,7 @@ subgraph cluster_625x626 {
    tooltip="Xxxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1779</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1854</FONT></TD></TR>
@@ -4390,7 +4390,7 @@ subgraph cluster_625x626 {
    tooltip="Xxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xäxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1779</FONT></TD></TR>
@@ -4410,7 +4410,7 @@ subgraph cluster_620x621 {
    tooltip="Xxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1767</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1842</FONT></TD></TR>
@@ -4435,7 +4435,7 @@ subgraph cluster_620x621 {
    tooltip="Xxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1767</FONT></TD></TR>
@@ -4455,7 +4455,7 @@ subgraph cluster_622x627 {
    tooltip="Xxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 25.05.1792</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 26.05.1854</FONT></TD></TR>
@@ -4482,7 +4482,7 @@ subgraph cluster_622x627 {
    tooltip="Xxxxx Xxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 27.05.1804</FONT></TD></TR>
@@ -4503,7 +4503,7 @@ subgraph cluster_7543x7544 {
    tooltip="Xxxxxxxx Xxxxxüxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxüxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 1800</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 28.02.1870</FONT></TD></TR>
@@ -4531,7 +4531,7 @@ subgraph cluster_7543x7544 {
    tooltip="Xxxxxxxx Xxxxxüxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxüxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 1803</FONT></TD></TR>
@@ -4551,7 +4551,7 @@ subgraph cluster_273x898 {
    tooltip="Xxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 16.05.1857</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -4579,7 +4579,7 @@ subgraph cluster_273x898 {
    tooltip="Xxxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 26.04.1862</FONT></TD></TR>
@@ -4601,7 +4601,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxx Xüxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxx Xxxxxx Xüxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 09.12.1999</FONT></TD></TR>
@@ -4629,7 +4629,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxxx Xüxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxx Xxxxxxxx Xüxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
@@ -4646,7 +4646,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx ?"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx ?</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 14.08.1883</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 28.03.1908</FONT></TD></TR>
@@ -4660,7 +4660,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxx Xxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 16.04.1821</FONT></TD></TR>
@@ -4676,7 +4676,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxüxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxxxx Xxxxxüxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxöxxxxx</FONT></TD></TR>
@@ -4692,7 +4692,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxxüxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxx Xxxxxüxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xäxxxxxx</FONT></TD></TR>
@@ -4709,7 +4709,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxx Xäxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx Xäxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 10.03.1822</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -4724,7 +4724,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxxx Xäxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxx Xäxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 10.03.1822</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -4740,7 +4740,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 16.08.1837</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1912</FONT></TD></TR>
@@ -4754,7 +4754,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 16.09.1838</FONT></TD></TR>
@@ -4770,7 +4770,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1842</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1917</FONT></TD></TR>
@@ -4785,7 +4785,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 1760</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.07.1830</FONT></TD></TR>
@@ -4800,7 +4800,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 21.09.1843</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -4816,7 +4816,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 27.02.1911</FONT></TD></TR>
@@ -4830,7 +4830,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxxxxxx Xxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxxxxxx Xxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 30.07.1821</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -4845,7 +4845,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxxxx Xxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxxxx Xxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 18.08.1830</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -4860,7 +4860,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxx Xxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx Xxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 06.08.1833</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -4875,7 +4875,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxxx Xxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxxx Xxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 13.05.1850</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -4891,7 +4891,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxxx Xxxxxxxxx Xxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxxx Xxxxxxxxx Xxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 06.10.1820</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -4906,7 +4906,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 18.07.1823</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -4921,7 +4921,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxx Xxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx Xxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 17.11.1828</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -4936,7 +4936,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxx Xxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx Xxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 18.09.1819</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -4951,7 +4951,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 20.08.1844</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -4967,7 +4967,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 16.01.1787</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -4982,7 +4982,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 20.12.1788</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -4997,7 +4997,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 08.10.1790</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -5012,7 +5012,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 30.01.1823</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -5027,7 +5027,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 02.10.1818</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1893</FONT></TD></TR>
@@ -5041,7 +5041,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 19.12.1788</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -5056,7 +5056,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 17.01.1875</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxx, Xxxx</FONT></TD></TR>
@@ -5071,7 +5071,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.09.1873</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxx, Xxxx</FONT></TD></TR>
@@ -5087,7 +5087,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 27.09.1872</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxx, Xxxx</FONT></TD></TR>
@@ -5104,7 +5104,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.09.1873</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxx, Xxxx</FONT></TD></TR>
@@ -5121,7 +5121,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.01.1877</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxx, Xxxx</FONT></TD></TR>
@@ -5136,7 +5136,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 02.09.1869</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxx, Xxxx</FONT></TD></TR>
@@ -5151,7 +5151,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 28.07.1870</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxx, Xxxx</FONT></TD></TR>
@@ -5166,7 +5166,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 10.10.1846</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -5181,7 +5181,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 27.06.1845</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -5197,7 +5197,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 30.01.1847</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -5212,7 +5212,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 10.05.1826</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -5227,7 +5227,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 22.06.1898</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 06.10.1983</FONT></TD></TR>
@@ -5241,7 +5241,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 07.11.1841</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -5256,7 +5256,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 17.01.1869</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -5272,7 +5272,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1874</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1949</FONT></TD></TR>
@@ -5286,7 +5286,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 19.07.1834</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -5301,7 +5301,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 20.05.1870</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1945</FONT></TD></TR>
@@ -5316,7 +5316,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1791</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1866</FONT></TD></TR>
@@ -5330,7 +5330,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 09.06.1872</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -5347,7 +5347,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 20.05.1870</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -5362,7 +5362,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 21.12.1832</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -5377,7 +5377,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 12.09.1836</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -5392,7 +5392,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.01.1855</FONT></TD></TR>
@@ -5408,7 +5408,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 30.10.1843</FONT></TD></TR>
@@ -5423,7 +5423,7 @@ subgraph cluster_7461x3 {
    tooltip="? Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>? Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1874</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1949</FONT></TD></TR>
@@ -5438,7 +5438,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1876</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1951</FONT></TD></TR>
@@ -5453,7 +5453,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1910</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 28.11.1917</FONT></TD></TR>
@@ -5468,7 +5468,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1919</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10"> </FONT></TD></TR>
@@ -5482,7 +5482,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 13.02.1880</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -5498,7 +5498,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1899</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1974</FONT></TD></TR>
@@ -5513,7 +5513,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 29.05.1876</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1951</FONT></TD></TR>
@@ -5527,7 +5527,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1911</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10"> </FONT></TD></TR>
@@ -5541,7 +5541,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxöxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1909</FONT></TD></TR>
@@ -5555,7 +5555,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 10.01.1858</FONT></TD></TR>
@@ -5571,7 +5571,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 12.11.1878</FONT></TD></TR>
@@ -5586,7 +5586,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1846</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1921</FONT></TD></TR>
@@ -5600,7 +5600,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 25.11.1913</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 12.04.1975</FONT></TD></TR>
@@ -5615,7 +5615,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 22.04.1816</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -5631,7 +5631,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 04.07.1844</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -5647,7 +5647,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 07.03.1851</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 16.01.1857</FONT></TD></TR>
@@ -5661,7 +5661,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 28.11.1892</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 12.05.1968</FONT></TD></TR>
@@ -5676,7 +5676,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 23.12.1896</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 26.07.1975</FONT></TD></TR>
@@ -5691,7 +5691,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 02.11.1819</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -5707,7 +5707,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 07.12.1916</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 31.12.1945</FONT></TD></TR>
@@ -5722,7 +5722,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 08.11.1912</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 06.04.2005</FONT></TD></TR>
@@ -5737,7 +5737,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 02.05.1849</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 02.05.1849</FONT></TD></TR>
@@ -5751,7 +5751,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 09.07.1868</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -5766,7 +5766,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.08.1870</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -5781,7 +5781,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 19.04.1872</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 14.01.1899</FONT></TD></TR>
@@ -5795,7 +5795,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx (Xxxx x. Xxxxxx) Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx (Xxxx x. Xxxxxx) Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.04.1875</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1950</FONT></TD></TR>
@@ -5810,7 +5810,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 14.09.1846</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 19.08.1919</FONT></TD></TR>
@@ -5824,7 +5824,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 28.10.1817</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -5840,7 +5840,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 25.04.1846</FONT></TD></TR>
@@ -5855,7 +5855,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxöxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xxöxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 04.03.1907</FONT></TD></TR>
@@ -5870,7 +5870,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxöxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxöxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 02.12.1869</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxxxxxxxx</FONT></TD></TR>
@@ -5885,7 +5885,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xäxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1893</FONT></TD></TR>
@@ -5900,7 +5900,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 19.01.1883</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -5915,7 +5915,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 12.07.1871</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -5931,7 +5931,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 25.07.1876</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -5946,7 +5946,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 08.09.1834</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxx</FONT></TD></TR>
@@ -5961,7 +5961,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 03.02.1838</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxx</FONT></TD></TR>
@@ -5976,7 +5976,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 09.10.1836</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxx</FONT></TD></TR>
@@ -5991,7 +5991,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 12.01.1879</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -6006,7 +6006,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 19.12.1846</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxx</FONT></TD></TR>
@@ -6021,7 +6021,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 20.08.1835</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxx</FONT></TD></TR>
@@ -6036,7 +6036,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 27.01.1886</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxx</FONT></TD></TR>
@@ -6051,7 +6051,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 26.12.1872</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -6066,7 +6066,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 07.03.1880</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -6082,7 +6082,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 09.12.1884</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx</FONT></TD></TR>
@@ -6097,7 +6097,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 18.08.1833</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxx</FONT></TD></TR>
@@ -6112,7 +6112,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 14.10.1840</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxx</FONT></TD></TR>
@@ -6127,7 +6127,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 30.12.1854</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxx</FONT></TD></TR>
@@ -6142,7 +6142,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 28.09.1832</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxx</FONT></TD></TR>
@@ -6157,7 +6157,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 18.12.1844</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxx</FONT></TD></TR>
@@ -6172,7 +6172,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 14.05.1838</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxx, Xxxxxx</FONT></TD></TR>
@@ -6188,7 +6188,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 20.02.1843</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxx, Xxxxxx</FONT></TD></TR>
@@ -6204,7 +6204,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 28.01.1963</FONT></TD></TR>
@@ -6218,7 +6218,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 04.10.1899</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxx, Xxxx</FONT></TD></TR>
@@ -6234,7 +6234,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 15.10.1928</FONT></TD></TR>
@@ -6250,7 +6250,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 02.06.1892</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxx, Xxxx</FONT></TD></TR>
@@ -6266,7 +6266,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 12.03.1896</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxx, Xxxx</FONT></TD></TR>
@@ -6282,7 +6282,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 14.03.1975</FONT></TD></TR>
@@ -6296,7 +6296,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 03.11.1921</FONT></TD></TR>
@@ -6311,7 +6311,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 18.05.1932</FONT></TD></TR>
@@ -6328,7 +6328,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 20.06.1965</FONT></TD></TR>
@@ -6342,7 +6342,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1892</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1967</FONT></TD></TR>
@@ -6356,7 +6356,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xäxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxx Xäxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 15.10.1944</FONT></TD></TR>
@@ -6373,7 +6373,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1864</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1939</FONT></TD></TR>
@@ -6388,7 +6388,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 25.08.1866</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1941</FONT></TD></TR>
@@ -6402,7 +6402,7 @@ subgraph cluster_7461x3 {
    tooltip="(Xxxxx) Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>(Xxxxx) Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 03.02.1861</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxx, Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -6418,7 +6418,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.06.1868</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxx, Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -6434,7 +6434,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 12.12.1859</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxx, Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -6449,7 +6449,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.01.1857</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxx, Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -6464,7 +6464,7 @@ subgraph cluster_7461x3 {
    tooltip="(Xxxxx) Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>(Xxxxx) Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 16.08.1863</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1938</FONT></TD></TR>
@@ -6478,7 +6478,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 22.02.1865</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxx, Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -6493,7 +6493,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 17.02.1858</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxx, Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -6508,7 +6508,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.10.1869</FONT></TD></TR>
@@ -6525,7 +6525,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 05.04.1940</FONT></TD></TR>
@@ -6542,7 +6542,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xäxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 24.05.1897</FONT></TD></TR>
@@ -6559,7 +6559,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* Oct 1802</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxx, Xxxxxx</FONT></TD></TR>
@@ -6576,7 +6576,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 05.05.1894</FONT></TD></TR>
@@ -6593,7 +6593,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 24.03.1894</FONT></TD></TR>
@@ -6608,7 +6608,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 21.05.1825</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -6623,7 +6623,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1776</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1851</FONT></TD></TR>
@@ -6637,7 +6637,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 19.01.1820</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -6652,7 +6652,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">geb. 7.6.1832</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 07.06.1832</FONT></TD></TR>
@@ -6668,7 +6668,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 03.12.1775</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -6683,7 +6683,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 26.03.1774</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -6698,7 +6698,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.04.1773</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -6713,7 +6713,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 05.04.1936</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxx</FONT></TD></TR>
@@ -6727,7 +6727,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1818</FONT></TD></TR>
@@ -6743,7 +6743,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 29.08.1844</FONT></TD></TR>
@@ -6758,7 +6758,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 23.01.1878</FONT></TD></TR>
@@ -6775,7 +6775,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 12.01.1821</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -6791,7 +6791,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xöxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xöxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 06.02.1831</FONT></TD></TR>
@@ -6807,7 +6807,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 30.07.1788</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -6822,7 +6822,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 27.05.1795</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -6837,7 +6837,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 17.09.1790</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxx, Xxxxxxxx</FONT></TD></TR>
@@ -6852,7 +6852,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 26.10.1804</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1879</FONT></TD></TR>
@@ -6866,7 +6866,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx (Xxxx) Xxxxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxx (Xxxx) Xxxxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxöxxxxx</FONT></TD></TR>
@@ -6882,7 +6882,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxx Xxxxxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 02.09.1809</FONT></TD></TR>
@@ -6898,7 +6898,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 16.12.1848</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxx</FONT></TD></TR>
@@ -6913,7 +6913,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxxx Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxxx Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 27.07.1842</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxx</FONT></TD></TR>
@@ -6929,7 +6929,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxx Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxx Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 05.12.1845</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxx</FONT></TD></TR>
@@ -6945,7 +6945,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxxx Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxx Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 12.10.1840</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxx</FONT></TD></TR>
@@ -6962,7 +6962,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 13.02.1922</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10"> </FONT></TD></TR>
@@ -6976,7 +6976,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.12.1813</FONT></TD></TR>
@@ -6991,7 +6991,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 10.05.1822</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -7006,7 +7006,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.12.1841</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1916</FONT></TD></TR>
@@ -7021,7 +7021,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxx Xxxxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 18.07.2004</FONT></TD></TR>
@@ -7036,7 +7036,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1912</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10"> </FONT></TD></TR>
@@ -7050,7 +7050,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxxx Xxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 21.06.2007</FONT></TD></TR>
@@ -7065,7 +7065,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxxx Xxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 26.03.2002</FONT></TD></TR>
@@ -7080,7 +7080,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 16.12.1885</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.04.1954</FONT></TD></TR>
@@ -7095,7 +7095,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 12.04.1907</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 08.09.1907</FONT></TD></TR>
@@ -7109,7 +7109,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 10.06.1971</FONT></TD></TR>
@@ -7124,7 +7124,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 25.10.1819</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -7139,7 +7139,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xäxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.08.1864</FONT></TD></TR>
@@ -7156,7 +7156,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 04.02.1871</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 29.11.1874</FONT></TD></TR>
@@ -7170,7 +7170,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 10.11.1822</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1897</FONT></TD></TR>
@@ -7184,7 +7184,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 06.06.1827</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1902</FONT></TD></TR>
@@ -7198,7 +7198,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 25.03.1862</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1937</FONT></TD></TR>
@@ -7212,7 +7212,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 12.11.1824</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1899</FONT></TD></TR>
@@ -7226,7 +7226,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 10.11.1874</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1949</FONT></TD></TR>
@@ -7241,7 +7241,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 19.06.1843</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1918</FONT></TD></TR>
@@ -7255,7 +7255,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.08.1863</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1938</FONT></TD></TR>
@@ -7270,7 +7270,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 19.09.1896</FONT></TD></TR>
@@ -7287,7 +7287,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1884</FONT></TD></TR>
@@ -7303,7 +7303,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 12.11.1878</FONT></TD></TR>
@@ -7319,7 +7319,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 16.01.1824</FONT></TD></TR>
@@ -7335,7 +7335,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxx Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 09.10.1867</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxx</FONT></TD></TR>
@@ -7350,7 +7350,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1811</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1886</FONT></TD></TR>
@@ -7364,7 +7364,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.04.1873</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxx</FONT></TD></TR>
@@ -7379,7 +7379,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxx Xxxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxx Xxxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 13.01.1872</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxx</FONT></TD></TR>
@@ -7394,7 +7394,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 04.02.1869</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxx</FONT></TD></TR>
@@ -7409,7 +7409,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1832</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1907</FONT></TD></TR>
@@ -7424,7 +7424,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 05.08.1840</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxx</FONT></TD></TR>
@@ -7440,7 +7440,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 07.06.1842</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxx</FONT></TD></TR>
@@ -7455,7 +7455,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxx Xxxxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxx Xxxxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1839</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1914</FONT></TD></TR>
@@ -7470,7 +7470,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 08.04.1814</FONT></TD></TR>
@@ -7485,7 +7485,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 28.10.1850</FONT></TD></TR>
@@ -7502,7 +7502,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
@@ -7518,7 +7518,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxx Xxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxx Xxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 23.09.1874</FONT></TD></TR>
@@ -7534,7 +7534,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 31.10.1821</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxx</FONT></TD></TR>
@@ -7550,7 +7550,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxxxx Xxxxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxxxx Xxxxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.06.1810</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxx</FONT></TD></TR>
@@ -7565,7 +7565,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxx Xxxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxx Xxxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 18.02.1820</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxx</FONT></TD></TR>
@@ -7581,7 +7581,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxxxx Xxxxxxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxxxx Xxxxxxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 22.05.1830</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxx</FONT></TD></TR>
@@ -7596,7 +7596,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.05.1809</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxx</FONT></TD></TR>
@@ -7613,7 +7613,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 23.02.1816</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxx</FONT></TD></TR>
@@ -7629,7 +7629,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 29.04.1814</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxx, Xxxxxxx</FONT></TD></TR>
@@ -7644,7 +7644,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 07.02.1846</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -7659,7 +7659,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 06.01.1863</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -7674,7 +7674,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1825</FONT></TD></TR>
@@ -7690,7 +7690,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 22.01.1861</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -7705,7 +7705,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.04.1855</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -7720,7 +7720,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xäxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 19.11.1841</FONT></TD></TR>
@@ -7737,7 +7737,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1810</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1885</FONT></TD></TR>
@@ -7752,7 +7752,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 10.02.1860</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1935</FONT></TD></TR>
@@ -7767,7 +7767,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 14.09.1878</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 13.03.1917</FONT></TD></TR>
@@ -7782,7 +7782,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx-Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx-Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 07.12.1845</FONT></TD></TR>
@@ -7798,7 +7798,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 13.07.1912</FONT></TD></TR>
@@ -7814,7 +7814,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.04.1884</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 26.06.1930</FONT></TD></TR>
@@ -7829,7 +7829,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx-Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx-Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 10.11.1844</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1919</FONT></TD></TR>
@@ -7844,7 +7844,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 06.02.1852</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxx/Xxxxxxxxx</FONT></TD></TR>
@@ -7860,7 +7860,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1810</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1885</FONT></TD></TR>
@@ -7874,7 +7874,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 05.02.1818</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -7889,7 +7889,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 31.03.1826</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxx/Xxxxxxxxx</FONT></TD></TR>
@@ -7904,7 +7904,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 29.05.1877</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 11.11.1971</FONT></TD></TR>
@@ -7919,7 +7919,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 10.08.1910</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.08.1987</FONT></TD></TR>
@@ -7934,7 +7934,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1810</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1885</FONT></TD></TR>
@@ -7949,7 +7949,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 24.07.1856</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -7965,7 +7965,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 23.01.1811</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1886</FONT></TD></TR>
@@ -7979,7 +7979,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 02.01.1882</FONT></TD></TR>
@@ -7995,7 +7995,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 04.06.1908</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 16.12.1984</FONT></TD></TR>
@@ -8010,7 +8010,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 08.01.1900</FONT></TD></TR>
@@ -8025,7 +8025,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 10.09.1934</FONT></TD></TR>
@@ -8040,7 +8040,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 27.11.1832</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8055,7 +8055,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 01.08.1840</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8070,7 +8070,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1887</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1962</FONT></TD></TR>
@@ -8085,7 +8085,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 04.04.1859</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8101,7 +8101,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 12.03.1839</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8116,7 +8116,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 23.11.1841</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8131,7 +8131,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 07.10.1834</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8146,7 +8146,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 17.12.1837</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8161,7 +8161,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 03.07.1848</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8176,7 +8176,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 24.05.1844</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8191,7 +8191,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 05.12.1845</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8206,7 +8206,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 26.10.1836</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8221,7 +8221,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1887</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1962</FONT></TD></TR>
@@ -8236,7 +8236,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1887</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1962</FONT></TD></TR>
@@ -8251,7 +8251,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 18.01.1824</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8267,7 +8267,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 15.11.1829</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8282,7 +8282,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 27.08.1831</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8297,7 +8297,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 27.01.1856</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8312,7 +8312,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 19.09.1854</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxxxxx</FONT></TD></TR>
@@ -8327,7 +8327,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxx Xxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxx Xxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1887</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1962</FONT></TD></TR>
@@ -8342,7 +8342,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxx xxx Xxxxx-Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxxx xxx Xxxxx-Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
@@ -8358,7 +8358,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 22.06.1951</FONT></TD></TR>
@@ -8373,7 +8373,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 23.03.1870</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxx</FONT></TD></TR>
@@ -8388,7 +8388,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 19.08.1865</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxx</FONT></TD></TR>
@@ -8404,7 +8404,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 26.06.1868</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxx</FONT></TD></TR>
@@ -8420,7 +8420,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 1864</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1939</FONT></TD></TR>
@@ -8434,7 +8434,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* ca. 1809</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="12">&dagger; 01.01.1884</FONT></TD></TR>
@@ -8448,7 +8448,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.04.1867</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxx</FONT></TD></TR>
@@ -8464,7 +8464,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 11.05.1862</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxx</FONT></TD></TR>
@@ -8479,7 +8479,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxx Xxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 05.03.1873</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxx</FONT></TD></TR>
@@ -8494,7 +8494,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD>Xxxxxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="12">* 27.07.1871</FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10">Xxxxxxxxxx</FONT></TD></TR>
@@ -8509,7 +8509,7 @@ subgraph cluster_7461x3 {
    tooltip="Xxxxx Xxxxxxx"
    URL=""
    label=<
-      <TABLE BGCOLOR="#ffffff" BORDER="0" ALIGN="CENTER">
+      <TABLE BGCOLOR="#99AAff" BORDER="0" ALIGN="CENTER">
       <TR><TD FIXEDSIZE="TRUE" HEIGHT="70" WIDTH="50"><IMG SCALE="TRUE" SRC="1879.png" /></TD></TR>
       <TR><TD>Xxxxx Xxxxxxx</TD></TR>
       <TR><TD><FONT POINT-SIZE="10">xxx. Xxxxxxxx</FONT></TD></TR>

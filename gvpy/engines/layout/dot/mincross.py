@@ -167,6 +167,24 @@ def phase2_ordering(layout):
             layout._mark_low_clusters()
             layout._remincross_full()
             d5_stage_crossings(layout, "after_remincross_full")
+        # §2.5.6 deep-refactor experiment — gated on
+        # ``GVPY_SKEL_FULL_REFINE=1``.  Runs an UNRESTRICTED
+        # ``_run_mincross()`` (full median + reorder + transpose
+        # power, no remincross_phase=True restrictions) on the
+        # expanded graph after the standard remincross_full.  The
+        # idea: skel-mode mincross on the COLLAPSED skeleton lands
+        # on a mirror-equivalent local optimum vs the full-graph
+        # default mode (proxy positions vs expanded member
+        # positions in the median computation).  An unrestricted
+        # post-pass on the expanded graph lets the optimizer
+        # escape that mirror, potentially closing the spatial-
+        # audit gap on d5_regression.dot.  Disabled by default —
+        # leave the env var unset to revert to the standard
+        # skel-mode behaviour.
+        import os as _os_skfr
+        if _os_skfr.environ.get("GVPY_SKEL_FULL_REFINE", "") == "1":
+            layout._run_mincross()
+            d5_stage_crossings(layout, "after_skel_full_refine")
     else:
         layout._run_mincross()
 
@@ -653,6 +671,15 @@ def run_mincross(layout):
                 if cur_cross == 0:
                     break
                 _mincross_step(pass_idx_global)
+                # §2.5.2 probe — full per-rank state after each
+                # mincross_step.  Matches C probe at mincross.c:1148.
+                # Note: C iter index here is the per-pass _it; pass_n
+                # is the outer pass index, which the C probe uses too.
+                for _r in sorted(layout.ranks.keys()):
+                    trace("order",
+                          f"after_step pass={pass_n} iter={_it} "
+                          f"rank {_r}: "
+                          f"{' '.join(layout.ranks[_r])}")
                 pass_idx_global += 1
                 _done_iter += 1
                 _step_calls += 1
@@ -1239,10 +1266,15 @@ def skeleton_mincross(layout):
     # (1879.dot rank 1: C cluster_7545x7546 vs Py cluster_637x636,
     # see §1.5.21 / Docs/D5_measurement_findings.md).
     #
-    # Gated behind ``GVPY_SKELETON_BUILD_RANKS=1`` initially so we
-    # can A/B-test the impact on the full corpus before promoting.
+    # §2.5.7 (2026-04-30) — promoted to default after corpus audit
+    # confirmed C-alignment (1001/1001 BFS install events match,
+    # bit-identical mincross loop, mincross_exit final_crossings
+    # matches C on 1879).  Set ``GVPY_LEGACY_PHASE1_RANKS=1`` to
+    # revert to the pre-§2.5.7 path (skip the rebuild, inherit
+    # phase-1 ranks into mincross).  Kept as an opt-out for
+    # diagnostics; the C-aligned path is the new default.
     import os as _os_sk
-    if _os_sk.environ.get("GVPY_SKELETON_BUILD_RANKS", "") == "1":
+    if _os_sk.environ.get("GVPY_LEGACY_PHASE1_RANKS", "") != "1":
         active = set()
         for r in layout.ranks.values():
             active.update(r)
@@ -1314,6 +1346,13 @@ def skeleton_mincross(layout):
         def _build_ranks_pass1(layout):
             layout.ranks = defaultdict(list)
             build_ranks_on_skeleton(layout, active, pass_idx=1)
+            # §2.5 probe — full per-rank state right after pass=1
+            # build_ranks_on_skeleton returns; matches C's probe at
+            # mincross.c:1090.
+            for r in sorted(layout.ranks.keys()):
+                trace("order",
+                      f"after_build_ranks pass=1 rank {r}: "
+                      f"{' '.join(layout.ranks[r])}")
         layout._skeleton_build_ranks_pass1 = _build_ranks_pass1
         # Keep _skeleton_post_build_transpose ALIVE through
         # _run_mincross so the pass=1 re-call also gets the post-
@@ -1321,6 +1360,13 @@ def skeleton_mincross(layout):
         # the end of build_ranks; mincross.c:1806).  Cleanup happens
         # below after _run_mincross returns.
         build_ranks_on_skeleton(layout, active, pass_idx=0)
+        # §2.5 probe — full per-rank state right after pass=0
+        # build_ranks_on_skeleton returns; matches C's probe at
+        # mincross.c:1090.
+        for r in sorted(layout.ranks.keys()):
+            trace("order",
+                  f"after_build_ranks pass=0 rank {r}: "
+                  f"{' '.join(layout.ranks[r])}")
 
     # ── Run mincross on fully collapsed graph ──
     layout._run_mincross()

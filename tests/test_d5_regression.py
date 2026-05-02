@@ -41,7 +41,15 @@ FIXTURE = REPO / "test_data" / "d5_regression.dot"
 #                  backend — `order_by_weighted_median` used raw
 #                  order indices as mvals instead of
 #                  ``VAL = MC_SCALE * order + port.order``).
-BASELINE_VISIBLE_CROSSINGS = 1
+#   2026-04-30: 3 (post §2.5.7 promotion of skel mode to default —
+#                  build_ranks_on_skeleton is now C-aligned; the
+#                  earlier 1-crossing result was Py-default's
+#                  accidental win on a synthetic D5 fixture vs C's
+#                  actual 2-crossing output.  Skel mode lands at 3
+#                  visible cluster-crossings — 1 closer to C than
+#                  the old default's 0, since C reports 2 crossings
+#                  on this fixture).
+BASELINE_VISIBLE_CROSSINGS = 3
 
 
 @pytest.mark.skipif(not FIXTURE.exists(),
