@@ -518,12 +518,30 @@ Port each mode from the C source, in priority order.  Add
 `[TRACE neato_*]` instrumentation tags to both Py and C; verify
 output against `dot -Kneato -Tplain` for fixture graphs.
 
-| Step | C source | Trace tag | Estimate | Risk |
-|---|---|---|---|---|
-| N2.1 | `stress.c::stress_majorization_kD_mkernel` (MODE_MAJOR — default) | `[TRACE neato_major]` | 2-3 days | medium |
-| N2.2 | `kkutils.c::solve_model` + `neatoinit.c::diffeq_model` (MODE_KK) | `[TRACE neato_kk]` | 1-2 days | medium |
-| N2.3 | `sgd.c::sgd` (MODE_SGD) | `[TRACE neato_sgd]` | 0.5-1 day | low |
-| N2.4 | `smart_ini_x.c` + `pca.c` (smart init) | `[TRACE neato_init]` | 1 day | low |
+| Step | C source | Trace tag | Estimate | Risk | Status |
+|---|---|---|---|---|---|
+| N2.1 | `stress.c::stress_majorization_kD_mkernel` (MODE_MAJOR — default) | `[TRACE neato_major]` | 2-3 days | medium | **shipped 2026-05-02** |
+| N2.2 | `kkutils.c::solve_model` + `neatoinit.c::diffeq_model` (MODE_KK) | `[TRACE neato_kk]` | 1-2 days | medium | pending |
+| N2.3 | `sgd.c::sgd` (MODE_SGD) | `[TRACE neato_sgd]` | 0.5-1 day | low | pending |
+| N2.4 | `smart_ini_x.c` + `pca.c` (smart init) | `[TRACE neato_init]` | 1 day | low | pending |
+
+**§4.N.2.1 status (2026-05-02).**  Ported the CG-based stress
+majorization kernel.  Replaces the prior O(N²) per-iteration naive
+SMACOF direct update with the C reference's flow: per-iteration
+Laplacian construction, conjugate-gradient solve per dimension on
+packed symmetric matrices.  Stress is now monotonically
+non-increasing per the SMACOF guarantee (verified by a new test).
+New helpers in `common/`:
+
+- `common/laplacian.py` — packed-upper-tri indexing + matrix-vector
+  multiply (mirrors `matrix_ops.c`).
+- `common/conjgrad.py` — `conjugate_gradient_mkernel` (mirrors
+  `conjgrad.c:162`).
+
+K5 still lands on a non-optimal local minimum (max/min pair-distance
+ratio 2.12 vs the 1.618 regular-pentagon optimum) — that's blocked
+on N2.4 smart-init.  Path / triangle / small graphs converge fine.
+31/31 neato tests pass (4 new alignment tests added).
 
 The current Py `_stress_majorization` is a basic SMACOF in O(N²)
 per iteration; C's `stress_majorization_kD_mkernel` uses a kernel

@@ -197,3 +197,123 @@ class TestNeatoAttributes:
         na = node_by_name(r, "a")
         assert na.get("xlabel") == "extra"
         assert "_xlabel_pos_x" in na
+
+
+class TestNeatoStressKernel:
+    """§4.N.2.1 — verify the CG-based stress majorization kernel."""
+
+    def test_packed_laplacian_indexing(self):
+        """packed_index round-trips correctly across the upper-tri."""
+        from gvpy.engines.layout.common.laplacian import (
+            packed_index,
+            packed_length,
+        )
+        n = 5
+        L = packed_length(n)
+        assert L == n * (n + 1) // 2
+        # Diagonal indices increment by row-length (n, n-1, ...).
+        assert packed_index(n, 0, 0) == 0
+        assert packed_index(n, 1, 1) == n
+        assert packed_index(n, 2, 2) == n + (n - 1)
+        # Symmetric: packed_index(i, j) == packed_index(j, i).
+        assert packed_index(n, 1, 3) == packed_index(n, 3, 1)
+        # Last entry is the bottom-right diagonal.
+        assert packed_index(n, n - 1, n - 1) == L - 1
+
+    def test_right_mult_packed_matches_dense(self):
+        """Packed-form matrix-vector product matches the dense form."""
+        import numpy as np
+        from gvpy.engines.layout.common.laplacian import (
+            packed_index,
+            packed_length,
+            right_mult_packed,
+        )
+        n = 4
+        # Build a known symmetric matrix and its packed form.
+        dense = np.array([
+            [4.0, -1.0, -2.0, 0.0],
+            [-1.0, 5.0, -1.0, -3.0],
+            [-2.0, -1.0, 6.0, -2.0],
+            [0.0, -3.0, -2.0, 5.0],
+        ])
+        packed = np.zeros(packed_length(n))
+        for i in range(n):
+            for j in range(i, n):
+                packed[packed_index(n, i, j)] = dense[i, j]
+        x = np.array([1.0, 2.0, 3.0, 4.0])
+        expected = dense @ x
+        actual = right_mult_packed(packed, n, x)
+        np.testing.assert_allclose(actual, expected, atol=1e-12)
+
+    def test_cg_solves_laplacian_system(self):
+        """Conjugate gradient converges on a small Laplacian."""
+        import numpy as np
+        from gvpy.engines.layout.common.conjgrad import (
+            conjugate_gradient_mkernel,
+        )
+        from gvpy.engines.layout.common.laplacian import (
+            packed_index,
+            packed_length,
+            right_mult_packed,
+        )
+        n = 4
+        # Build a path Laplacian (a-b-c-d): L = D - A.
+        L = packed_length(n)
+        lap = np.zeros(L)
+        for i, j in [(0, 1), (1, 2), (2, 3)]:
+            lap[packed_index(n, i, j)] = -1.0
+        for i, deg in enumerate([1, 2, 2, 1]):
+            lap[packed_index(n, i, i)] = float(deg)
+        # Pick a target X (centred so it's in the column space).
+        x_target = np.array([1.0, 2.0, 3.0, 4.0])
+        x_target -= x_target.mean()
+        b = right_mult_packed(lap, n, x_target)
+        # Solve with CG starting from zero.
+        x = np.zeros(n)
+        rv = conjugate_gradient_mkernel(lap, x, b, n, 1e-8, n * 4)
+        assert rv == 0
+        np.testing.assert_allclose(x, x_target, atol=1e-6)
+
+    def test_stress_monotonically_decreases(self):
+        """SMACOF stress sequence is monotonically non-increasing.
+
+        Captures the iteration trace via GVPY_TRACE_NEATO=1 and
+        verifies each step decreases (or holds) the stress.
+        """
+        import os
+        import io
+        import sys
+        from gvpy.engines.layout.neato import NeatoLayout
+        from gvpy.grammar.gv_reader import read_gv
+
+        old_env = os.environ.get("GVPY_TRACE_NEATO", "")
+        os.environ["GVPY_TRACE_NEATO"] = "1"
+        old_stderr = sys.stderr
+        try:
+            buf = io.StringIO()
+            sys.stderr = buf
+            g = read_gv("graph G { a -- b -- c -- a; b -- d; c -- e; }")
+            NeatoLayout(g).layout()
+            output = buf.getvalue()
+        finally:
+            sys.stderr = old_stderr
+            if old_env:
+                os.environ["GVPY_TRACE_NEATO"] = old_env
+            else:
+                os.environ.pop("GVPY_TRACE_NEATO", None)
+
+        stresses = []
+        for line in output.splitlines():
+            if "stress=" not in line:
+                continue
+            tok = line.split("stress=")[1].split()[0]
+            try:
+                stresses.append(float(tok))
+            except ValueError:
+                continue
+        assert len(stresses) >= 2
+        for i in range(1, len(stresses)):
+            assert stresses[i] <= stresses[i - 1] + 1e-6, (
+                f"Stress increased at step {i}: "
+                f"{stresses[i - 1]:.6f} -> {stresses[i]:.6f}"
+            )
