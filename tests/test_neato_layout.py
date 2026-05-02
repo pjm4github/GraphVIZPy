@@ -274,6 +274,70 @@ class TestNeatoStressKernel:
         assert rv == 0
         np.testing.assert_allclose(x, x_target, atol=1e-6)
 
+    def test_gauss_solve_2x2(self):
+        """Gauss-elimination solver mirrors solve.c on a 2x2 system."""
+        from gvpy.engines.layout.common.matrix import gauss_solve
+        # [2 1; 1 3] x = [4; 5]  ->  x = [1, 4/3]
+        a = [2.0, 1.0, 1.0, 3.0]
+        c = [4.0, 5.0]
+        x = gauss_solve(a, c, 2)
+        assert x is not None
+        assert abs(x[0] - 1.4) < 1e-9
+        assert abs(x[1] - 1.2) < 1e-9
+        # Inputs must not be mutated.
+        assert a == [2.0, 1.0, 1.0, 3.0]
+        assert c == [4.0, 5.0]
+
+    def test_gauss_solve_singular(self):
+        """Singular system returns None instead of raising."""
+        from gvpy.engines.layout.common.matrix import gauss_solve
+        # [1 2; 2 4] is rank-1 singular.
+        x = gauss_solve([1.0, 2.0, 2.0, 4.0], [3.0, 6.0], 2)
+        assert x is None
+
+    def test_kk_diffeq_init_consistency(self):
+        """diffeq_model produces force tensors whose row-sums match.
+
+        The invariant ``sum_t[i] = sum_j t[i][j]`` must hold after
+        :func:`diffeq_model` (both the i-row sum and the j-column
+        sum are maintained incrementally).
+        """
+        import numpy as np
+        from gvpy.engines.layout.neato.kkutils import diffeq_model
+
+        N = 4
+        coords = np.array([[0.0, 0.0], [72.0, 0.0],
+                           [36.0, 60.0], [108.0, 60.0]],
+                          dtype=np.float64)
+        dist = [[0.0, 72.0, 72.0, 144.0],
+                [72.0, 0.0, 144.0, 72.0],
+                [72.0, 144.0, 0.0, 72.0],
+                [144.0, 72.0, 72.0, 0.0]]
+        K, t, sum_t = diffeq_model(coords, dist, N, edge_factor={})
+        for i in range(N):
+            row_sum = t[i].sum(axis=0)
+            np.testing.assert_allclose(sum_t[i], row_sum, atol=1e-12)
+
+    def test_kk_path_5_uniform_spacing(self):
+        """KK on a 5-path produces near-uniform adjacent spacing.
+
+        Asymmetric topologies are robust to KK's local-minimum
+        pitfalls (no symmetric saddle).  Adjacent spans should
+        agree to within ~3% after convergence.
+        """
+        import math
+        r = neato_gv("graph G { mode=KK; a -- b -- c -- d -- e; }")
+        positions = {n["name"]: (n["x"], n["y"]) for n in r["nodes"]}
+        adj = [
+            math.hypot(positions[u][0] - positions[v][0],
+                       positions[u][1] - positions[v][1])
+            for u, v in [("a", "b"), ("b", "c"),
+                         ("c", "d"), ("d", "e")]
+        ]
+        assert min(adj) > 0
+        ratio = max(adj) / min(adj)
+        assert ratio < 1.05, f"Adjacent path spans should be uniform, got {ratio:.3f}"
+
     def test_stress_monotonically_decreases(self):
         """SMACOF stress sequence is monotonically non-increasing.
 

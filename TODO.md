@@ -521,7 +521,7 @@ output against `dot -Kneato -Tplain` for fixture graphs.
 | Step | C source | Trace tag | Estimate | Risk | Status |
 |---|---|---|---|---|---|
 | N2.1 | `stress.c::stress_majorization_kD_mkernel` (MODE_MAJOR — default) | `[TRACE neato_major]` | 2-3 days | medium | **shipped 2026-05-02** |
-| N2.2 | `kkutils.c::solve_model` + `neatoinit.c::diffeq_model` (MODE_KK) | `[TRACE neato_kk]` | 1-2 days | medium | pending |
+| N2.2 | `stuff.c::solve_model` + `diffeq_model` + `move_node` + `D2E` (MODE_KK) | `[TRACE neato_kk]` | 1-2 days | medium | **shipped 2026-05-02** |
 | N2.3 | `sgd.c::sgd` (MODE_SGD) | `[TRACE neato_sgd]` | 0.5-1 day | low | pending |
 | N2.4 | `smart_ini_x.c` + `pca.c` (smart init) | `[TRACE neato_init]` | 1 day | low | pending |
 
@@ -542,6 +542,24 @@ K5 still lands on a non-optimal local minimum (max/min pair-distance
 ratio 2.12 vs the 1.618 regular-pentagon optimum) — that's blocked
 on N2.4 smart-init.  Path / triangle / small graphs converge fine.
 31/31 neato tests pass (4 new alignment tests added).
+
+**§4.N.2.2 status (2026-05-02).**  Ported the KK Newton-step
+driver: per-iteration force tensors, ``choose_node`` max-residual
+selection, ``move_node`` 2×2 Hessian Newton step via Gauss
+elimination, ``update_arrays`` symmetric incremental updates,
+``total_e`` energy tracking.  Mirrors C ``stuff.c::solve_model`` /
+``diffeq_model`` / ``move_node`` / ``D2E`` / ``update_arrays`` /
+``choose_node`` / ``total_e``.  New ``common/matrix.py::gauss_solve``
+(mirrors ``solve.c``).
+
+KK from random init lands on local minima for symmetric topologies
+— a known KK pathology (Newton stops at any stationary point,
+including saddles).  Asymmetric graphs converge fine: the path-5
+test shows adjacent spans within 1% of each other.  The symmetric
+case (triangle / Y-shape / K5) needs N2.4 smart-init to escape.
+
+35/35 neato tests pass (4 new alignment tests for gauss_solve, KK
+diffeq invariants, and path-5 uniform spacing).
 
 The current Py `_stress_majorization` is a basic SMACOF in O(N²)
 per iteration; C's `stress_majorization_kD_mkernel` uses a kernel
