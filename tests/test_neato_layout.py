@@ -390,6 +390,58 @@ class TestNeatoStressKernel:
             f"{phi:.3f} — smart-init isn't reaching the pentagon optimum"
         )
 
+    def test_adjust_dispatcher_modes(self):
+        """Overlap mode parser maps strings to canonical constants."""
+        from gvpy.engines.layout.neato.adjust import (
+            _parse_adjust_mode, AM_NONE, AM_NSCALE, AM_SCALEXY,
+            AM_PRISM, AM_VOR,
+        )
+        # Boolean shortcuts.
+        assert _parse_adjust_mode("")[0] == AM_NONE
+        assert _parse_adjust_mode("true")[0] == AM_NONE
+        assert _parse_adjust_mode("True")[0] == AM_NONE
+        assert _parse_adjust_mode("1")[0] == AM_NONE
+        assert _parse_adjust_mode("false")[0] == AM_PRISM
+        assert _parse_adjust_mode("0")[0] == AM_PRISM
+        # Named modes.
+        assert _parse_adjust_mode("scale")[0] == AM_NSCALE
+        assert _parse_adjust_mode("scalexy")[0] == AM_SCALEXY
+        assert _parse_adjust_mode("voronoi")[0] == AM_VOR
+        assert _parse_adjust_mode("prism")[0] == AM_PRISM
+        # Prism with iteration count suffix.
+        assert _parse_adjust_mode("prism100")[0] == AM_PRISM
+        # Unknown -> treat as false (PRISM fallback).
+        assert _parse_adjust_mode("garbage")[0] == AM_PRISM
+
+    def test_scale_adjust_separates_overlap(self):
+        """Uniform scaling clears overlap on a 2-node case."""
+        from gvpy.engines.layout.neato.adjust import (
+            scale_adjust, _has_overlap,
+        )
+
+        class FakeLN:
+            def __init__(self, x, y, w, h):
+                self.x = x
+                self.y = y
+                self.width = w
+                self.height = h
+                self.pinned = False
+
+        class FakeLayout:
+            def __init__(self):
+                self.lnodes = {
+                    "a": FakeLN(10.0, 10.0, 200.0, 200.0),
+                    "b": FakeLN(60.0, 10.0, 200.0, 200.0),
+                }
+                self.sep = 0.0
+                self.overlap = "scale"
+
+        layout = FakeLayout()
+        assert _has_overlap(layout)
+        iters = scale_adjust(layout)
+        assert iters > 0
+        assert not _has_overlap(layout)
+
     def test_pivot_mds_smoke(self):
         """PivotMDS produces finite N×dim coordinates."""
         import numpy as np

@@ -204,8 +204,9 @@ class NeatoLayout(LayoutEngine):
         else:
             self._layout_component(set(self.node_list), adj, edge_len)
 
-        if self.overlap != "true":
-            remove_overlap(self)
+        # Always invoke the dispatcher; ``remove_overlap`` handles
+        # the AM_NONE / overlap=true case as a no-op.
+        remove_overlap(self)
 
         if self.normalize:
             self._apply_normalize()

@@ -644,12 +644,45 @@ Port `adjust.c`, which dispatches between four+ overlap
 algorithms.  Current Py only has naive radial scaling.  C's default
 is *prism* (Voronoi-based).
 
-| Step | C source | Estimate | Risk |
-|---|---|---|---|
-| N3.1 | `adjust.c::removeOverlapWith` dispatcher | 0.5 day | low |
-| N3.2 | scaling (`scAdjust`) — current Py replacement | 0.5 day | low |
-| N3.3 | prism (Voronoi-based, default in C) — `delaunay.c`, `voronoi.c`, `site.c`, `hedges.c`, `heap.c`, `legal.c` | 4-5 days | high |
-| N3.4 | other (ortho_yx, scalexy, ipsep, vpsc) — defer until prism shipped | — | — |
+| Step | C source | Estimate | Risk | Status |
+|---|---|---|---|---|
+| N3.1 | `adjust.c::removeOverlapWith` dispatcher | 0.5 day | low | **shipped 2026-05-02** |
+| N3.2 | scaling (`scAdjust`) — current Py replacement | 0.5 day | low | **shipped 2026-05-02** |
+| N3.3 | prism (Voronoi-based, default in C) — `delaunay.c`, `voronoi.c`, `site.c`, `hedges.c`, `heap.c`, `legal.c` | 4-5 days | high | pending |
+| N3.4 | other (ortho_yx, scalexy, ipsep, vpsc) — defer until prism shipped | — | — | partial (scalexy shipped) |
+
+**§4.N.3.1 / §4.N.3.2 status (2026-05-02).**  Shipped the
+overlap-removal dispatcher and the uniform/per-axis scaling
+algorithms.  Mirrors ``adjust.c::getAdjustMode`` (line 814) +
+``sAdjust`` (472) + ``rePos`` (462).
+
+Mode mapping (matches C ``adjustMode[]`` lookup):
+
+| ``overlap=`` | C constant | Py status |
+|---|---|---|
+| "" / unset / "true" | AM_NONE | no-op |
+| "false" | AM_PRISM (default) | falls back to scale + warning |
+| "scale" / "scaling" | AM_NSCALE | scaling |
+| "scalexy" | AM_SCALEXY | per-axis scaling |
+| "prism" / "prismN" | AM_PRISM | falls back to scale + warning |
+| "voronoi" | AM_VOR | falls back to scale + warning |
+| (others) | various | warning + scale fallback |
+
+**Bug fix in this commit:** the previous Py ``remove_overlap`` had
+an inverted boolean check — ``overlap=false`` triggered the
+function but the function then returned immediately because
+``self.overlap in ("false", "0", "no")`` short-circuited it.  Net
+effect: overlap removal was *never* run regardless of the
+``overlap`` attribute.  Now fixed: dispatcher is always invoked
+and dispatches based on the canonical mode mapping.
+
+42/42 neato tests pass (2 new alignment tests for the dispatcher
+mode parser and scale_adjust correctness).
+
+Phase N3.3 (prism / Voronoi infrastructure) is the natural next
+step.  4-5 days, high risk: pulls in ``delaunay.c``, ``voronoi.c``,
+``site.c``, ``hedges.c``, ``heap.c``, ``legal.c``.  Recommend
+deferring to a dedicated session.
 
 Phase N3.3 (prism) is the largest single chunk in the neato port —
 it pulls in the full Voronoi infrastructure.  Reasonable to defer
