@@ -517,6 +517,34 @@ diagram UI; 6–9 add simulation.
   diagnostic channels in both engines (Python: `mincross.py` +
   `trace.py`; C: `lib/dotgen/mincross.c`, `lib/dotgen/class2.c`).
 
+### §7.x — `-Tplain` output format mismatch (open)
+
+`gvcli.py -Tplain` currently emits JSON instead of Graphviz's
+canonical plain text format.  Discovered 2026-05-02 while
+diff'ing neato Py vs. C output — C dot emits the documented
+plain format:
+
+```
+graph SCALE WIDTH HEIGHT
+node NAME X Y W H LABEL STYLE SHAPE COLOR FILLCOLOR
+edge TAIL HEAD N X1 Y1 ... STYLE COLOR
+stop
+```
+
+Py emits a JSON dict with `nodes` / `edges` arrays.  Useful for
+programmatic Py-side consumption but breaks pipelines that pipe
+`-Tplain` into other Graphviz tools or grep-based diff scripts.
+
+**Fix:** Add a real plain-format renderer in `gvpy/render/`
+(perhaps `plain_renderer.py`) that emits the C-canonical format,
+and route `-Tplain` to it.  Keep the JSON output available under
+a different format flag (e.g. `-Tjson`, which I think already
+exists; verify and disambiguate).
+
+Effort: 0.5 day, low risk.  Useful for the corpus comparison
+workflow — would let `tools/visual_audit.py` parse Py output the
+same way it parses C output.
+
 **Remaining timeout work:**
 - Very large graphs (≥ 20 k lines) — algorithmic complexity, not
   overhead.
