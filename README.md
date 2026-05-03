@@ -357,12 +357,21 @@ The package mirrors the C `lib/neatogen/` file structure — distance models in 
 
 ### fdp — Force-Directed Placement (`gvpy.engines.layout.fdp`)
 
-Fruchterman-Reingold spring-electrical model with grid-accelerated repulsive forces and linear cooling. Two-phase: layout + overlap removal.
+**Status:** Implemented — C-aligned port of `lib/fdpgen/`.
+
+Fruchterman-Reingold spring-electrical model with grid-accelerated repulsive forces and linear cooling. Two-phase: force-directed placement (Phase 1) + overlap removal (Phase 2).
+
+The package mirrors the C structure: `tlayout.py` (Phase 1 force-directed, mirrors `tlayout.c`), `xlayout.py` (Phase 2 force-based overlap removal, mirrors `xlayout.c`), `grid.py` (grid spatial index, mirrors `grid.c`), `fdp_layout.py` (orchestrator, mirrors `fdpinit.c` + `layout.c`). Overlap removal and edge spline routing reuse the engine-agnostic helpers in `common/` (`adjust.py`, `voronoi.py`, `edge_routing.py`) — same code paths as neato and twopi.
 
 | Attribute | Default | Description |
 |-----------|---------|-------------|
-| `K` | `0.3` | Spring constant / ideal edge length |
+| `K` | `0.3` | Spring constant / ideal edge length (inches) |
 | `maxiter` | `600` | Maximum iterations |
+| `T0` | auto (`K √N / 5`) | Initial temperature (linear cooling) |
+| `start` | `1` | RNG seed (`random` for time-based) |
+| `overlap` | `true` | `true` (keep), `fdp` (Phase 2 force-based pass), or any of neato's `scale`/`scalexy`/`compress`/`voronoi`/`prism`/`ortho`/`portho` modes |
+| `splines` | `true` | Edge routing: `true`/`spline` (Bezier), `polyline`, `line`, `false` |
+| `sep` | `0` | Margin added when testing pairwise overlap |
 | `len` (edge) | K | Desired edge length |
 | `weight` (edge) | `1` | Spring strength multiplier |
 

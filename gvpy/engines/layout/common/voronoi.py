@@ -37,12 +37,10 @@ import math
 import os
 import random
 import sys
-from typing import TYPE_CHECKING
+from typing import Any
 
 import numpy as np
 
-if TYPE_CHECKING:
-    from gvpy.engines.layout.neato.neato_layout import NeatoLayout
 
 
 # Mirrors ``incr`` (adjust.c:46) — used to pad the bounding box
@@ -138,7 +136,7 @@ def _polygon_centroid(verts: np.ndarray
     return cx / total_area, cy / total_area, abs(total_area)
 
 
-def _rm_equality(layout: "NeatoLayout", names: list[str]) -> int:
+def _rm_equality(layout: Any, names: list[str]) -> int:
     """Jitter coincident positions so Voronoi is well-defined.
 
     Mirrors ``adjust.c::rmEquality`` (line 227) — uses tiny offsets
@@ -163,7 +161,7 @@ def _rm_equality(layout: "NeatoLayout", names: list[str]) -> int:
     return nudged
 
 
-def _has_overlap_at(layout: "NeatoLayout", positions: dict[str, tuple[float, float]]) -> bool:
+def _has_overlap_at(layout: Any, positions: dict[str, tuple[float, float]]) -> bool:
     """Pairwise overlap test using a position override map (used to
     test moves before committing them)."""
     names = list(positions.keys())
@@ -182,7 +180,7 @@ def _has_overlap_at(layout: "NeatoLayout", positions: dict[str, tuple[float, flo
     return False
 
 
-def voronoi_adjust(layout: "NeatoLayout",
+def voronoi_adjust(layout: Any,
                    max_iter: int = _DFLT_MAX_ITER) -> int:
     """Voronoi-cell-centroid iteration for overlap removal.
 
@@ -197,7 +195,7 @@ def voronoi_adjust(layout: "NeatoLayout",
         return 0
 
     # Reuse the dispatcher's overlap detector to stay consistent.
-    from gvpy.engines.layout.neato.adjust import (
+    from gvpy.engines.layout.common.adjust import (
         _has_overlap, scale_adjust,
     )
 

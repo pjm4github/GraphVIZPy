@@ -86,13 +86,13 @@ from typing import Optional
 from gvpy.core.graph import Graph
 from gvpy.core.node import Node
 from gvpy.engines.layout.base import LayoutEngine
-from gvpy.engines.layout.neato.adjust import remove_overlap
+from gvpy.engines.layout.common.adjust import remove_overlap
+from gvpy.engines.layout.common.edge_routing import EdgeRoute, route_edges
 from gvpy.engines.layout.neato.bfs import bfs_distances
 from gvpy.engines.layout.neato.dijkstra import dijkstra_distances
 from gvpy.engines.layout.neato.kkutils import kamada_kawai
 from gvpy.engines.layout.neato.sgd import sgd as sgd_layout
 from gvpy.engines.layout.neato.smart_ini import smart_init
-from gvpy.engines.layout.neato.splines import EdgeRoute, route_edges
 from gvpy.engines.layout.neato.stress import (
     circuit_distances,
     stress_majorization,

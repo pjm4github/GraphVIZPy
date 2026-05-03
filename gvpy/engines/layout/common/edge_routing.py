@@ -31,7 +31,7 @@ import math
 import os
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Any
 
 from gvpy.engines.layout.common.geom import Ppoint, Ppoly, Ppolyline
 from gvpy.engines.layout.common.splines import to_bezier
@@ -49,8 +49,6 @@ from gvpy.engines.layout.pathplan.cvt import (
 )
 from gvpy.engines.layout.pathplan.vispath import POLYID_UNKNOWN
 
-if TYPE_CHECKING:
-    from gvpy.engines.layout.neato.neato_layout import NeatoLayout
 
 
 @dataclass
@@ -152,7 +150,7 @@ def _line_box_intersect(p0: tuple[float, float],
     return xc, yc
 
 
-def route_edges(layout: "NeatoLayout",
+def route_edges(layout: Any,
                 edge_type: int | None = None,
                 margin: float = 4.0) -> None:
     """Top-level edge routing.

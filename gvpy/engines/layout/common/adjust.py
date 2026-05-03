@@ -1,12 +1,19 @@
-"""Neato overlap-removal post-pass.
+"""Engine-agnostic overlap-removal post-pass.
 
 Mirrors ``lib/neatogen/adjust.c``.  C dispatches between several
 overlap-removal algorithms based on the ``overlap`` graph
-attribute; this Py port matches the dispatch logic and ships the
-two simplest algorithms (uniform and per-axis scaling).  Prism
-(Voronoi-based) is deferred to Phase N3.3.
+attribute; this Py port matches the dispatch logic across all the
+mainline algorithms (scale, scalexy, compress, voronoi/prism,
+ortho/portho family).
 
-Mode mapping (mirrors ``adjust.c::adjustMode[]`` and
+Originally lived in ``neato/adjust.py``; promoted to ``common/``
+so neato, twopi, fdp, and future force-directed engines can share
+the same dispatcher.  The accepted ``layout`` argument is
+duck-typed: any object with ``lnodes`` (dict of objects with
+``x``, ``y``, ``width``, ``height``, ``pinned`` attributes),
+``sep`` (float), and ``overlap`` (string) works.
+
+Mode mapping (mirrors ``adjust.c::adjustMode[]`` /
 ``getAdjustMode``):
 
 ================  =================  ============
@@ -14,31 +21,27 @@ Mode mapping (mirrors ``adjust.c::adjustMode[]`` and
 ================  =================  ============
 "" / unset         AM_NONE            implemented (no-op)
 true               AM_NONE            implemented
-false              AM_PRISM (default) **falls back to scale**
-scale / scaling    AM_NSCALE          implemented
-scalexy            AM_SCALEXY         implemented
-prism / prismN     AM_PRISM           **falls back to scale**
-voronoi / Voronoi  AM_VOR             **falls back to scale**
-compress           AM_COMPRESS        not implemented
-ortho* / portho*   AM_ORTHO_*         not implemented
-ipsep              AM_IPSEP           not implemented
-vpsc               AM_VPSC            not implemented
+false              AM_PRISM (default) Voronoi-based
+scale / scaling    AM_NSCALE          Marriott closed-form
+scalexy            AM_SCALEXY         Marriott separate-axis
+prism / prismN     AM_PRISM           Voronoi-based
+voronoi / Voronoi  AM_VOR             Voronoi-based
+compress           AM_COMPRESS        Marriott shrink
+ortho / portho     AM_ORTHO* /        iterative slide-apart
+                   AM_PORTHO*
+ipsep              AM_IPSEP           falls back to scale
+vpsc               AM_VPSC            falls back to scale
 ================  =================  ============
 
-The fallback for prism / voronoi emits a one-line warning so users
-know the C-default mode isn't yet active.
-
-Trace tag: ``[TRACE neato_adjust]``.
+Trace tag: ``[TRACE neato_adjust]`` (kept for back-compat — the
+adjust pass historically belonged to the neato engine).
 """
 from __future__ import annotations
 
 import math
 import os
 import sys
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from gvpy.engines.layout.neato.neato_layout import NeatoLayout
+from typing import Any
 
 
 # Mirrors ``incr`` (adjust.c:46): each scaling iteration multiplies
@@ -117,7 +120,7 @@ def _parse_adjust_mode(s: str) -> tuple[str, str]:
     return AM_PRISM, raw
 
 
-def _bbox_of(layout: "NeatoLayout") -> tuple[float, float, float, float]:
+def _bbox_of(layout: Any) -> tuple[float, float, float, float]:
     """Return ``(min_x, min_y, max_x, max_y)`` over all nodes."""
     xs, ys = [], []
     for ln in layout.lnodes.values():
@@ -126,7 +129,7 @@ def _bbox_of(layout: "NeatoLayout") -> tuple[float, float, float, float]:
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def _has_overlap(layout: "NeatoLayout", sx: float = 1.0,
+def _has_overlap(layout: Any, sx: float = 1.0,
                  sy: float = 1.0) -> bool:
     """Return True if any pair of nodes has overlapping bounding
     boxes (axis-aligned, inflated by ``layout.sep``).
@@ -150,7 +153,7 @@ def _has_overlap(layout: "NeatoLayout", sx: float = 1.0,
     return False
 
 
-def _pair_min_scales(layout: "NeatoLayout"
+def _pair_min_scales(layout: Any
                      ) -> tuple[list[tuple[float, float]], bool]:
     """Build the per-pair minimum-scale set used by ``scAdjust``.
 
@@ -251,7 +254,7 @@ def _compute_scale_xy(pairs: list[tuple[float, float]]
     return best_x, best_y
 
 
-def scale_adjust(layout: "NeatoLayout") -> int:
+def scale_adjust(layout: Any) -> int:
     """Uniform-scale overlap removal (Marriott closed-form).
 
     Mirrors ``constraint.c::scAdjust(g, 1)`` (line 767) — the
@@ -283,7 +286,7 @@ def scale_adjust(layout: "NeatoLayout") -> int:
     return 1
 
 
-def scalexy_adjust(layout: "NeatoLayout") -> int:
+def scalexy_adjust(layout: Any) -> int:
     """Per-axis scaling overlap removal (Marriott closed-form).
 
     Mirrors ``constraint.c::scAdjust(g, 0)`` — solves for the
@@ -311,7 +314,7 @@ def scalexy_adjust(layout: "NeatoLayout") -> int:
     return 1
 
 
-def compress_adjust(layout: "NeatoLayout") -> int:
+def compress_adjust(layout: Any) -> int:
     """Compress an already-non-overlapping layout uniformly.
 
     Mirrors ``constraint.c::scAdjust(g, -1)`` (line 767, ``equal=-1``)
@@ -345,7 +348,7 @@ def compress_adjust(layout: "NeatoLayout") -> int:
     return 1
 
 
-def ortho_adjust(layout: "NeatoLayout",
+def ortho_adjust(layout: Any,
                  axes: str = "both",
                  max_iter: int = 100) -> int:
     """Orthogonal-constraint overlap removal.
@@ -405,7 +408,7 @@ def ortho_adjust(layout: "NeatoLayout",
     return iters
 
 
-def remove_overlap(layout: "NeatoLayout") -> int:
+def remove_overlap(layout: Any) -> int:
     """Top-level overlap-removal dispatcher.
 
     Mirrors ``adjust.c::removeOverlapWith`` / ``getAdjustMode``.
@@ -436,7 +439,7 @@ def remove_overlap(layout: "NeatoLayout") -> int:
         # PRISM when available; we use scipy.spatial.Voronoi for
         # both modes since the qualitative result (non-overlap
         # preserving relative positions) is the same.
-        from gvpy.engines.layout.neato.voronoi import voronoi_adjust
+        from gvpy.engines.layout.common.voronoi import voronoi_adjust
         return voronoi_adjust(layout)
     # §4.N.3.4 — orthogonal modes.  C uses constraint solvers; this
     # port uses an iterative slide-apart pass.

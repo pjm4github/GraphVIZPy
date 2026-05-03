@@ -52,8 +52,8 @@ from typing import Optional
 from gvpy.core.graph import Graph
 from gvpy.core.node import Node
 from gvpy.engines.layout.base import LayoutEngine
-from gvpy.engines.layout.neato.adjust import remove_overlap
-from gvpy.engines.layout.neato.splines import EdgeRoute, route_edges
+from gvpy.engines.layout.common.adjust import remove_overlap
+from gvpy.engines.layout.common.edge_routing import EdgeRoute, route_edges
 from gvpy.engines.layout.twopi.circle import circle_layout
 
 

@@ -137,3 +137,81 @@ class TestFdpAttributes:
         svg = render_svg(r)
         assert "<svg" in svg
         assert "</svg>" in svg
+
+
+class TestFdpAlignment:
+    """§4.F C-alignment tests for the lib/fdpgen/ port."""
+
+    def test_grid_build(self):
+        """build_grid bins nodes into cells of the requested size."""
+        from gvpy.engines.layout.fdp.grid import build_grid
+
+        class FakeLN:
+            def __init__(self, x, y):
+                self.x, self.y = x, y
+
+        lnodes = {
+            "a": FakeLN(0, 0),
+            "b": FakeLN(50, 0),
+            "c": FakeLN(0, 50),
+            "d": FakeLN(120, 120),
+        }
+        grid = build_grid(["a", "b", "c", "d"], lnodes, cell_size=100)
+        # a, b, c all in cell (0, 0); d in cell (1, 1).
+        assert sorted(grid[(0, 0)]) == ["a", "b", "c"]
+        assert grid[(1, 1)] == ["d"]
+
+    def test_neighbour_offsets(self):
+        """Moore neighbourhood — 8 cells, excluding (0, 0)."""
+        from gvpy.engines.layout.fdp.grid import neighbour_offsets
+        offsets = neighbour_offsets()
+        assert len(offsets) == 8
+        assert (0, 0) not in offsets
+        assert (-1, -1) in offsets
+        assert (1, 1) in offsets
+
+    def test_overlap_dispatch_via_common_adjust(self):
+        """``overlap=`` modes route through common.adjust dispatcher.
+
+        Each named mode should layout cleanly without raising.
+        """
+        for ov in ("true", "fdp", "scale", "scalexy", "voronoi",
+                   "compress"):
+            r = fdp_gv(
+                f"graph G {{ overlap={ov}; "
+                f"node [shape=box, width=2.0, height=1.5]; "
+                f"a -- b; b -- c; c -- a; }}"
+            )
+            assert len(r["nodes"]) == 3
+
+    def test_splines_default_emits_bezier(self):
+        """``splines=spline`` (default) produces bezier edge routes
+        — fdp reuses the common edge_routing helper."""
+        r = fdp_gv("graph G { a -- b -- c -- a; }")
+        for e in r["edges"]:
+            assert e.get("spline_type") == "bezier"
+            assert (len(e["points"]) - 1) % 3 == 0
+
+    def test_splines_polyline_mode(self):
+        """``splines=polyline`` produces polyline routes."""
+        r = fdp_gv("graph G { splines=polyline; a -- b -- c -- a; }")
+        for e in r["edges"]:
+            assert e.get("spline_type") == "polyline"
+
+    def test_xlayout_clears_overlap(self):
+        """``overlap=fdp`` runs the xlayout force-based overlap pass
+        and produces non-overlapping output on a small case."""
+        r = fdp_gv(
+            "graph G { overlap=fdp; "
+            "node [shape=box, width=2.0, height=1.5]; "
+            "a -- b; a -- c; a -- d; b -- c; c -- d; b -- d; }"
+        )
+        nodes = r["nodes"]
+        for i in range(len(nodes)):
+            for j in range(i + 1, len(nodes)):
+                a, b = nodes[i], nodes[j]
+                ovx = abs(a["x"] - b["x"]) < (a["width"] + b["width"]) / 2
+                ovy = abs(a["y"] - b["y"]) < (a["height"] + b["height"]) / 2
+                assert not (ovx and ovy), (
+                    f"overlap pair after xlayout: {a['name']} {b['name']}"
+                )

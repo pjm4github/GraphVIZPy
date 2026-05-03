@@ -5,6 +5,70 @@ short.  Ordered newest → oldest.
 
 ---
 
+## §4.F — Fdp engine C-alignment (full port) + neato → common refactor — 2026-05-02
+
+Two-pronged work: (1) refactor the engine-agnostic neato modules
+into `common/` so fdp (and future engines) can share them, and
+(2) port `lib/fdpgen/` to a multi-module Py package that uses the
+common infrastructure end-to-end.
+
+**common/ refactor** — three modules promoted from `neato/`:
+
+| Old path | New path | Why |
+|---|---|---|
+| `neato/adjust.py` | `common/adjust.py` | Overlap-mode dispatcher is duck-typed on `lnodes`/`sep`/`overlap`; no neato specifics. |
+| `neato/voronoi.py` | `common/voronoi.py` | Same. |
+| `neato/splines.py` | `common/edge_routing.py` | Edge-routing pipeline is duck-typed on `lnodes`/`graph.edges`/`edge_routes`; renamed to avoid name collision with the existing `common/splines.py` (geometry primitives). |
+
+The `TYPE_CHECKING` import of `NeatoLayout` was the only neato
+coupling; replaced with `Any` since the API is structural.
+Twopi's existing imports were updated; neato itself imports the
+common modules from their new home.
+
+**Fdp package structure** (mirrors `lib/fdpgen/`):
+
+| Py module | C source |
+|---|---|
+| `fdp_layout.py` | `fdpinit.c` + `layout.c` (orchestrator) |
+| `tlayout.py` | `tlayout.c` (Phase 1 force-directed) |
+| `xlayout.py` | `xlayout.c` (Phase 2 overlap-aware) |
+| `grid.py` | `grid.c` (spatial index) |
+
+**Phase 1 — `tlayout`.**  Fruchterman-Reingold spring-electrical
+model.  Per iteration: clear displacements, compute repulsive
+forces (grid-accelerated when `use_grid` and N > 20), apply
+attractive forces along edges, cap displacement by linearly-
+cooling temperature.  Mirrors `tlayout.c::layoutSubGraph`.
+
+**Phase 2 — `xlayout`.**  Force-based overlap removal.  Up to 9
+attempts; each grows `K` by 50%.  Inner loop uses a modified
+F-R: overlapping pairs get `1.5 K²` repulsion, non-overlapping
+pairs get `0.1 K²`; edge attraction uses clear-distance after
+subtracting the bounding-box "radius".  Mirrors
+`xlayout.c::fdp_xLayout`.  Used when `overlap=fdp`.
+
+**Overlap mode dispatch.**  `overlap=fdp` runs the historical
+xlayout pass; everything else (`scale`, `scalexy`, `compress`,
+`voronoi`, `prism`, `ortho`, etc.) routes through the shared
+`common.adjust.remove_overlap` dispatcher — same modes as neato
+and twopi expose.
+
+**Edge spline routing.**  Reuses `common.edge_routing.route_edges`
+(the same path-planning + Schneider Bezier fit pipeline neato and
+twopi use).  `splines=true`/`spline`/`polyline`/`line`/`false`
+all work; `_to_json` mirrors NeatoLayout / TwopiLayout in
+emitting multi-point routes when `edge_routes` is populated.
+
+**Trace channel:** `GVPY_TRACE_FDP=1` emits `[TRACE fdp_*]` lines
+across `tlayout` and `xlayout` phases.
+
+22/22 fdp tests pass (6 new alignment tests for grid build,
+neighbour offsets, overlap dispatcher routing, splines bezier /
+polyline modes, and xlayout overlap clearance).  Full suite 1138
+pass, 4 skip.
+
+---
+
 ## §4.T — Twopi engine C-alignment (full port) — 2026-05-02
 
 End-to-end port of `lib/twopigen/` to a Py package mirroring the

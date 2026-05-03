@@ -392,7 +392,7 @@ class TestNeatoStressKernel:
 
     def test_adjust_dispatcher_modes(self):
         """Overlap mode parser maps strings to canonical constants."""
-        from gvpy.engines.layout.neato.adjust import (
+        from gvpy.engines.layout.common.adjust import (
             _parse_adjust_mode, AM_NONE, AM_NSCALE, AM_SCALEXY,
             AM_PRISM, AM_VOR,
         )
@@ -415,7 +415,7 @@ class TestNeatoStressKernel:
 
     def test_scale_adjust_separates_overlap(self):
         """Uniform scaling clears overlap on a 2-node case."""
-        from gvpy.engines.layout.neato.adjust import (
+        from gvpy.engines.layout.common.adjust import (
             scale_adjust, _has_overlap,
         )
 
@@ -445,8 +445,8 @@ class TestNeatoStressKernel:
     def test_voronoi_adjust_clears_grid_overlap(self):
         """Voronoi-cell-centroid iteration clears overlapping
         grid layout."""
-        from gvpy.engines.layout.neato.adjust import _has_overlap
-        from gvpy.engines.layout.neato.voronoi import voronoi_adjust
+        from gvpy.engines.layout.common.adjust import _has_overlap
+        from gvpy.engines.layout.common.voronoi import voronoi_adjust
 
         class FakeLN:
             def __init__(self, x, y, w, h):
@@ -479,7 +479,7 @@ class TestNeatoStressKernel:
         Optimal uniform scale = 200/50 = 4.0.  After applying, the
         x-distance becomes 50×4 = 200 = sum of half-widths, no overlap.
         """
-        from gvpy.engines.layout.neato.adjust import (
+        from gvpy.engines.layout.common.adjust import (
             scale_adjust, _has_overlap,
         )
 
@@ -509,7 +509,7 @@ class TestNeatoStressKernel:
 
     def test_scalexy_horizontal_overlap_uses_x_only(self):
         """scalexy should scale only X for a horizontally-aligned pair."""
-        from gvpy.engines.layout.neato.adjust import (
+        from gvpy.engines.layout.common.adjust import (
             scalexy_adjust, _has_overlap,
         )
 
@@ -538,7 +538,7 @@ class TestNeatoStressKernel:
 
     def test_compress_skips_when_overlap_present(self):
         """``compress_adjust`` returns 0 if the layout has overlap."""
-        from gvpy.engines.layout.neato.adjust import compress_adjust
+        from gvpy.engines.layout.common.adjust import compress_adjust
 
         class FakeLN:
             def __init__(self, x, y, w, h):
@@ -560,7 +560,7 @@ class TestNeatoStressKernel:
 
     def test_compress_shrinks_when_clear(self):
         """``compress_adjust`` shrinks an over-spaced layout uniformly."""
-        from gvpy.engines.layout.neato.adjust import (
+        from gvpy.engines.layout.common.adjust import (
             compress_adjust, _has_overlap,
         )
 
@@ -587,7 +587,7 @@ class TestNeatoStressKernel:
 
     def test_ortho_clears_overlap(self):
         """``ortho_adjust`` clears overlap by sliding pairs apart."""
-        from gvpy.engines.layout.neato.adjust import (
+        from gvpy.engines.layout.common.adjust import (
             ortho_adjust, _has_overlap,
         )
 
@@ -627,7 +627,7 @@ class TestNeatoStressKernel:
     def test_polygon_centroid_unit_square(self):
         """Centroid of unit square is (0.5, 0.5), area 1."""
         import numpy as np
-        from gvpy.engines.layout.neato.voronoi import _polygon_centroid
+        from gvpy.engines.layout.common.voronoi import _polygon_centroid
         verts = np.array([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
         cx, cy, area = _polygon_centroid(verts)
         assert abs(cx - 0.5) < 1e-9
