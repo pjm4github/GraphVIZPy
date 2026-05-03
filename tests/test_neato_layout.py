@@ -472,6 +472,145 @@ class TestNeatoStressKernel:
         assert iters > 0
         assert not _has_overlap(layout)
 
+    def test_scale_adjust_marriott_closed_form(self):
+        """Marriott closed-form scale picks a single optimal factor.
+
+        Two nodes overlap horizontally with dx=50 and 200×200 boxes.
+        Optimal uniform scale = 200/50 = 4.0.  After applying, the
+        x-distance becomes 50×4 = 200 = sum of half-widths, no overlap.
+        """
+        from gvpy.engines.layout.neato.adjust import (
+            scale_adjust, _has_overlap,
+        )
+
+        class FakeLN:
+            def __init__(self, x, y, w, h):
+                self.x, self.y = x, y
+                self.width, self.height = w, h
+                self.pinned = False
+
+        class FakeLayout:
+            def __init__(self):
+                self.lnodes = {
+                    "a": FakeLN(10.0, 10.0, 200.0, 200.0),
+                    "b": FakeLN(60.0, 10.0, 200.0, 200.0),
+                }
+                self.sep = 0.0
+                self.overlap = "scale"
+
+        layout = FakeLayout()
+        assert _has_overlap(layout)
+        applied = scale_adjust(layout)
+        assert applied == 1  # Marriott applies once, not iteratively.
+        assert not _has_overlap(layout)
+        # Check uniform 4× scale: a.x went 10 → 40, b.x went 60 → 240.
+        assert abs(layout.lnodes["a"].x - 40.0) < 1e-6
+        assert abs(layout.lnodes["b"].x - 240.0) < 1e-6
+
+    def test_scalexy_horizontal_overlap_uses_x_only(self):
+        """scalexy should scale only X for a horizontally-aligned pair."""
+        from gvpy.engines.layout.neato.adjust import (
+            scalexy_adjust, _has_overlap,
+        )
+
+        class FakeLN:
+            def __init__(self, x, y, w, h):
+                self.x, self.y = x, y
+                self.width, self.height = w, h
+                self.pinned = False
+
+        class FakeLayout:
+            def __init__(self):
+                # dy = 0 → optimal solution scales x only.
+                self.lnodes = {
+                    "a": FakeLN(10.0, 10.0, 200.0, 200.0),
+                    "b": FakeLN(60.0, 10.0, 200.0, 200.0),
+                }
+                self.sep = 0.0
+                self.overlap = "scalexy"
+
+        layout = FakeLayout()
+        assert scalexy_adjust(layout) == 1
+        assert not _has_overlap(layout)
+        # Y unchanged.
+        assert layout.lnodes["a"].y == 10.0
+        assert layout.lnodes["b"].y == 10.0
+
+    def test_compress_skips_when_overlap_present(self):
+        """``compress_adjust`` returns 0 if the layout has overlap."""
+        from gvpy.engines.layout.neato.adjust import compress_adjust
+
+        class FakeLN:
+            def __init__(self, x, y, w, h):
+                self.x, self.y = x, y
+                self.width, self.height = w, h
+                self.pinned = False
+
+        class FakeLayout:
+            def __init__(self):
+                self.lnodes = {
+                    "a": FakeLN(0.0, 0.0, 50.0, 50.0),
+                    "b": FakeLN(20.0, 0.0, 50.0, 50.0),
+                }
+                self.sep = 0.0
+                self.overlap = "compress"
+
+        layout = FakeLayout()
+        assert compress_adjust(layout) == 0  # overlap present → no-op.
+
+    def test_compress_shrinks_when_clear(self):
+        """``compress_adjust`` shrinks an over-spaced layout uniformly."""
+        from gvpy.engines.layout.neato.adjust import (
+            compress_adjust, _has_overlap,
+        )
+
+        class FakeLN:
+            def __init__(self, x, y, w, h):
+                self.x, self.y = x, y
+                self.width, self.height = w, h
+                self.pinned = False
+
+        class FakeLayout:
+            def __init__(self):
+                self.lnodes = {
+                    "a": FakeLN(0.0, 0.0, 50.0, 50.0),
+                    "b": FakeLN(200.0, 0.0, 50.0, 50.0),
+                }
+                self.sep = 0.0
+                self.overlap = "compress"
+
+        layout = FakeLayout()
+        assert compress_adjust(layout) == 1
+        # Pair touch-scale = 50 / 200 = 0.25; b.x → 50, just touching.
+        assert abs(layout.lnodes["b"].x - 50.0) < 1e-6
+        assert not _has_overlap(layout)
+
+    def test_ortho_clears_overlap(self):
+        """``ortho_adjust`` clears overlap by sliding pairs apart."""
+        from gvpy.engines.layout.neato.adjust import (
+            ortho_adjust, _has_overlap,
+        )
+
+        class FakeLN:
+            def __init__(self, x, y, w, h):
+                self.x, self.y = x, y
+                self.width, self.height = w, h
+                self.pinned = False
+
+        class FakeLayout:
+            def __init__(self):
+                self.lnodes = {
+                    "a": FakeLN(0.0, 0.0, 100.0, 50.0),
+                    "b": FakeLN(50.0, 0.0, 100.0, 50.0),
+                }
+                self.sep = 0.0
+                self.overlap = "ortho"
+
+        layout = FakeLayout()
+        assert _has_overlap(layout)
+        ortho_adjust(layout, axes="both")
+        assert not _has_overlap(layout)
+
     def test_voronoi_dispatches_via_overlap_attr(self):
         """``overlap=voronoi`` and ``overlap=false`` both route to
         the Voronoi-based remover."""

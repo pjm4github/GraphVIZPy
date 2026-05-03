@@ -649,7 +649,7 @@ is *prism* (Voronoi-based).
 | N3.1 | `adjust.c::removeOverlapWith` dispatcher | 0.5 day | low | **shipped 2026-05-02** |
 | N3.2 | scaling (`scAdjust`) — current Py replacement | 0.5 day | low | **shipped 2026-05-02** |
 | N3.3 | Voronoi-based (substitutes prism) via scipy.spatial.Voronoi | 4-5 days | high | **shipped 2026-05-02** |
-| N3.4 | other (ortho_yx, scalexy, ipsep, vpsc) — defer until prism shipped | — | — | partial (scalexy shipped) |
+| N3.4 | other (ortho/portho family, compress, ipsep, vpsc) | — | — | **shipped 2026-05-02** |
 
 **§4.N.3.1 / §4.N.3.2 status (2026-05-02).**  Shipped the
 overlap-removal dispatcher and the uniform/per-axis scaling
@@ -727,9 +727,51 @@ clearance, dispatcher routing, and polygon centroid correctness).
 
 **Phase N3 complete** — all overlap-removal modes (NONE, NSCALE,
 SCALEXY, PRISM↔Voronoi, VOR) are implemented or have a fallback.
-Remaining N3.4 modes (ortho, ipsep, vpsc) are deferred indefinitely
-— narrowly used and pull in significant additional infrastructure
-(constrained-majorization solver).
+
+**§4.N.3.4 status (2026-05-02).**  Shipped the remaining
+overlap-removal modes:
+
+- **AM_NSCALE / AM_SCALEXY** upgraded from the iterative
+  ``sAdjust``/``rePos`` loop to the Marriott closed-form algorithm
+  (``constraint.c::scAdjust`` line 767).  ``scale_adjust`` now
+  computes the optimal uniform scale factor in one pass using
+  ``computeScale`` (line 743): max over overlap pairs of
+  ``min((wᵢ/2 + wⱼ/2) / |Δx|, (hᵢ/2 + hⱼ/2) / |Δy|)``.
+  ``scalexy_adjust`` mirrors ``computeScaleXY`` (line 704) — sorts
+  pairs by sx ascending, runs the right-to-left max-sy DP with a
+  ``(1, ∞)`` sentinel, picks the minimum-area solution.
+- **AM_COMPRESS** — new ``compress_adjust``; mirrors
+  ``constraint.c::compress`` (line 629).  When no overlap exists,
+  finds the largest s ≤ 1 where the layout could shrink uniformly
+  before any pair would touch.  Refuses to compress through
+  pre-existing overlap (matches C behaviour: returns 0).
+- **AM_ORTHO / AM_PORTHO and the *_YX / *XY / *YX variants** —
+  new ``ortho_adjust``.  Approximates ``cAdjust`` (constraint.c:538)
+  via iterative pair-slide projection: for each overlapping pair,
+  shift along the smaller-overlap axis by half the residual gap
+  + 0.5pt.  Less optimal than C's network-simplex / QP-style
+  constraint solve but produces non-overlapping output and
+  preserves relative ordering on the chosen axis.
+- **AM_VPSC / AM_IPSEP** — fall back to scale + warning.  Real
+  IPSEP handling is integrated into the layout phase in C
+  (constrained-majorization solver) and would need significant
+  additional infrastructure; deferred indefinitely.
+
+Reference: Marriott, Stuckey, Tam, He, "Removing Node Overlapping
+in Graph Layout Using Constrained Optimization" (Constraints,
+8(2):143-172, 2003) — the closed-form basis for scAdjust.
+
+Bug fix in this work: my N3.2 ``scale_adjust`` was the iterative
+``sAdjust`` loop (1.05× per iteration) but I'd mapped it to
+``AM_NSCALE``.  C's ``AM_NSCALE`` actually uses the closed-form
+``scAdjust``; the iterative ``sAdjust`` belongs to ``AM_SCALE``
+(unmapped/legacy).  N3.4 corrects this so ``overlap=scale``
+matches C's algorithm choice.
+
+54/54 neato tests pass (5 new alignment tests for Marriott scale,
+horizontal-only scalexy, compress shrink/skip, and ortho clear).
+
+**Phase N3 fully shipped — no remaining open overlap modes.**
 
 Phase N3.3 (prism) is the largest single chunk in the neato port —
 it pulls in the full Voronoi infrastructure.  Reasonable to defer

@@ -61,6 +61,8 @@ AM_ORTHOXY = "orthoxy"
 AM_ORTHOYX = "orthoyx"
 AM_PORTHO = "portho"
 AM_PORTHO_YX = "portho_yx"
+AM_PORTHOXY = "porthoxy"
+AM_PORTHOYX = "porthoyx"
 
 
 def _trace(msg: str) -> None:
@@ -104,6 +106,7 @@ def _parse_adjust_mode(s: str) -> tuple[str, str]:
         "ortho": AM_ORTHO, "ortho_yx": AM_ORTHO_YX,
         "orthoxy": AM_ORTHOXY, "orthoyx": AM_ORTHOYX,
         "portho": AM_PORTHO, "portho_yx": AM_PORTHO_YX,
+        "porthoxy": AM_PORTHOXY, "porthoyx": AM_PORTHOYX,
     }
     if low in named:
         return named[low], raw
@@ -147,84 +150,258 @@ def _has_overlap(layout: "NeatoLayout", sx: float = 1.0,
     return False
 
 
-def scale_adjust(layout: "NeatoLayout",
-                 incr: float = _SCALE_INCR,
-                 max_iter: int = _DFLT_SCALE_MAXITER) -> int:
-    """Uniform-scale overlap removal.
+def _pair_min_scales(layout: "NeatoLayout"
+                     ) -> tuple[list[tuple[float, float]], bool]:
+    """Build the per-pair minimum-scale set used by ``scAdjust``.
 
-    Mirrors ``adjust.c::sAdjust`` (line 472) and ``rePos`` (462):
-    repeatedly multiply every coordinate by ``1 + incr`` until no
-    pairwise overlap remains.  Pinned nodes are not moved.
+    Mirrors ``constraint.c::mkOverlapSet`` (line 665) for overlap
+    pairs and ``compress`` (line 629) for the no-overlap case.
+    Returns ``(pairs, any_overlap)`` where each pair is the
+    ``(min_sx, min_sy)`` factor that would just-separate the two
+    nodes along that axis.
 
-    Returns the number of scale iterations taken (0 if no
-    overlap was present).
+    For overlap pairs (``any_overlap=True``) the values are
+    clamped to ``>= 1.0``: scaling up by less than 1.0 wouldn't
+    help.  For the no-overlap case (compress) the values can be
+    ``< 1.0``: each pair tells us how far we could shrink before
+    that pair would touch.
+    """
+    nodes = list(layout.lnodes.values())
+    sep = layout.sep
+    pairs: list[tuple[float, float]] = []
+    any_overlap = False
+    for i in range(len(nodes)):
+        a = nodes[i]
+        ah_w = a.width / 2 + sep / 2
+        ah_h = a.height / 2 + sep / 2
+        for j in range(i + 1, len(nodes)):
+            b = nodes[j]
+            bh_w = b.width / 2 + sep / 2
+            bh_h = b.height / 2 + sep / 2
+            dx = abs(a.x - b.x)
+            dy = abs(a.y - b.y)
+            overlap = dx < ah_w + bh_w and dy < ah_h + bh_h
+            if overlap:
+                any_overlap = True
+            sx = float("inf") if dx == 0 else (ah_w + bh_w) / dx
+            sy = float("inf") if dy == 0 else (ah_h + bh_h) / dy
+            if overlap:
+                pairs.append((max(sx, 1.0), max(sy, 1.0)))
+            else:
+                # Used by compress: how much we could shrink before
+                # this pair just touches.
+                pairs.append((sx, sy))
+    return pairs, any_overlap
+
+
+def _compute_scale(pairs: list[tuple[float, float]]) -> float:
+    """Optimal uniform scale: ``max_pair min(sx, sy)``.
+
+    Mirrors ``constraint.c::computeScale`` (line 743).
+    """
+    sc = 0.0
+    for sx, sy in pairs:
+        v = min(sx, sy)
+        if v > sc:
+            sc = v
+    return sc
+
+
+def _compute_scale_xy(pairs: list[tuple[float, float]]
+                      ) -> tuple[float, float]:
+    """Optimal separate-axis scale minimising area = sx * sy.
+
+    Mirrors ``constraint.c::computeScaleXY`` (line 704).  The C
+    code prepends a sentinel ``(1, +inf)`` to the pair list and
+    initialises the right-to-left running ``sy`` max at ``1``;
+    these two tricks let the optimiser pick "no x scaling"
+    (``sx=1``) or "no y scaling" (``sy=1``) as extreme solutions.
+
+    Sorts pairs by sx ascending; for each candidate index k the
+    y-scale must be ``max(sy_i for i >= k)``.  Total area
+    ``sx * sy`` is minimised over k.
+    """
+    if not pairs:
+        return 1.0, 1.0
+    # Sort by sx ascending; prepend the sentinel after sorting so
+    # it stays at index 0.
+    sorted_pairs = sorted(pairs, key=lambda p: (p[0], p[1]))
+    s = [(1.0, float("inf"))] + sorted_pairs
+    n = len(s)
+    # max_sy_right[k] = max(sy_i for i > k) with base 1 (mirrors C
+    # ``barr[m-1].y = 1`` initialisation).
+    max_sy_right = [1.0] * n
+    cur = 1.0
+    for k in range(n - 1, -1, -1):
+        if k + 1 < n:
+            cur = max(cur, s[k + 1][1])
+        max_sy_right[k] = cur
+
+    best_cost = float("inf")
+    best_x = 1.0
+    best_y = 1.0
+    for k in range(n):
+        sx = s[k][0]
+        sy = max_sy_right[k]
+        cost = sx * sy
+        if cost < best_cost:
+            best_cost = cost
+            best_x = sx
+            best_y = sy
+    return best_x, best_y
+
+
+def scale_adjust(layout: "NeatoLayout") -> int:
+    """Uniform-scale overlap removal (Marriott closed-form).
+
+    Mirrors ``constraint.c::scAdjust(g, 1)`` (line 767) — the
+    algorithm that backs ``overlap=scale``.  Computes the optimal
+    single scale factor in O(N²) time and applies it once, so
+    "iterations" is 1 if a scale was applied, 0 otherwise.
+
+    Reference: Marriott, Stuckey, Tam, He, "Removing Node
+    Overlapping in Graph Layout Using Constrained Optimization"
+    (2003).
     """
     if not _has_overlap(layout):
         _trace("scale: no overlap, skip")
         return 0
+    pairs, any_overlap = _pair_min_scales(layout)
+    if not any_overlap:
+        return 0
+    overlap_pairs = [p for p in pairs if p[0] >= 1.0 or p[1] >= 1.0]
+    s = _compute_scale(overlap_pairs)
+    if s <= 1.0:
+        _trace(f"scale: computed scale {s:.4f} ≤ 1; no-op")
+        return 0
+    for ln in layout.lnodes.values():
+        if ln.pinned:
+            continue
+        ln.x *= s
+        ln.y *= s
+    _trace(f"scale: applied uniform scale {s:.4f}")
+    return 1
 
-    factor = 1.0 + incr
-    iters = 0
-    while iters < max_iter:
-        for ln in layout.lnodes.values():
-            if ln.pinned:
-                continue
-            ln.x *= factor
-            ln.y *= factor
-        iters += 1
-        if not _has_overlap(layout):
-            break
 
-    _trace(f"scale: iters={iters} factor_total={factor**iters:.3f}")
-    return iters
+def scalexy_adjust(layout: "NeatoLayout") -> int:
+    """Per-axis scaling overlap removal (Marriott closed-form).
 
-
-def scalexy_adjust(layout: "NeatoLayout",
-                   incr: float = _SCALE_INCR,
-                   max_iter: int = _DFLT_SCALE_MAXITER) -> int:
-    """Per-axis scaling overlap removal.
-
-    Mirrors C ``AM_SCALEXY``: same as ``scale_adjust`` but scales
-    only the axis that needs more room (the one where overlap
-    pairs are closer relative to their summed half-extent).
+    Mirrors ``constraint.c::scAdjust(g, 0)`` — solves for the
+    minimum-area pair ``(sx, sy)`` that satisfies every overlap
+    constraint via the sort-based DP in
+    ``computeScaleXY`` (line 704).
     """
     if not _has_overlap(layout):
         _trace("scalexy: no overlap, skip")
         return 0
+    pairs, any_overlap = _pair_min_scales(layout)
+    if not any_overlap:
+        return 0
+    overlap_pairs = [p for p in pairs if p[0] >= 1.0 or p[1] >= 1.0]
+    sx, sy = _compute_scale_xy(overlap_pairs)
+    if sx <= 1.0 and sy <= 1.0:
+        _trace(f"scalexy: ({sx:.4f}, {sy:.4f}) ≤ 1; no-op")
+        return 0
+    for ln in layout.lnodes.values():
+        if ln.pinned:
+            continue
+        ln.x *= sx
+        ln.y *= sy
+    _trace(f"scalexy: applied ({sx:.4f}, {sy:.4f})")
+    return 1
 
-    factor = 1.0 + incr
+
+def compress_adjust(layout: "NeatoLayout") -> int:
+    """Compress an already-non-overlapping layout uniformly.
+
+    Mirrors ``constraint.c::scAdjust(g, -1)`` (line 767, ``equal=-1``)
+    via ``compress`` (line 629).  When the layout has no overlap,
+    finds the smallest uniform scale factor ``s ≤ 1`` such that
+    no pair would overlap, and applies it.  Returns 0 if any
+    overlap is currently present (refuses to compress through it),
+    1 if a compression was applied.
+    """
+    pairs, any_overlap = _pair_min_scales(layout)
+    if any_overlap:
+        _trace("compress: overlap present; skip (matches C behaviour)")
+        return 0
+    if not pairs:
+        return 0
+    # max-min: take the most restrictive shrink-to-touch scale.
+    s = 0.0
+    for sx, sy in pairs:
+        v = min(sx, sy)
+        if v > s:
+            s = v
+    if s <= 0 or s >= 1.0:
+        _trace(f"compress: scale {s:.4f}; no-op")
+        return 0
+    for ln in layout.lnodes.values():
+        if ln.pinned:
+            continue
+        ln.x *= s
+        ln.y *= s
+    _trace(f"compress: applied uniform scale {s:.4f}")
+    return 1
+
+
+def ortho_adjust(layout: "NeatoLayout",
+                 axes: str = "both",
+                 max_iter: int = 100) -> int:
+    """Orthogonal-constraint overlap removal.
+
+    Approximates ``constraint.c::cAdjust`` for the AM_ORTHO* /
+    AM_PORTHO* family.  C's implementation solves a per-axis
+    constraint optimisation with network simplex; this Py port
+    uses a simpler iterative projection — for each overlapping
+    pair, slide the pair apart along the chosen axis by the
+    minimum amount needed.
+
+    Less optimal than the C QP-style solve (more layout drift),
+    but produces non-overlapping output and respects the
+    "preserve relative order" property of orthogonal modes.
+
+    ``axes``:
+    - ``"x"`` — slide overlap pairs along the X axis only.
+    - ``"y"`` — slide along Y only.
+    - ``"both"`` (AM_ORTHO/PORTHO default) — alternates.
+    """
     iters = 0
     while iters < max_iter:
-        # Decide which axis is tighter.
         nodes = list(layout.lnodes.values())
-        worst_x_ratio = 0.0
-        worst_y_ratio = 0.0
+        moved = False
         sep = layout.sep
         for i in range(len(nodes)):
             a = nodes[i]
             for j in range(i + 1, len(nodes)):
                 b = nodes[j]
-                dx = abs(a.x - b.x)
-                dy = abs(a.y - b.y)
-                rx = dx / max(a.width / 2 + b.width / 2 + sep, 1e-9)
-                ry = dy / max(a.height / 2 + b.height / 2 + sep, 1e-9)
-                if rx < 1.0:
-                    worst_x_ratio = max(worst_x_ratio, 1.0 - rx)
-                if ry < 1.0:
-                    worst_y_ratio = max(worst_y_ratio, 1.0 - ry)
-
-        scale_x = factor if worst_x_ratio >= worst_y_ratio else 1.0
-        scale_y = factor if worst_y_ratio > worst_x_ratio else 1.0
-        for ln in layout.lnodes.values():
-            if ln.pinned:
-                continue
-            ln.x *= scale_x
-            ln.y *= scale_y
+                dx = b.x - a.x
+                dy = b.y - a.y
+                ovx = (a.width + b.width) / 2 + sep - abs(dx)
+                ovy = (a.height + b.height) / 2 + sep - abs(dy)
+                if ovx <= 0 or ovy <= 0:
+                    continue
+                # Choose axis per mode.
+                push_x = axes == "x" or (axes == "both" and ovx <= ovy)
+                push_y = axes == "y" or (axes == "both" and not push_x)
+                shift = (ovx if push_x else ovy) / 2 + 0.5
+                if push_x:
+                    sgn = 1.0 if dx >= 0 else -1.0
+                    if not a.pinned:
+                        a.x -= sgn * shift
+                    if not b.pinned:
+                        b.x += sgn * shift
+                else:
+                    sgn = 1.0 if dy >= 0 else -1.0
+                    if not a.pinned:
+                        a.y -= sgn * shift
+                    if not b.pinned:
+                        b.y += sgn * shift
+                moved = True
         iters += 1
-        if not _has_overlap(layout):
+        if not moved:
             break
-
-    _trace(f"scalexy: iters={iters}")
+    _trace(f"ortho({axes}): iters={iters}")
     return iters
 
 
@@ -251,6 +428,8 @@ def remove_overlap(layout: "NeatoLayout") -> int:
         return scale_adjust(layout)
     if mode == AM_SCALEXY:
         return scalexy_adjust(layout)
+    if mode == AM_COMPRESS:
+        return compress_adjust(layout)
     if mode in (AM_PRISM, AM_VOR):
         # §4.N.3.3: Voronoi-based overlap removal serves as our
         # substitute for both AM_PRISM and AM_VOR.  C uses GTS for
@@ -259,6 +438,33 @@ def remove_overlap(layout: "NeatoLayout") -> int:
         # preserving relative positions) is the same.
         from gvpy.engines.layout.neato.voronoi import voronoi_adjust
         return voronoi_adjust(layout)
+    # §4.N.3.4 — orthogonal modes.  C uses constraint solvers; this
+    # port uses an iterative slide-apart pass.
+    if mode in (AM_ORTHO, AM_PORTHO):
+        return ortho_adjust(layout, axes="both")
+    if mode in (AM_ORTHOXY, AM_PORTHOXY):
+        # X first, then Y.
+        ortho_adjust(layout, axes="x")
+        return ortho_adjust(layout, axes="y")
+    if mode in (AM_ORTHOYX, AM_PORTHOYX):
+        ortho_adjust(layout, axes="y")
+        return ortho_adjust(layout, axes="x")
+    if mode in (AM_ORTHO_YX, AM_PORTHO_YX):
+        # YX variant: Y first then X (same flow with different
+        # constraint relation in C — we approximate with the order
+        # swap which is what visibly differs).
+        ortho_adjust(layout, axes="y")
+        return ortho_adjust(layout, axes="x")
+    if mode in (AM_VPSC, AM_IPSEP):
+        # IPSEP / VPSC need a quadratic-programming solver
+        # (constrained_majorization).  Not implemented; fall back
+        # to scale and warn so users see something reasonable.
+        print(
+            f"warning: overlap={raw!r} requested {mode}; QP solver "
+            f"not yet implemented in gvpy; falling back to scale.",
+            file=sys.stderr,
+        )
+        return scale_adjust(layout)
     # Unknown mode beyond what we map.
     print(
         f"warning: overlap={raw!r} not supported, "
