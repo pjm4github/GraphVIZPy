@@ -92,6 +92,7 @@ from gvpy.engines.layout.neato.dijkstra import dijkstra_distances
 from gvpy.engines.layout.neato.kkutils import kamada_kawai
 from gvpy.engines.layout.neato.sgd import sgd as sgd_layout
 from gvpy.engines.layout.neato.smart_ini import smart_init
+from gvpy.engines.layout.neato.splines import EdgeRoute, route_edges
 from gvpy.engines.layout.neato.stress import (
     circuit_distances,
     stress_majorization,
@@ -185,6 +186,8 @@ class NeatoLayout(LayoutEngine):
         self.sep = 0.0
         self.pack = True
         self.smart_init = True               # PivotMDS init; False = random
+        # Edge routes populated by ``route_edges`` after layout.
+        self.edge_routes: dict[tuple, EdgeRoute] = {}
 
     # ── Public API ───────────────────────────────
 
@@ -214,6 +217,13 @@ class NeatoLayout(LayoutEngine):
             self._apply_rotation()
         if self.center:
             self._apply_center()
+
+        # §4.N.4 — edge spline routing.  After all node positions
+        # are finalised, route edges through the obstacle field of
+        # node bboxes (Pobspath); falls back to straight lines when
+        # the path planner can't find a route.  Reads the
+        # ``splines`` graph attribute.
+        route_edges(self)
 
         self._compute_label_positions()
 
@@ -435,9 +445,46 @@ class NeatoLayout(LayoutEngine):
         gap = max(self.default_dist * 0.5, 36.0)
         self._pack_components_lr(components, gap=gap)
 
+    # ── Edge-route-aware JSON output ─────────────
+
+    def _to_json(self) -> dict:
+        """Override the base ``_to_json`` to emit routed splines.
+
+        Falls through to ``super()._to_json()`` when no edge routes
+        were computed (e.g. ``splines=false``); otherwise replaces
+        each edge entry's two-point ``points`` list with the routed
+        polyline / Bezier control points stored in
+        ``self.edge_routes``.
+        """
+        result = super()._to_json()
+        if not self.edge_routes:
+            return result
+
+        # Build a quick lookup keyed by (tail, head) so we can find
+        # the route corresponding to each emitted edge.  Note: this
+        # ignores edge-key disambiguation for parallel edges; the
+        # base ``_to_json`` itself iterates ``self.graph.edges`` in
+        # order so we mirror that.
+        for entry, (key, edge) in zip(result["edges"],
+                                      self.graph.edges.items()):
+            route = self.edge_routes.get(key)
+            if route is None:
+                continue
+            if not route.points:
+                continue
+            entry["points"] = [[round(p[0], 2), round(p[1], 2)]
+                               for p in route.points]
+            entry["spline_type"] = route.spline_type
+            if entry.get("label"):
+                # Re-anchor the label to the routed midpoint.
+                mid_idx = len(route.points) // 2
+                mx, my = route.points[mid_idx]
+                entry["label_pos"] = [round(mx, 2), round(my, 2)]
+        return result
+
     # Shared methods inherited from LayoutEngine base class:
     # _compute_node_size, _init_common_attrs,
     # _apply_normalize, _apply_rotation, _apply_center,
     # _estimate_label_size, _overlap_area, _compute_label_positions,
     # _clip_to_boundary, _find_components, _pack_components_lr,
-    # _write_back, _to_json
+    # _write_back

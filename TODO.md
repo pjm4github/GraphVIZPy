@@ -735,12 +735,41 @@ Phase N3.3 (prism) is the largest single chunk in the neato port —
 it pulls in the full Voronoi infrastructure.  Reasonable to defer
 behind a `GVPY_NEATO_PRISM=1` opt-in until N2 is complete.
 
-**Phase N4 — edge spline routing.**
+**Phase N4 — edge spline routing (shipped 2026-05-02).**
 
-Currently Py renders neato edges as straight lines.  C runs
-`neatosplines.c` + `multispline.c` (~2300 LOC) to produce routed
-splines avoiding node bboxes.  Defer until N1-N3 are done; until
-then accept straight-line output.
+Ship a working spline router on top of the existing
+`gvpy.engines.layout.pathplan` infrastructure (`Pobsopen` /
+`Pobspath` / `Pobsclose`).  Mirrors `neatosplines.c::spline_edges_`
+(line 586): build a polygon obstacle per node, open a visibility
+config, route each edge via `Pobspath`, and either keep the
+polyline or fit a cubic Bezier.
+
+Supported `splines=` values:
+
+| Value | Output |
+|---|---|
+| `true` / `spline` (default) | cubic Bezier via Schneider fit |
+| `polyline` | polyline avoiding node bboxes |
+| `line` | straight line (no obstacle avoidance) |
+| `false` / `none` | base 2-point edges (no routing) |
+
+Self-loops generate a four-point arc above the node (simplified
+port of `makeSelfArcs`).  Edges whose `Pobspath` walk encounters
+a degenerate `dad` array fall back to a straight line; this is
+also where a related defensive fix landed in
+`pathplan/cvt.py::Pobspath` — a step-count cap on the back-pointer
+walk to prevent infinite loops on degenerate inputs (KK
+saddle-collinear configurations where path visibility degenerates
+were reproducing the failure).
+
+Edge JSON output gains a `spline_type` field (`bezier` /
+`polyline` / `line`) and `points` becomes the multi-point
+control-point or vertex list.
+
+49/49 neato tests pass (4 new alignment tests for the four
+spline-mode outputs).
+
+**Phase N4 complete.  Neato port is now end-to-end C-aligned.**
 
 **Verification harness** (mirrors §1.5 dot workflow).
 

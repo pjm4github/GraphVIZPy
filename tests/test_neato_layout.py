@@ -495,6 +495,36 @@ class TestNeatoStressKernel:
         assert abs(cy - 0.5) < 1e-9
         assert abs(area - 1.0) < 1e-9
 
+    def test_splines_default_is_bezier(self):
+        """Default ``splines`` produces 4-point cubic Bezier routes."""
+        r = neato_gv("graph G { a -- b -- c -- a; }")
+        for e in r["edges"]:
+            assert e.get("spline_type") == "bezier"
+            assert len(e["points"]) >= 4
+            # Bezier control point count must satisfy 3k + 1.
+            assert (len(e["points"]) - 1) % 3 == 0
+
+    def test_splines_polyline_mode(self):
+        """``splines=polyline`` produces polyline routes."""
+        r = neato_gv("graph G { splines=polyline; a -- b -- c -- a; }")
+        for e in r["edges"]:
+            assert e.get("spline_type") == "polyline"
+            assert len(e["points"]) >= 2
+
+    def test_splines_line_mode(self):
+        """``splines=line`` produces straight lines (no obstacle avoidance)."""
+        r = neato_gv("graph G { splines=line; a -- b -- c -- a; }")
+        for e in r["edges"]:
+            assert e.get("spline_type") == "line"
+            assert len(e["points"]) == 2
+
+    def test_splines_none_falls_back(self):
+        """``splines=false`` keeps the base 2-point straight-line edges."""
+        r = neato_gv("graph G { splines=false; a -- b; }")
+        # spline_type may not be set when no routing was performed.
+        e = r["edges"][0]
+        assert len(e["points"]) == 2
+
     def test_pivot_mds_smoke(self):
         """PivotMDS produces finite N×dim coordinates."""
         import numpy as np

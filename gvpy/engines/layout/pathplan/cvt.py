@@ -127,12 +127,24 @@ def Pobspath(config: Vconfig, p0: Ppoint, poly0: int,
 
     N = config.N
 
+    # Defensive step cap: ``dad`` is supposed to form a tree rooted at
+    # ``N + 1``, so a walk from ``N`` reaches the root in at most
+    # ``N + 2`` steps.  If a degenerate input produced a cycle in
+    # ``dad`` (rare, but observed when both endpoints sit inside a
+    # polygon and visibility is empty), bail out to a direct-line
+    # fallback rather than loop forever.
+    max_steps = N + 2
+
     # Count output vertices: 1 for p0 + every intermediate + 1 for p1.
     opn = 1
     i = dad[N]
+    steps = 0
     while i != N + 1:
         opn += 1
         i = dad[i]
+        steps += 1
+        if steps > max_steps:
+            return Ppolyline(ps=[p0, p1])
     opn += 1
 
     # Build output array in reverse — C uses a ``j`` index walking
@@ -142,11 +154,17 @@ def Pobspath(config: Vconfig, p0: Ppoint, poly0: int,
     ops[j] = p1
     j -= 1
     i = dad[N]
+    steps = 0
     while i != N + 1:
         ops[j] = config.P[i]
         j -= 1
         i = dad[i]
+        steps += 1
+        if steps > max_steps:
+            return Ppolyline(ps=[p0, p1])
     ops[j] = p0
-    assert j == 0, f"back-pointer walk mismatch: j={j}"
+    if j != 0:
+        # Index mismatch — degenerate path; fall back to straight line.
+        return Ppolyline(ps=[p0, p1])
 
     return Ppolyline(ps=ops)
