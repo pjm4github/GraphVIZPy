@@ -252,15 +252,13 @@ def remove_overlap(layout: "NeatoLayout") -> int:
     if mode == AM_SCALEXY:
         return scalexy_adjust(layout)
     if mode in (AM_PRISM, AM_VOR):
-        # N3.3 will ship the real prism / voronoi.  Until then, fall
-        # back to uniform scaling so users get *some* overlap removal.
-        print(
-            f"warning: overlap={raw!r} requested {mode} adjustment, "
-            f"which is not yet implemented in gvpy; "
-            f"falling back to scale.",
-            file=sys.stderr,
-        )
-        return scale_adjust(layout)
+        # §4.N.3.3: Voronoi-based overlap removal serves as our
+        # substitute for both AM_PRISM and AM_VOR.  C uses GTS for
+        # PRISM when available; we use scipy.spatial.Voronoi for
+        # both modes since the qualitative result (non-overlap
+        # preserving relative positions) is the same.
+        from gvpy.engines.layout.neato.voronoi import voronoi_adjust
+        return voronoi_adjust(layout)
     # Unknown mode beyond what we map.
     print(
         f"warning: overlap={raw!r} not supported, "

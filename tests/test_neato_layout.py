@@ -442,6 +442,59 @@ class TestNeatoStressKernel:
         assert iters > 0
         assert not _has_overlap(layout)
 
+    def test_voronoi_adjust_clears_grid_overlap(self):
+        """Voronoi-cell-centroid iteration clears overlapping
+        grid layout."""
+        from gvpy.engines.layout.neato.adjust import _has_overlap
+        from gvpy.engines.layout.neato.voronoi import voronoi_adjust
+
+        class FakeLN:
+            def __init__(self, x, y, w, h):
+                self.x = x
+                self.y = y
+                self.width = w
+                self.height = h
+                self.pinned = False
+
+        class FakeLayout:
+            def __init__(self):
+                # 3×3 grid spaced 30pt with 60×60 boxes — heavily overlapping.
+                self.lnodes = {
+                    f"n{i}{j}": FakeLN(i * 30.0, j * 30.0, 60.0, 60.0)
+                    for i in range(3) for j in range(3)
+                }
+                self.sep = 0.0
+                self.overlap = "voronoi"
+
+        layout = FakeLayout()
+        assert _has_overlap(layout)
+        iters = voronoi_adjust(layout, max_iter=30)
+        assert iters > 0
+        assert not _has_overlap(layout)
+
+    def test_voronoi_dispatches_via_overlap_attr(self):
+        """``overlap=voronoi`` and ``overlap=false`` both route to
+        the Voronoi-based remover."""
+        # End-to-end smoke: the dispatcher must select the Voronoi
+        # path for both AM_VOR and AM_PRISM and not crash.
+        for ov in ("voronoi", "false", "prism"):
+            r = neato_gv(
+                f"graph G {{ overlap={ov}; "
+                f"node [shape=box, width=2.0, height=1.5]; "
+                f"a -- b; a -- c; b -- c; a -- d; b -- d; c -- d; }}"
+            )
+            assert len(r["nodes"]) == 4
+
+    def test_polygon_centroid_unit_square(self):
+        """Centroid of unit square is (0.5, 0.5), area 1."""
+        import numpy as np
+        from gvpy.engines.layout.neato.voronoi import _polygon_centroid
+        verts = np.array([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
+        cx, cy, area = _polygon_centroid(verts)
+        assert abs(cx - 0.5) < 1e-9
+        assert abs(cy - 0.5) < 1e-9
+        assert abs(area - 1.0) < 1e-9
+
     def test_pivot_mds_smoke(self):
         """PivotMDS produces finite N×dim coordinates."""
         import numpy as np
