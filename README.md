@@ -382,12 +382,20 @@ Extends fdp with multilevel coarsening and Barnes-Hut quadtree for O(n log n) re
 
 ### twopi — Radial Layout (`gvpy.engines.layout.twopi`)
 
-BFS from root, concentric rings with angular span proportional to subtree size.
+**Status:** Implemented — C-aligned port of `lib/twopigen/circle.c`.
+
+BFS from a centre node, concentric rings with angular span proportional to subtree leaf count. Centre is auto-selected as the most-interior node (max distance to nearest leaf — same as C's `findCenterNode`) unless overridden by `root`.
+
+The package mirrors the C structure: algorithm in `circle.py` (`init_layout`, `find_center_node`, `set_n_steps_to_leaf`, `set_subtree_size`, `set_subtree_spans`, `set_positions`, `get_ranksep_array`), orchestrator in `twopi_layout.py`. Overlap removal and edge spline routing reuse the engine-agnostic helpers shipped with the neato port (`neato.adjust.remove_overlap`, `neato.splines.route_edges`).
 
 | Attribute | Default | Description |
 |-----------|---------|-------------|
-| `root` | (auto) | Center node (graph or node attribute) |
-| `ranksep` | `1.0` | Ring gap in inches (colon-separated for variable) |
+| `root` | (auto) | Centre node (graph or node attribute); auto-selects the most-interior node (max distance to a leaf) |
+| `ranksep` | `1.0` | Ring gap in inches (colon-separated list for per-ring deltas; last value repeats for additional rings) |
+| `overlap` | `true` | Same modes as neato (true/false/scale/scalexy/compress/voronoi/prism/ortho/portho/etc.) |
+| `splines` | `true` | Edge routing: `true`/`spline` (Bezier), `polyline`, `line`, `false` |
+| `weight` (edge) | `1` | `weight=0` excludes the edge from the BFS spanning tree |
+| `sep` | `0` | Margin added when testing pairwise overlap |
 
 ### osage — Cluster Packing (`gvpy.engines.layout.osage`)
 

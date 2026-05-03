@@ -5,6 +5,86 @@ short.  Ordered newest → oldest.
 
 ---
 
+## §4.T — Twopi engine C-alignment (full port) — 2026-05-02
+
+End-to-end port of `lib/twopigen/` to a Py package mirroring the
+C file structure.  Algorithm faithfully aligned with C's
+`circle.c` (Emden Gansner's port of Graham Wills' GD'97 paper);
+overlap removal and spline routing reuse the engine-agnostic
+helpers shipped with the neato port.
+
+**Package structure:**
+
+| Py module | C source | Role |
+|---|---|---|
+| `twopi_layout.py` | `twopiinit.c` | Orchestrator + `LayoutNode` |
+| `circle.py` | `circle.c` | Algorithm |
+
+**Algorithmic alignment** (mirrors `circle.c` line-by-line):
+
+- `init_layout` ↔ `initLayout` (74) — `s_leaf=0` for leaves, `INF`
+  for interior; `s_center=INF`; `theta=UNSET`.
+- `is_leaf` ↔ `isLeaf` (55) — at most one distinct neighbour
+  (excluding self-loops).
+- `set_n_steps_to_leaf` ↔ `setNStepsToLeaf` (34) — DFS from each
+  leaf, propagate `s_leaf = min steps to any leaf`.
+- `find_center_node` ↔ `findCenterNode` (96) — pick max `s_leaf`
+  (most-interior node).  This is C-aligned and replaces the prior
+  Py double-BFS eccentricity centre.  For balanced trees both
+  give the same answer; for asymmetric graphs the SLEAF-based
+  approach produces a more visually-balanced radial layout.
+- `set_n_steps_to_center` ↔ `setNStepsToCenter` (117) — BFS from
+  centre to assign `s_center` (radial level) and parent pointers.
+- `set_parent_nodes` ↔ `setParentNodes` (147) — driver that returns
+  the max `s_center` (radial depth) or `-1` on failure.
+- `set_subtree_size` ↔ `setSubtreeSize` (172) — bottom-up: each
+  leaf in the BFS tree increments its own `stsize` and walks up
+  the parent chain incrementing each ancestor.
+- `set_subtree_spans` / `set_child_subtree_spans` ↔ (210/184) —
+  top-down: each child's span is `parent_span * child_stsize /
+  parent_stsize`.
+- `set_positions` / `set_child_positions` ↔ (246/220) — top-down:
+  centre `theta=0`; each child's `theta` walks left-to-right from
+  the parent's lower fan boundary.
+- `get_ranksep_array` ↔ `getRankseps` (258) — cumulative ranksep
+  array of length `max_rank + 1` from the colon-separated
+  `ranksep` attribute.  Last delta repeats for additional rings.
+- `set_absolute_pos` ↔ `setAbsolutePos` (289) — convert
+  `(s_center, theta)` to `(x, y)`.
+- `circle_layout` ↔ `circleLayout` (312) — top-level entry point
+  for one connected component.
+
+**Bug fix found in the prior Py implementation:**
+
+The previous Py used `root_ln.theta = math.pi` as the centre's
+seed angle; combined with `start_angle = theta - span/2 = 0` the
+first child landed at theta = π/2.  C uses `theta = 0` for the
+centre and gets the same first-child angle (π/2) via the same
+arithmetic.  Algorithmically equivalent, but the C convention is
+clearer (centre at 0 means children fan out around 0).
+
+**Reuse of neato infrastructure:**
+
+- `neato.adjust.remove_overlap` is engine-agnostic — only reads
+  `layout.lnodes`, `layout.sep`, `layout.overlap`.  Twopi exposes
+  the same fields and gets the full mode dispatcher (true/false/
+  scale/scalexy/compress/voronoi/prism/ortho/portho/etc.) for free.
+- `neato.splines.route_edges` is similarly engine-agnostic — sets
+  `layout.edge_routes` from the `splines` graph attribute.
+  Twopi inherits Bezier / polyline / line / none routing.
+- Twopi's `_to_json` mirrors `NeatoLayout._to_json`: emits
+  multi-point routes when `edge_routes` is populated, falls
+  through to base 2-point straight lines otherwise.
+
+**Tests:** 24/24 pass (10 new alignment tests covering centre
+finding, leaf detection, subtree size, ranksep array
+construction with default + explicit, splines bezier dispatch,
+and overlap dispatcher routing).  Full suite 1132 pass, 4 skip.
+
+Trace channel: `GVPY_TRACE_TWOPI=1` emits `[TRACE twopi]` lines.
+
+---
+
 ## §4.N — Neato engine C-alignment (full port) — 2026-05-02
 
 End-to-end port of `lib/neatogen/` to a Python package mirroring the

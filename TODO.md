@@ -447,19 +447,19 @@ Ordered by payoff.  Each item is independently shippable.
 
 ## 4. Other Layout Engines — Stubs
 
-Priority order (updated 2026-05-02 after the neato port shipped):
+Priority order (updated 2026-05-02 after twopi shipped):
 
 1. **fdp** — Fruchterman-Reingold with cluster support.  Shares
    ~half its infrastructure with neato (force model, overlap
    removal); should be quicker than neato was.
-2. **twopi** — radial BFS; straightforward; good for trees / DAGs.
-3. **sfdp** — multiscale force-directed, Barnes-Hut for 10K+ nodes.
-4. **osage** — cluster packing.
-5. **patchwork** — squarified treemap.
-6. **mingle** — post-processing edge bundling (not a layout engine).
+2. **sfdp** — multiscale force-directed, Barnes-Hut for 10K+ nodes.
+3. **osage** — cluster packing.
+4. **patchwork** — squarified treemap.
+5. **mingle** — post-processing edge bundling (not a layout engine).
 
 Live today: **dot** (1141 tests), **neato** (54 tests, fully
-C-aligned port — see DONE §4.N), **circo** (25 tests), **ortho**
+C-aligned port — see DONE §4.N), **twopi** (24 tests, fully
+C-aligned port — see DONE §4.T), **circo** (25 tests), **ortho**
 (full port via `lib/ortho/`, 18+12+18+4+4+12 module tests).
 
 ---

@@ -78,14 +78,20 @@ class TestTwopiRadial:
         assert dist_b > dist_a
 
     def test_ranksep_affects_radius(self):
-        """Larger ranksep produces wider rings."""
-        r1 = twopi_gv('graph G { r -- a -- b; }', ranksep="0.5")
-        r2 = twopi_gv('graph G { r -- a -- b; }', ranksep="2.0")
+        """Larger ranksep produces wider rings.
+
+        Use a star graph (centre + 3 spokes) so the rings spread on
+        both axes — a 3-path lays out vertically, leaving x-width
+        invariant under ranksep changes.
+        """
+        r1 = twopi_gv('graph G { c -- a; c -- b; c -- d; }', ranksep="0.5")
+        r2 = twopi_gv('graph G { c -- a; c -- b; c -- d; }', ranksep="2.0")
         bb1 = r1["graph"]["bb"]
         bb2 = r2["graph"]["bb"]
-        w1 = bb1[2] - bb1[0]
-        w2 = bb2[2] - bb2[0]
-        assert w2 > w1
+        # Compare layout extent — area of the bbox — instead of one axis.
+        a1 = (bb1[2] - bb1[0]) * (bb1[3] - bb1[1])
+        a2 = (bb2[2] - bb2[0]) * (bb2[3] - bb2[1])
+        assert a2 > a1
 
 
 class TestTwopiRoot:
@@ -140,3 +146,87 @@ class TestTwopiAttributes:
         r = twopi_gv("graph G { c -- a; c -- b; c -- d; }")
         svg = render_svg(r)
         assert "<svg" in svg
+
+
+class TestTwopiAlignment:
+    """§4.T C-alignment tests for the lib/twopigen/circle.c port."""
+
+    def test_centre_finding_picks_max_sleaf(self):
+        """find_center_node should pick the most-interior node.
+
+        For a 5-path a-b-c-d-e the centre is c (max distance to any
+        leaf = 2).  The C algorithm selects the node with highest
+        s_leaf, which is the same definition.
+        """
+        r = twopi_gv("graph G { a -- b -- c -- d -- e; }")
+        nc = node_by_name(r, "c")
+        assert nc["x"] == pytest.approx(0, abs=1)
+        assert nc["y"] == pytest.approx(0, abs=1)
+
+    def test_is_leaf(self):
+        """is_leaf returns True for nodes with at most one distinct
+        neighbour (excluding self-loops)."""
+        from gvpy.engines.layout.twopi.circle import is_leaf
+        adj = {"a": ["b"], "b": ["a", "c"], "c": ["b"]}
+        assert is_leaf("a", adj)
+        assert not is_leaf("b", adj)
+        assert is_leaf("c", adj)
+        # Self-loop only — still a leaf.
+        assert is_leaf("d", {"d": ["d"]})
+
+    def test_subtree_size_counts_leaves(self):
+        """``stsize`` per node equals the number of leaves in its
+        BFS-tree subtree."""
+        from gvpy.engines.layout.twopi import TwopiLayout
+        # Centre c with 3 spokes — c has 3 leaf children, stsize=3.
+        graph = read_gv('graph G { root=c; c -- a; c -- b; c -- d; }')
+        layout = TwopiLayout(graph)
+        layout.layout()
+        assert layout.lnodes["c"].stsize == 3
+        assert layout.lnodes["a"].stsize == 1
+        assert layout.lnodes["b"].stsize == 1
+        assert layout.lnodes["d"].stsize == 1
+
+    def test_get_ranksep_array_default(self):
+        """``ranksep`` empty string ⇒ all rings DEF_RANKSEP apart."""
+        from gvpy.engines.layout.twopi.circle import (
+            get_ranksep_array, DEF_RANKSEP,
+        )
+        ranks = get_ranksep_array("", 3)
+        assert ranks[0] == 0.0
+        assert ranks[1] == DEF_RANKSEP
+        assert ranks[2] == 2 * DEF_RANKSEP
+        assert ranks[3] == 3 * DEF_RANKSEP
+
+    def test_get_ranksep_array_explicit_list(self):
+        """Colon-separated ranksep gives per-ring deltas; last value
+        repeats."""
+        from gvpy.engines.layout.twopi.circle import get_ranksep_array
+        ranks = get_ranksep_array("0.5:1.0:2.0", 5)
+        # In points: 0.5 → 36, 1.0 → 72, 2.0 → 144.  Cumulative.
+        assert ranks[0] == 0.0
+        assert ranks[1] == pytest.approx(36.0)
+        assert ranks[2] == pytest.approx(36.0 + 72.0)
+        assert ranks[3] == pytest.approx(36.0 + 72.0 + 144.0)
+        # Beyond list — repeat the last delta (144).
+        assert ranks[4] == pytest.approx(36.0 + 72.0 + 144.0 + 144.0)
+        assert ranks[5] == pytest.approx(36.0 + 72.0 + 144.0 + 144.0 * 2)
+
+    def test_splines_default_emits_bezier(self):
+        """``splines=spline`` (default) produces bezier edge routes
+        — twopi reuses the neato spline router."""
+        r = twopi_gv("graph G { c -- a; c -- b; c -- d; }")
+        for e in r["edges"]:
+            assert e.get("spline_type") == "bezier"
+            assert (len(e["points"]) - 1) % 3 == 0
+
+    def test_overlap_dispatch_via_neato_adjust(self):
+        """``overlap=`` attribute routes through the neato dispatcher."""
+        # No crash + one of the C-aligned modes works end-to-end.
+        for ov in ("true", "false", "scale", "voronoi", "compress"):
+            r = twopi_gv(
+                f"graph G {{ overlap={ov}; "
+                f"node [shape=box, width=2.0, height=1.5]; "
+                f"c -- a; c -- b; c -- d; c -- e; }}"
+            )
+            assert len(r["nodes"]) == 5
