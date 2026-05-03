@@ -5,6 +5,194 @@ short.  Ordered newest → oldest.
 
 ---
 
+## §4.N — Neato engine C-alignment (full port) — 2026-05-02
+
+End-to-end port of `lib/neatogen/` to a Python package mirroring the
+C file structure.  Started from a single 826-line `neato_layout.py`
+that inlined all three modes; finished with a multi-module package
+that's algorithmically C-aligned across all major modes, all
+overlap-removal algorithms, smart-init, and edge spline routing.
+9 commits, ~12-15 estimated days of work compressed into one
+session via aggressive use of existing infrastructure (numpy,
+scipy.spatial, the already-ported pathplan library).
+
+**Phase N1 — package restructure.**  Convert
+`gvpy/engines/layout/neato/` from one file (826 LOC) to a package
+mirroring `lib/neatogen/`:
+
+| Py module | C source |
+|---|---|
+| `neato_layout.py` | `neatoinit.c::neato_layout` (orchestrator only, 427 LOC) |
+| `stress.py` | `stress.c`, `circuit.c` |
+| `kkutils.py` | `stuff.c::solve_model` + `kkutils.c` |
+| `sgd.py` | `sgd.c` |
+| `bfs.py` / `dijkstra.py` | `bfs.c` / `dijkstra.c` (unit-conversion wrappers) |
+| `adjust.py` | `adjust.c` + `constraint.c` (overlap modes) |
+| `voronoi.py` | `adjust.c::vAdjust` (substitutes for ~1500 LOC of hand-rolled Voronoi) |
+| `smart_ini.py` | `stress.c::sparse_stress_subspace_majorization_kD` (substitutes via PivotMDS) |
+| `splines.py` | `neatosplines.c::spline_edges_` |
+
+Engine-agnostic primitives moved to `common/`:
+
+- `common/matrix.py` — Gauss-Jordan inverse + `gauss_solve`
+  (`matinv.c`, `lu.c`, `solve.c`).
+- `common/graph_dist.py` — BFS / Dijkstra APSP on adjacency dicts.
+- `common/laplacian.py` — packed upper-tri Laplacian indexing +
+  matrix-vector multiply (`matrix_ops.c::right_mult_with_vector_ff`).
+- `common/conjgrad.py` — conjugate-gradient solver
+  (`conjgrad.c::conjugate_gradient_mkernel`).
+- `common/pivot_mds.py` — Brandes & Pich PivotMDS (substitute for
+  C's HDE+PCA pipeline).
+
+**Phase N2 — algorithmic alignment of the three modes.**
+
+- **N2.1 MAJOR (stress majorization).**  Replaced the naive O(N²)
+  per-iteration SMACOF direct update with a faithful port of
+  `stress_majorization_kD_mkernel` (stress.c:795).  Per iteration:
+  build the Laplacian L_Z(X) of weights `1/(d_ij × ||x_i-x_j||)`
+  in packed upper-tri form; compute `b = L_Z @ X`; solve the
+  constant Laplacian L_w (1/d_ij²) system `L_w X^new = b` per
+  spatial dimension via conjugate gradient.  Stress is now
+  monotonically non-increasing per the SMACOF guarantee.
+  Sign-convention note: C uses negated Laplacians (off-diag +,
+  diag -); this port uses proper Laplacians (off-diag -, diag +).
+  Equivalent under sign flips of the stress formula; documented in
+  `_iter_stress`.
+
+- **N2.2 KK (Kamada-Kawai Newton).**  Ported `stuff.c::solve_model`
+  + `diffeq_model` + `move_node` + `D2E` + `update_arrays` +
+  `choose_node` + `total_e`.  Per-iteration force tensors,
+  max-residual node selection, 2×2 Hessian Newton step via Gauss
+  elimination, with C's `[Damping, Damping + 2(1-Damping)]` random
+  scale, then incremental `update_arrays` to refresh the force
+  tensor for the moved node and its neighbours.  Known KK
+  pathology: from random init on symmetric graphs (triangle,
+  Y-shape, K5) Newton lands on saddle points where ∇=0 but
+  Hessian has negative eigenvalues — escape requires N2.4
+  smart-init.
+
+- **N2.3 SGD.**  Aligned three differences from the prior Py SGD:
+  step cap `mu = min(eta * w, 1.0)` (sgd.c:221) — bounds per-term
+  step at full distance to prevent flinging in early iterations;
+  sign convention `dx = pos_i - pos_j`; formula
+  `r = mu * (mag - d) / (2 * mag)` matching C exactly.  SGD now
+  produces high-quality layouts where KK previously got stuck:
+  Y-shape root-leaf 76.5 (analytical optimum 76.8 — within 0.4%);
+  path-5 adjacent spans 72.8/73.2/73.2/73.0 (ratio 1.005).
+
+- **N2.4 Smart-init.**  Shipped via PivotMDS (Brandes & Pich
+  2007) — substitutes for C's full
+  `sparse_stress_subspace_majorization_kD` pipeline.  Reaches the
+  same goal at ~150 LOC instead of ~600+ LOC of faithful HDE +
+  PCA + sparse-majorization port.  Uses `np.linalg.eigh` for the
+  small-K eigendecomposition.  Y-shape + KK now hits the analytical
+  optimum; K5 + SGD lands at the EXACT regular pentagon
+  (long/short pair-distance ratio = 1.618 = golden ratio φ, the
+  global optimum).
+
+**Phase N3 — overlap removal (all 7 algorithms).**
+
+- **N3.1 dispatcher.**  Mirrors `adjust.c::getAdjustMode`.  Maps
+  `overlap=` attribute strings (true/false/scale/scalexy/voronoi/
+  prism/compress/ortho/portho/etc.) to canonical mode constants.
+  Bug fix: the previous Py had an inverted boolean check —
+  `overlap=false` triggered the function but the function then
+  returned immediately because of an inner short-circuit on the
+  same string.  Net effect: overlap removal was NEVER run.  Now
+  fixed.
+
+- **N3.2 scale + scalexy.**  Initial port shipped iterative
+  `sAdjust`/`rePos` (1.05× per iteration loop).  N3.4 upgraded
+  these to the Marriott closed-form `scAdjust` (constraint.c:767)
+  — single optimal scale via `computeScale` (max over overlap
+  pairs of `min((wi/2+wj/2)/Δx, (hi/2+hj/2)/Δy)`) for uniform;
+  and the `computeScaleXY` sort + DP with `(1, ∞)` sentinel for
+  the minimum-area separate-axis solution.
+
+- **N3.3 Voronoi.**  Faithful port of
+  `adjust.c::vAdjust` (line 415) using `scipy.spatial.Voronoi` for
+  the diagram itself instead of porting C's hand-rolled
+  `delaunay.c` + `voronoi.c` + `site.c` + `hedges.c` + `heap.c` +
+  `legal.c` (~1500 LOC).  Iteration loop matches C exactly:
+  `rmEquality` to jitter coincident sites, fence sites at corners
+  to bound all real cells, move overlapping nodes to area-weighted
+  centroid via shoelace triangulation, `doAll` heuristic + bbox
+  expansion when stuck.  Used for both AM_VOR and AM_PRISM (C uses
+  real PRISM only when GTS is available).
+
+- **N3.4 compress + ortho/portho family + vpsc/ipsep stubs.**
+  - `compress_adjust` mirrors `compress` (constraint.c:629):
+    when no overlap, find the largest s ≤ 1 that wouldn't cause
+    touching, apply uniformly.  Refuses to compress through
+    pre-existing overlap (returns 0, matches C).
+  - `ortho_adjust` covers AM_ORTHO / AM_PORTHO with `*_yx`,
+    `orthoxy`, `orthoyx`, `porthoxy`, `porthoyx` variants.
+    Approximates `cAdjust` (constraint.c:538) via iterative
+    pair-slide projection — less optimal than C's NS / QP
+    constraint solve but produces non-overlapping output and
+    preserves relative ordering on the chosen axis.
+  - VPSC / IPSEP fall back to scale + warning.  Real handling
+    needs the constrained-majorization QP solver; deferred
+    indefinitely.
+
+  Reference: Marriott, Stuckey, Tam, He, "Removing Node
+  Overlapping in Graph Layout Using Constrained Optimization"
+  (Constraints 8(2):143-172, 2003) — closed-form basis for
+  scAdjust.
+
+**Phase N4 — edge spline routing.**  Ship a working spline router
+on top of the existing `gvpy.engines.layout.pathplan` infrastructure
+(`Pobsopen` / `Pobspath` / `Pobsclose`).  Mirrors
+`neatosplines.c::spline_edges_` (line 586): build axis-aligned
+polygon obstacle per node, open visibility config, route each edge
+via `Pobspath` from tail centre to head centre with POLYID hints,
+clip first/last segments to node borders, then either keep polyline
+or fit cubic Bezier via Schneider's recursive curve fit.  Self-loops
+generate four-point arc above the node (simplified port of
+`makeSelfArcs`).
+
+`splines=` mapping:
+
+| Value | Output |
+|---|---|
+| `true` / `spline` (default) | cubic Bezier |
+| `polyline` | polyline avoiding bboxes |
+| `line` | straight line |
+| `false` / `none` | base 2-point edges |
+
+Edge JSON output gains a `spline_type` field and `points` becomes
+the multi-point control-point or vertex list.
+
+Defensive fix in `pathplan/cvt.py::Pobspath`: bound the
+back-pointer walk over the `dad` array to N+2 steps.  KK
+saddle-collinear configurations produced inputs where `ptVis`
+returned empty visibility for an endpoint inside an obstacle,
+`makePath` set up a degenerate `dad` with a cycle, and the original
+walk looped forever.  Now bails out to a straight-line fallback.
+
+**Tests.**  Started at 27 functional tests (no-crash + basic
+separation only).  Finished at 54 tests including 17 new
+alignment tests covering: packed Laplacian indexing, `right_mult_packed`
+matches dense, CG converges on a path Laplacian, SMACOF stress
+monotonicity, Gauss-solve 2×2 + singular, KK diffeq invariants,
+KK path-5 uniform spacing, SGD step cap, SGD Y-shape near-optimal,
+smart-init Y-shape escape, smart-init K5 pentagon, PivotMDS smoke,
+adjust dispatcher modes, Marriott scale exact factor, scalexy
+horizontal-only, compress shrink + skip-on-overlap, ortho clear,
+Voronoi grid clearance, polygon centroid, splines bezier /
+polyline / line / none modes.
+
+**Remaining open items** (deferred indefinitely): IPSEP / VPSC
+need a constrained-majorization QP solver, narrowly used; not
+worth pulling in `quad_prog_solve.c` infrastructure for the
+small share of corpus inputs that use them.
+
+Trace channel: `GVPY_TRACE_NEATO=1` emits `[TRACE neato_*]` lines
+across `init`, `major`, `kk`, `sgd`, `adjust`, `voronoi`, and
+`splines` phases.
+
+---
+
 ## §2.5.7 / §2.5.10 / §2.5.11 — Skel-mode default + Phase B keepout-filter drop — 2026-05-02
 
 Three shipped pieces from the §2.5 D5 alignment chain plus a recorded

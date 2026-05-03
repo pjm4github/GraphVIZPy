@@ -336,15 +336,24 @@ Biconnected component decomposition with circular node placement.
 
 ### neato — Spring-Model Layout (`gvpy.engines.layout.neato`)
 
+**Status:** Implemented — C-aligned across all major modes, overlap-removal algorithms, and edge spline routing.
+
 Stress majorization, Kamada-Kawai, or SGD to minimize stress energy from graph-theoretic distances. Best for undirected graphs up to ~1000 nodes.
+
+The package mirrors the C `lib/neatogen/` file structure — distance models in `bfs.py` / `dijkstra.py`, the three modes in `stress.py` / `kkutils.py` / `sgd.py`, smart-init via PivotMDS in `smart_ini.py`, overlap removal in `adjust.py` / `voronoi.py`, edge routing in `splines.py`, and the `NeatoLayout` orchestrator in `neato_layout.py`.
 
 | Attribute | Default | Description |
 |-----------|---------|-------------|
-| `mode` | `major` | Algorithm: `major` (stress majorization), `KK`, `sgd` |
-| `model` | `shortpath` | Distance model: `shortpath`, `circuit`, `subset` |
+| `mode` | `major` | Algorithm: `major` (stress majorization, CG-based SMACOF), `KK` (Kamada-Kawai Newton-step), `sgd` (term-batched stochastic gradient descent) |
+| `model` | `shortpath` | Distance model: `shortpath` (BFS / Dijkstra), `circuit` (effective resistance), `subset` |
+| `start` | `regular` | Initial placement: `regular` (random), `self` (use input `pos`); other values seed the RNG. PivotMDS smart-init runs by default unless `start=self`/`regular` |
+| `overlap` | `true` | `true` (keep), `false` (default removal), `scale` (Marriott uniform), `scalexy` (Marriott separate-axis), `compress` (shrink), `voronoi`, `prism`, `ortho`/`portho` family |
+| `splines` | `true` | Edge routing: `true`/`spline` (Bezier), `polyline`, `line`, `false` |
 | `Damping` | `0.99` | KK velocity damping |
 | `epsilon` | `0.0001*\|V\|` | Convergence threshold |
 | `len` (edge) | `1.0` | Desired edge length (inches) |
+| `sep` | `0.0` | Margin added when testing pairwise overlap |
+| `defaultdist` | auto | Distance between nodes in separate components |
 
 ### fdp — Force-Directed Placement (`gvpy.engines.layout.fdp`)
 
