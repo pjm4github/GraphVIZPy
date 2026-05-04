@@ -66,10 +66,14 @@ class LayoutView(GraphView, ABC):
     view_name: str = "layout"
 
     # Node sizing constants (inherited by LayoutEngine).
+    # Defaults mirror Graphviz C: lib/common/const.h:251 GAP=4 and
+    # macros.h:27-29 XPAD/YPAD = 4*GAP / 2*GAP -> 16 pt / 8 pt total
+    # padding around labels.  _MIN_WIDTH / _MIN_HEIGHT match the C
+    # default node width=0.75in / height=0.5in.
     _MIN_WIDTH = 54.0    # 0.75in * 72dpi
     _MIN_HEIGHT = 36.0   # 0.50in * 72dpi
-    _H_PAD = 36.0
-    _V_PAD = 18.0
+    _H_PAD = 16.0        # C: XPAD = 4 * GAP
+    _V_PAD = 8.0         # C: YPAD = 2 * GAP
 
     # ── Layout query API ──────────────────────────────────────────
 
@@ -350,7 +354,14 @@ class LayoutEngine(LayoutView):
     # ── Node sizing ──────────────────────────────
 
     def _compute_node_size(self, name: str, node) -> tuple[float, float]:
-        """Compute node dimensions from label text, shape, and attributes."""
+        """Compute node dimensions from label text, shape, and attributes.
+
+        Mirrors Graphviz C semantics: ``width`` / ``height`` are
+        *minimum* sizes — the node grows to accommodate its label
+        but will not shrink below the explicit values.  When neither
+        is set, fall back to ``_MIN_WIDTH`` / ``_MIN_HEIGHT``
+        (= the C defaults of 0.75 × 0.5 inch).
+        """
         attrs = node.attributes if node else {}
 
         fixedsize = attrs.get("fixedsize", "false").lower() in \
@@ -362,9 +373,8 @@ class LayoutEngine(LayoutView):
             w = float(explicit_w) * 72.0 if explicit_w else self._MIN_WIDTH
             h = float(explicit_h) * 72.0 if explicit_h else self._MIN_HEIGHT
             return w, h
-        if explicit_w and explicit_h:
-            return float(explicit_w) * 72.0, float(explicit_h) * 72.0
 
+        # Compute label-driven size.
         label = attrs.get("label", name)
         try:
             fontsize = float(attrs.get("fontsize", "14"))
@@ -372,22 +382,35 @@ class LayoutEngine(LayoutView):
             fontsize = 14.0
         char_w = fontsize * 0.52
 
-        # Strip HTML tags for sizing
         if label.startswith("<") and label.endswith(">"):
             import re
             label = re.sub(r"<[^>]+>", "", label)
 
         lines = label.replace("\\n", "\n").split("\n")
         max_len = max(len(line) for line in lines) if lines else len(name)
-        w = max_len * char_w + self._H_PAD
-        h = len(lines) * fontsize * 1.2 + self._V_PAD
+        label_w = max_len * char_w + self._H_PAD
+        label_h = len(lines) * fontsize * 1.2 + self._V_PAD
 
+        # ``width`` / ``height`` are minimums — node grows to fit
+        # label.  If unset, fall back to the C defaults.
         if explicit_w:
-            w = float(explicit_w) * 72.0
+            w = max(label_w, float(explicit_w) * 72.0)
+        else:
+            w = max(label_w, self._MIN_WIDTH)
         if explicit_h:
-            h = float(explicit_h) * 72.0
+            h = max(label_h, float(explicit_h) * 72.0)
+        else:
+            h = max(label_h, self._MIN_HEIGHT)
 
-        return max(w, self._MIN_WIDTH), max(h, self._MIN_HEIGHT)
+        # Square-aspect shapes (circle/doublecircle/square) force
+        # equal axes so the layout bbox matches what the renderer
+        # actually draws — otherwise the rendered radius exceeds
+        # the bbox half-width and content clips at the SVG edges.
+        shape = (attrs.get("shape") or "").lower()
+        if shape in ("circle", "doublecircle", "square"):
+            side = max(w, h)
+            w = h = side
+        return w, h
 
     # ── Post-processing ──────────────────────────
 

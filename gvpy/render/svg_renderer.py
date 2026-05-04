@@ -855,6 +855,7 @@ def _render_html_text(cx: float, cy: float, raw_label: str,
 
 def _node_attrs(node: dict) -> tuple[str, str, str, float, str, float]:
     """Extract (fill, stroke, font_family, font_size, font_color, penwidth) from node dict."""
+    from gvpy.render.colors import resolve_color
     style = node.get("style", "")
     fill = node.get("fillcolor", node.get("color", ""))
     stroke = node.get("color", _DEF_NODE_STROKE)
@@ -876,11 +877,16 @@ def _node_attrs(node: dict) -> tuple[str, str, str, float, str, float]:
         penwidth = 1.0
     if "bold" in style:
         penwidth = max(penwidth, 2.0)
-    return fill, stroke, font_family, font_size, font_color, penwidth
+    # Resolve X11 / Graphviz color names to SVG-safe hex.  Browsers
+    # silently render unknown CSS color names (e.g. ``lightcyan2``)
+    # as black, so the renderer must convert them before emitting.
+    return (resolve_color(fill), resolve_color(stroke), font_family,
+            font_size, resolve_color(font_color), penwidth)
 
 
 def _edge_attrs(edge: dict) -> tuple[str, float, str, str, float]:
     """Extract (stroke, penwidth, dasharray, font_color, font_size) from edge dict."""
+    from gvpy.render.colors import resolve_color
     stroke = edge.get("color", _DEF_EDGE_STROKE)
     try:
         penwidth = float(edge.get("penwidth", "1"))
@@ -897,7 +903,8 @@ def _edge_attrs(edge: dict) -> tuple[str, float, str, str, float]:
         font_size = float(edge.get("fontsize", _DEF_FONT_SIZE - 2))
     except ValueError:
         font_size = _DEF_FONT_SIZE - 2
-    return stroke, penwidth, dasharray, font_color, font_size
+    return (resolve_color(stroke), penwidth, dasharray,
+            resolve_color(font_color), font_size)
 
 
 def _style_dasharray(style: str) -> str:

@@ -68,6 +68,35 @@ from gvpy.engines.layout.fdp.xlayout import xlayout
 _DFLT_K = 0.3 * 72.0
 # Mirrors ``DFLT_maxIters`` from tlayout.c:97.
 _DFLT_MAXITER = 600
+# Mirrors ``DFLT_overlap`` from xlayout.c:33 — 9 xlayout retries
+# followed by a prism cleanup pass.
+_DFLT_OVERLAP = "9:prism"
+
+
+def _parse_overlap_spec(spec: str) -> tuple[int, str]:
+    """Parse the ``n:mode`` overlap syntax (xlayout.c:325).
+
+    Returns ``(tries, mode)``.  Examples::
+
+        "9:prism" -> (9, "prism")
+        ":prism"  -> (0, "prism")
+        "prism"   -> (0, "prism")
+        "true"    -> (0, "true")
+        "9:"      -> (9, "")
+        ""        -> parsed from _DFLT_OVERLAP
+    """
+    if not spec:
+        spec = _DFLT_OVERLAP
+    colon = spec.find(":")
+    if colon >= 0:
+        head = spec[:colon]
+        if head == "" or head.isdigit():
+            try:
+                tries = max(0, int(head)) if head else 0
+            except ValueError:
+                tries = 0
+            return tries, spec[colon + 1:]
+    return 0, spec
 
 
 @dataclass
@@ -94,7 +123,7 @@ class FdpLayout(LayoutEngine):
         self.maxiter = _DFLT_MAXITER
         self.T0 = -1.0                  # auto-compute if negative
         self.seed = 1
-        self.overlap = "true"
+        self.overlap = _DFLT_OVERLAP
         self.sep = 0.0
         self.pack = True
         self.use_grid = True
@@ -123,14 +152,19 @@ class FdpLayout(LayoutEngine):
         else:
             self._layout_component(set(self.lnodes.keys()))
 
-        # Phase 2 — overlap removal.  ``overlap=fdp`` runs the
-        # historical fdp force-based pass; everything else routes
-        # through the shared common.adjust dispatcher.
-        ov_low = self.overlap.lower() if self.overlap else ""
-        if ov_low == "fdp":
-            xlayout(self, self.K, self.sep, self.maxiter)
-        else:
-            remove_overlap(self)
+        # Phase 2 — overlap removal.  Mirrors ``fdp_xLayout``
+        # (xlayout.c:325): parse the ``n:mode`` spec, run the
+        # x_layout expansion pass for ``n`` tries (skipped if
+        # ``n == 0``), then dispatch ``mode`` through the shared
+        # common.adjust cleanup.  Default spec is "9:prism".
+        tries, mode = _parse_overlap_spec(self.overlap)
+        if tries > 0:
+            remaining = xlayout(self, self.K, self.sep,
+                                self.maxiter, tries=tries)
+            if remaining == 0:
+                mode = "true"   # already clear; skip cleanup
+        self.overlap = mode
+        remove_overlap(self)
 
         if self.normalize:
             self._apply_normalize()
@@ -180,8 +214,8 @@ class FdpLayout(LayoutEngine):
             self.seed = int(time.time())
         random.seed(self.seed)
 
-        ov_str = (self.graph.get_graph_attr("overlap") or "true").lower()
-        self.overlap = ov_str
+        ov_attr = self.graph.get_graph_attr("overlap")
+        self.overlap = (ov_attr or _DFLT_OVERLAP).lower()
 
         sep_str = self.graph.get_graph_attr("sep")
         if sep_str:

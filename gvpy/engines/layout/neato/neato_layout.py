@@ -185,7 +185,20 @@ class NeatoLayout(LayoutEngine):
         self.overlap = "true"
         self.sep = 0.0
         self.pack = True
-        self.smart_init = True               # PivotMDS init; False = random
+        # ``smart_init`` controls whether to seed the optimizer with
+        # a PivotMDS-style init (smart) or with random positions.
+        # Default is ``False`` to match C neato (neatoinit.c:1092
+        # ``checkStart(g, nv, INIT_RANDOM)`` for the default mode).
+        # The C random init at given ``start=N`` lands in different
+        # basins than smart init — this matters for graphs with
+        # equivalent-stress local minima differing only in cyclic
+        # neighbour order.  Smart init is enabled when the ``start``
+        # graph attribute begins with ``"self"`` (e.g. ``start=self``
+        # or ``start=self42``), mirroring ``setSeed`` in C.
+        self.smart_init = False
+        # Optional ``regular`` init (place on a circle) when
+        # ``start=regular`` — mirrors C's ``initRegular``.
+        self.regular_init = False
         # Edge routes populated by ``route_edges`` after layout.
         self.edge_routes: dict[tuple, EdgeRoute] = {}
 
@@ -280,17 +293,31 @@ class NeatoLayout(LayoutEngine):
             except ValueError:
                 pass
 
-        start_str = self.graph.get_graph_attr("start") or ""
-        if start_str.isdigit():
-            self.seed = int(start_str)
-        elif start_str == "self":
-            self.seed = 0  # use existing positions
-            self.smart_init = False  # honour user-supplied positions
-        elif start_str == "random":
+        # ``start`` attribute parsing mirrors C ``setSeed``
+        # (neatoinit.c:920-954): an alphabetic prefix selects the
+        # init style ("self" / "regular" / "random"), and a trailing
+        # number is the RNG seed.  Default = INIT_RANDOM, seed=1.
+        start_str = (self.graph.get_graph_attr("start") or "").strip()
+        prefix, seed_part = "", start_str
+        if start_str and start_str[0].isalpha():
+            for tag in ("self", "regular", "random"):
+                if start_str.lower().startswith(tag):
+                    prefix = tag
+                    seed_part = start_str[len(tag):]
+                    break
+
+        if prefix == "self":
+            self.smart_init = True
+        elif prefix == "regular":
+            self.regular_init = True
+        # "random" or unset prefix: leave both False (= INIT_RANDOM).
+
+        if seed_part.isdigit():
+            self.seed = int(seed_part)
+        elif prefix == "random" and not seed_part:
             import time
             self.seed = int(time.time())
-        elif start_str == "regular":
-            self.smart_init = False  # explicit random/regular init
+        # else keep the default seed=1 (matches C ``setSeed`` line 985).
         random.seed(self.seed)
 
         ov_str = (self.graph.get_graph_attr("overlap") or "true").lower()

@@ -76,18 +76,26 @@ def _trace(msg: str) -> None:
 def _node_bbox_polygon(x: float, y: float, w: float, h: float,
                        margin_x: float = 4.0,
                        margin_y: float = 4.0) -> Ppoly:
-    """Build a CCW Ppoly axis-aligned rectangle for a node bbox.
+    """Build a **CW** Ppoly axis-aligned rectangle for a node bbox.
 
-    Mirrors the ``isOrtho`` branch of ``makeObstacle`` (line 346):
-    four corners with the margin added.
+    Mirrors the ``isOrtho`` branch of ``makeObstacle`` (line 346).
+    Pathplan requires polygons in **clockwise** order
+    (``vispath.h:33`` — ``"Points in polygonal obstacles must be in
+    clockwise order."``).  Reversing the order from CCW to CW makes
+    the ``in_cone`` cone test (which checks ``wind(a0, a1, a2) > 0``
+    for "convex at a1") classify the polygon's outward-facing
+    direction correctly, so visibility queries actually detect
+    obstacles between two points instead of waving them through.
+
+    Vertex order in math y-up coords: SW → NW → NE → SE.
     """
     hw = w / 2 + margin_x
     hh = h / 2 + margin_y
     pts = [
         Ppoint(x - hw, y - hh),  # SW
-        Ppoint(x + hw, y - hh),  # SE
-        Ppoint(x + hw, y + hh),  # NE
         Ppoint(x - hw, y + hh),  # NW
+        Ppoint(x + hw, y + hh),  # NE
+        Ppoint(x + hw, y - hh),  # SE
     ]
     return Ppoly(ps=pts)
 

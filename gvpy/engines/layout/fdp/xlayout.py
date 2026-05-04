@@ -28,9 +28,7 @@ from typing import Any
 
 
 _DFLT_MAX_ATTEMPTS = 9
-_K_GROW_FACTOR = 0.5            # K is multiplied by 1 + attempt × this
-_REPEL_OVERLAP_FACTOR = 1.5     # F_rep when nodes overlap
-_REPEL_NORMAL_FACTOR = 0.1      # F_rep otherwise
+_REPEL_C = 1.5                  # X_C in xlayout.c:39 (xpms->C)
 
 
 def _trace(msg: str) -> None:
@@ -52,46 +50,54 @@ def _node_radius(ln: Any) -> float:
     return math.hypot(ln.width / 2, ln.height / 2)
 
 
-def xlayout(layout: Any, K: float, sep: float, max_iter: int) -> int:
+def xlayout(layout: Any, K: float, sep: float, max_iter: int,
+            tries: int = _DFLT_MAX_ATTEMPTS) -> int:
     """Force-based overlap removal.
 
-    Outer loop: up to :data:`_DFLT_MAX_ATTEMPTS` attempts; each
-    attempt grows ``K`` to push nodes farther apart.  Inner loop:
-    F-R-style force iteration with the modified overlap-aware
-    repulsion / attraction.
+    Outer loop: up to ``tries`` attempts; ``K`` grows additively
+    by the original ``K`` per try (mirrors ``xpms.K += K`` in
+    xlayout.c:300).  Inner loop: F-R-style force iteration with
+    overlap-aware repulsion + clearance-distance attraction.
 
-    Returns the attempt count when overlaps cleared, or
-    :data:`_DFLT_MAX_ATTEMPTS` if it bailed out.
-
-    Mirrors ``xlayout.c::fdp_xLayout`` algorithm.
+    Returns the number of overlapping pairs *remaining* (0 means
+    fully cleared).  Mirrors ``xlayout.c::x_layout``.
     """
     nodes = list(layout.lnodes.values())
     N = len(nodes)
     if N < 2:
         return 0
 
+    n_edges = len(layout.graph.edges)
     sep_x = sep
     sep_y = sep
     inner_iters = min(max_iter, 100)
 
-    for attempt in range(_DFLT_MAX_ATTEMPTS):
-        K_eff = K * (1 + attempt * _K_GROW_FACTOR)
+    # Initial overlap count — mirrors x_layout.c:273.
+    if not _count_overlaps(nodes, sep_x, sep_y):
+        return 0
+
+    K_eff = K
+    overlaps = 0
+    for attempt in range(tries):
         K2 = K_eff * K_eff
+        # X_ov / X_nonov mirror xlayout.c:281-282.
+        x_ov = _REPEL_C * K2
+        if N > 1:
+            x_nonov = n_edges * x_ov * 2.0 / (N * (N - 1))
+        else:
+            x_nonov = 0.0
         T0 = K_eff * math.sqrt(N) / 5.0
-        overlaps = 0
 
         for it in range(inner_iters):
             temp = T0 * (inner_iters - it) / inner_iters
             if temp <= 0:
                 break
 
-            # Clear displacements.
             for ln in nodes:
                 ln.disp_x = 0.0
                 ln.disp_y = 0.0
 
             overlaps = 0
-            # Pairwise repulsion with overlap-aware coefficient.
             for i in range(N):
                 a = nodes[i]
                 for j in range(i + 1, N):
@@ -106,9 +112,9 @@ def xlayout(layout: Any, K: float, sep: float, max_iter: int) -> int:
 
                     if _is_overlap(a, b, dx, dy, sep_x, sep_y):
                         overlaps += 1
-                        force = _REPEL_OVERLAP_FACTOR * K2 / dist2
+                        force = x_ov / dist2
                     else:
-                        force = _REPEL_NORMAL_FACTOR * K2 / dist2
+                        force = x_nonov / dist2
 
                     fx = dx * force
                     fy = dy * force
@@ -117,7 +123,6 @@ def xlayout(layout: Any, K: float, sep: float, max_iter: int) -> int:
                     a.disp_x -= fx
                     a.disp_y -= fy
 
-            # Edge-attractive forces, clear-distance based.
             for key, edge in layout.graph.edges.items():
                 t_ln = layout.lnodes.get(edge.tail.name)
                 h_ln = layout.lnodes.get(edge.head.name)
@@ -140,7 +145,6 @@ def xlayout(layout: Any, K: float, sep: float, max_iter: int) -> int:
                 h_ln.disp_x -= fx
                 h_ln.disp_y -= fy
 
-            # Apply temperature-capped displacement to each unpinned node.
             for ln in nodes:
                 if ln.pinned:
                     continue
@@ -158,11 +162,24 @@ def xlayout(layout: Any, K: float, sep: float, max_iter: int) -> int:
 
             if overlaps == 0:
                 _trace(f"cleared in attempt={attempt} iter={it}")
-                return attempt
+                return 0
 
         if overlaps == 0:
-            return attempt
+            return 0
+        K_eff += K          # additive growth, mirrors xlayout.c:300
 
-    _trace(f"bail max_attempts={_DFLT_MAX_ATTEMPTS} "
-           f"final_overlaps={overlaps}")
-    return _DFLT_MAX_ATTEMPTS
+    _trace(f"bail tries={tries} remaining_overlaps={overlaps}")
+    return overlaps
+
+
+def _count_overlaps(nodes: list, sep_x: float, sep_y: float) -> int:
+    """Count pairs of overlapping bounding boxes."""
+    cnt = 0
+    N = len(nodes)
+    for i in range(N):
+        a = nodes[i]
+        for j in range(i + 1, N):
+            b = nodes[j]
+            if _is_overlap(a, b, b.x - a.x, b.y - a.y, sep_x, sep_y):
+                cnt += 1
+    return cnt

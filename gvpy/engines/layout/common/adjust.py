@@ -433,12 +433,44 @@ def remove_overlap(layout: Any) -> int:
         return scalexy_adjust(layout)
     if mode == AM_COMPRESS:
         return compress_adjust(layout)
-    if mode in (AM_PRISM, AM_VOR):
-        # §4.N.3.3: Voronoi-based overlap removal serves as our
-        # substitute for both AM_PRISM and AM_VOR.  C uses GTS for
-        # PRISM when available; we use scipy.spatial.Voronoi for
-        # both modes since the qualitative result (non-overlap
-        # preserving relative positions) is the same.
+    if mode == AM_PRISM:
+        # C dispatches AM_PRISM to ``fdpAdjust`` (adjust.c:587-632) —
+        # a *force-directed* expansion using a sparse-graph adjacency
+        # matrix.  The fdp xLayout pass we already ported has the
+        # same qualitative effect: K²/d² repulsion + clearance-based
+        # attraction expand the layout until overlaps clear.  Using
+        # xLayout instead of plain Voronoi-centroid relaxation lets
+        # the layout grow to give edges room to route around nodes —
+        # without it, dense fan-out layouts (e.g. star topologies)
+        # leave node-to-node distances too small for spline routing.
+        from gvpy.engines.layout.fdp.xlayout import xlayout
+        # K = mean per-edge spring rest length in points.  xlayout
+        # uses K to scale the K²/d² repulsion strength, so K
+        # should be the *per-edge* desired length, not a
+        # graph-aggregate (e.g. neato's ``default_dist`` includes a
+        # ``sqrt(N)`` factor for initial placement and would
+        # over-expand here).  Fall back to one 0.75 inch node
+        # width (= 72 pt) when no edge data is available.
+        edges = list(layout.graph.edges.items())
+        K = 72.0
+        if edges:
+            total = 0.0
+            n = 0
+            for _key, e in edges:
+                try:
+                    total += float(e.attributes.get("len", "1.0")) * 72.0
+                    n += 1
+                except (ValueError, TypeError):
+                    pass
+            if n > 0:
+                K = total / n
+        return xlayout(layout, K=K, sep=layout.sep,
+                       max_iter=200, tries=9)
+    if mode == AM_VOR:
+        # Pure Voronoi-centroid relaxation (Lloyd's algorithm).  C
+        # ``vAdjust`` (adjust.c:973) is the equivalent and is a
+        # density-balancing operation rather than a layout-growing
+        # one — keep this distinct from AM_PRISM above.
         from gvpy.engines.layout.common.voronoi import voronoi_adjust
         return voronoi_adjust(layout)
     # §4.N.3.4 — orthogonal modes.  C uses constraint solvers; this

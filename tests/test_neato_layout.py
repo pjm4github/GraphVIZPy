@@ -346,9 +346,14 @@ class TestNeatoStressKernel:
         Random init + KK gets stuck (forces ≈ 0 but layout is off);
         PivotMDS init places nodes near the analytical optimum and
         KK's Newton steps then close the residual.
+
+        Smart-init is opt-in via ``start=self`` (matches C
+        ``setSeed`` semantics where ``self`` prefix selects
+        INIT_SELF / smart init).
         """
         import math
-        r = neato_gv("graph G { mode=KK; root -- a; root -- b; root -- c; }")
+        r = neato_gv("graph G { mode=KK; start=self; "
+                     "root -- a; root -- b; root -- c; }")
         positions = {n["name"]: (n["x"], n["y"]) for n in r["nodes"]}
         for leaf in ("a", "b", "c"):
             d = math.hypot(positions["root"][0] - positions[leaf][0],

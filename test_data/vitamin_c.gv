@@ -1,0 +1,102 @@
+// L-Ascorbic acid (Vitamin C) — C6H8O6
+// 5-membered furanone (lactone) ring with two enediol -OH groups and a
+// (CHOH)(CH2OH) side chain.  Tests neato on a heterocyclic structure.
+//
+// Usage:
+//   python gvcli.py -Kneato test_data/vitamin_c.gv -Tsvg -o vitamin_c.svg
+//
+// Numbering follows IUPAC (furan-2(5H)-one):
+//   C1 = lactone carbonyl (=O)
+//   C2, C3 = ring enediol carbons (each with -OH; C2=C3 double bond)
+//   C4 = ring sp3 carbon (H + side chain)
+//   ringO between C1 and C4
+//   C5, C6 = side chain (-CHOH-CH2OH)
+
+graph ascorbic_acid {
+
+    // ``start=N`` seeds neato's random initial placement.  Layout
+    // is otherwise stochastic — different seeds find different
+    // local minima with similar stress.  Seed 62 was selected by
+    // a 109-seed sweep as the lowest-stress (0.957) seed that
+    // produces the chemistry-natural cyclic order around C5
+    // (H5 sits in the angular wedge between O5 and C4), matching
+    // C dot.exe's output.
+    start=62;
+
+    // ── Ring backbone (5 atoms) ───────────────────────────
+    // Edge ``len`` values uniformly scaled 1.5x from the natural
+    // chemical bond ratios so the rendered molecule has more
+    // breathing room.  Multiply every value by the same factor to
+    // keep relative geometry; chemistry-accurate originals are in
+    // the comments.
+    ringO -- C1 [len=1.50];    // 1.0  ring O – carbonyl C
+    C1 -- C2    [len=1.275];   // 0.85 C1–C2 (formal single, lactone)
+    C2 -- C3    [len=1.275];   // 0.85 C2=C3 enediol double bond
+    C3 -- C4    [len=1.50];    // 1.0  C3–C4
+    C4 -- ringO [len=1.50];    // 1.0  ring closure C4 – ring O
+
+    // ── Carbonyl and ring-OHs ─────────────────────────────
+    C1 -- O1    [len=1.275];   // 0.85 C1=O (carbonyl)
+    C2 -- O2    [len=1.275];   // 0.85 C2-OH (enediol)
+    C3 -- O3    [len=1.275];   // 0.85 C3-OH (enediol)
+
+    // ── Hydrogens on ring-OHs ─────────────────────────────
+    O2 -- H2    [len=0.90];    // 0.6
+    O3 -- H3    [len=0.90];    // 0.6
+
+    // ── Ring-C4 hydrogen ──────────────────────────────────
+    C4 -- H4    [len=1.05];    // 0.7
+
+    // ── Side chain off C4: -CH(OH)-CH2(OH) ───────────────
+    C4 -- C5    [len=1.80];    // 1.2  ring C4 to side-chain CHOH
+    C5 -- O5    [len=1.275];   // 0.85 C5-OH
+    O5 -- H5O   [len=0.90];    // 0.6  OH hydrogen
+    C5 -- H5    [len=1.05];    // 0.7  C5-H
+
+    C5 -- C6    [len=1.50];    // 1.0  CHOH-CH2OH
+    C6 -- O6    [len=1.275];   // 0.85 C6-OH
+    O6 -- H6O   [len=0.90];    // 0.6  OH hydrogen
+    C6 -- H6a   [len=1.05];    // 0.7  two methylene H's
+    C6 -- H6b   [len=1.05];    // 0.7
+
+    // ── Atom styling ──────────────────────────────────────
+    // Each atom carries its IUPAC-style identifier as its label so
+    // every position in the molecule can be referenced individually.
+    // Nodes grow to fit the label automatically — ``width`` is the
+    // minimum, not a fixed size.
+
+    // Ring carbons (sp2 enediol C2/C3, sp3 C4, lactone C1, side
+    // chain C5/C6) — dark grey.
+    C1  [label="C1", shape=circle, width=0.3, style=filled, fillcolor=gray30, fontcolor=white];
+    C2  [label="C2", shape=circle, width=0.3, style=filled, fillcolor=gray30, fontcolor=white];
+    C3  [label="C3", shape=circle, width=0.3, style=filled, fillcolor=gray30, fontcolor=white];
+    C4  [label="C4", shape=circle, width=0.3, style=filled, fillcolor=gray30, fontcolor=white];
+    C5  [label="C5", shape=circle, width=0.3, style=filled, fillcolor=gray30, fontcolor=white];
+    C6  [label="C6", shape=circle, width=0.3, style=filled, fillcolor=gray30, fontcolor=white];
+
+    // Oxygens — red (chemistry convention).
+    // ringO = furanone ring O; O1 = carbonyl =O; O2/O3 = enediol OHs;
+    // O5/O6 = side-chain OHs.
+    ringO [label="Oring", shape=circle, width=0.3, style=filled, fillcolor=red, fontcolor=white];
+    O1    [label="O1",    shape=circle, width=0.3, style=filled, fillcolor=red, fontcolor=white];
+    O2    [label="O2",    shape=circle, width=0.3, style=filled, fillcolor=red, fontcolor=white];
+    O3    [label="O3",    shape=circle, width=0.3, style=filled, fillcolor=red, fontcolor=white];
+    O5    [label="O5",    shape=circle, width=0.3, style=filled, fillcolor=red, fontcolor=white];
+    O6    [label="O6",    shape=circle, width=0.3, style=filled, fillcolor=red, fontcolor=white];
+
+    // Hydrogens — light yellow.  Suffixes:
+    //   H2/H3  = enediol OH protons      (on O2/O3)
+    //   H4     = ring sp3 C-H            (on C4)
+    //   H5     = side-chain CH proton    (on C5)
+    //   H5O    = side-chain OH proton    (on O5)
+    //   H6a/H6b = methylene protons      (on C6, two of them)
+    //   H6O    = side-chain OH proton    (on O6)
+    H2  [label="H2",  shape=circle, width=0.25, style=filled, fillcolor=lightyellow];
+    H3  [label="H3",  shape=circle, width=0.25, style=filled, fillcolor=lightyellow];
+    H4  [label="H4",  shape=circle, width=0.25, style=filled, fillcolor=lightyellow];
+    H5  [label="H5",  shape=circle, width=0.25, style=filled, fillcolor=lightyellow];
+    H5O [label="H5O", shape=circle, width=0.25, style=filled, fillcolor=lightyellow];
+    H6a [label="H6a", shape=circle, width=0.25, style=filled, fillcolor=lightyellow];
+    H6b [label="H6b", shape=circle, width=0.25, style=filled, fillcolor=lightyellow];
+    H6O [label="H6O", shape=circle, width=0.25, style=filled, fillcolor=lightyellow];
+}
