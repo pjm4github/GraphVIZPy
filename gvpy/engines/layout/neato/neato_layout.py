@@ -466,11 +466,21 @@ class NeatoLayout(LayoutEngine):
     # ── Component handling ───────────────────────
 
     def _layout_and_pack(self, components, adj, edge_len):
-        """Layout each component separately and pack left-to-right."""
+        """Layout each component separately and 2D-pack them.
+
+        Uses the polyomino grid packer (``pack_components_polyomino``)
+        instead of left-to-right concatenation.  Inputs with hundreds
+        of small components — common for ancestry / forest graphs —
+        otherwise produce a degenerate horizontal strip.
+        """
+        from gvpy.engines.layout.common.postproc import (
+            pack_components_polyomino,
+        )
+
         for comp in components:
             self._layout_component(comp, adj, edge_len)
-        gap = max(self.default_dist * 0.5, 36.0)
-        self._pack_components_lr(components, gap=gap)
+        margin = max(self.default_dist * 0.5, 8.0)
+        pack_components_polyomino(self, components, margin=margin)
 
     # ── Edge-route-aware JSON output ─────────────
 

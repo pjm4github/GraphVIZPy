@@ -103,3 +103,41 @@ def pack_components_lr(layout, components: list[set[str]],
         for ln in comp_lns:
             ln.x += dx
         x_offset += (max_x - min_x) + gap
+
+
+def pack_components_polyomino(layout, components: list[set[str]],
+                              margin: float = 8.0) -> None:
+    """Pack components into a roughly-square 2D layout.
+
+    Mirrors ``lib/pack/pack.c::polyRects``: each component covers a
+    set of cells on a coarse grid, components are sorted by
+    perimeter descending, and each one is greedily placed by
+    spiralling outward from origin.
+
+    Replaces ``pack_components_lr`` for engines (notably neato) that
+    would otherwise produce a degenerate horizontal strip when the
+    input has many disconnected components.
+    """
+    from gvpy.engines.layout.common.pack import Bbox, poly_rects
+
+    comp_lists = []
+    bbs = []
+    for comp in components:
+        comp_lns = [layout.lnodes[n] for n in comp if n in layout.lnodes]
+        if not comp_lns:
+            continue
+        ll_x = min(ln.x - ln.width / 2 for ln in comp_lns)
+        ll_y = min(ln.y - ln.height / 2 for ln in comp_lns)
+        ur_x = max(ln.x + ln.width / 2 for ln in comp_lns)
+        ur_y = max(ln.y + ln.height / 2 for ln in comp_lns)
+        comp_lists.append(comp_lns)
+        bbs.append(Bbox(ll_x, ll_y, ur_x, ur_y))
+
+    if not bbs:
+        return
+
+    places = poly_rects(bbs, margin=margin)
+    for comp_lns, bb, (dx, dy) in zip(comp_lists, bbs, places):
+        for ln in comp_lns:
+            ln.x += dx
+            ln.y += dy
