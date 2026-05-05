@@ -24,7 +24,11 @@ from __future__ import annotations
 import math
 
 from gvpy.engines.layout.pathplan.pathgeom import Ppoint, Ppoly
-from gvpy.engines.layout.pathplan.visibility_np import clear_vec, get_np_ctx
+from gvpy.engines.layout.pathplan.visibility_np import (
+    cache_vis_coo,
+    clear_vec,
+    get_np_ctx,
+)
 from gvpy.engines.layout.pathplan.vispath import POLYID_NONE, POLYID_UNKNOWN, Vconfig
 
 # Note: ``in_poly`` is imported lazily inside :func:`polyhit` to avoid
@@ -239,6 +243,10 @@ def visibility(conf: Vconfig) -> None:
     """
     conf.vis = allocArray(conf.N, 2)
     compVis(conf)
+    # Pre-build sparse COO triplets of the inner V×V visibility
+    # matrix.  Amortises the list→numpy conversion across all
+    # subsequent Pobspath / shortestPath calls.
+    cache_vis_coo(conf)
 
 
 def polyhit(conf: Vconfig, p: Ppoint) -> int:
