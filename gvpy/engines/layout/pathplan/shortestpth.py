@@ -13,80 +13,51 @@ Two functions:
 """
 from __future__ import annotations
 
+import numpy as np
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import dijkstra
+
 from gvpy.engines.layout.pathplan.pathgeom import Ppoint
 from gvpy.engines.layout.pathplan.vispath import Vconfig
 from gvpy.engines.layout.pathplan.visibility import directVis
 
 
-# See: /lib/pathplan/shortestpth.c @ 30
-# C uses INT_MAX; Python uses a plain int
-# large enough to dominate any real distance.  ``math.inf`` would
-# also work but the sign-flip trick (``val[k] *= -1``) needs a
-# finite value to flip cleanly.
-_UNSEEN = float(2**31 - 1)
-
-
 def shortestPath(root: int, target: int, V: int, wadj: list) -> list[int]:
-    """Dijkstra from ``root`` to ``target`` on the ``V × V`` matrix ``wadj``.
+    """Dijkstra from ``root`` to ``target`` on a visibility-graph matrix.
 
-    See: /lib/pathplan/shortestpth.c @ 30
+    Returns a length-``V`` list ``dad`` where ``dad[i]`` is the
+    predecessor of node ``i`` on the shortest path from ``root``,
+    or ``-1`` for unreachable nodes / the root itself.  Walking
+    ``dad`` from ``target`` back through predecessors traces the
+    shortest path to ``root``.
 
-    Returns a list ``dad`` of length ``V`` where the shortest path
-    from ``target`` back to ``root`` is ``target, dad[target],
-    dad[dad[target]], ..., root``.  ``dad[root] == -1`` sentinels
-    the end.
-
-    C uses a sign-flip trick on ``val`` to distinguish "seen" from
-    "in-frontier": positive values are settled, negative values
-    are tentative distances, and a sentinel ``val[-1]`` below
-    ``-unseen`` guards the min-search.  Python preserves the
-    algorithm verbatim, using a list-plus-sentinel layout to match
-    C's ``vl[0]`` / ``val = vl + 1`` indexing trick.
-
-    Only the lower-left triangle of ``wadj`` is consulted (``wadj[i][j]``
-    for ``i >= j``).
+    Implementation: builds a dense ``V × V`` weight matrix from the
+    list-of-lists ``wadj`` (whose rows have variable lengths in the
+    C-port format — the first ``V - 2`` rows are length ``V - 2``
+    and the last 2 are length ``V``) and runs ``scipy.sparse.csgraph
+    .dijkstra``.  Replaces the hand-rolled dense Dijkstra; orders of
+    magnitude faster on graphs with thousands of vertices.
     """
-    dad = [-1] * V
-    # C: ``COORD *vl = gv_calloc(V + 1, sizeof(COORD)); val = vl + 1;``
-    # val[-1] is vl[0] (the sentinel).  In Python we use a list
-    # indexed from -1 to V-1 via an offset-by-one helper.
-    #
-    # Simpler approach: keep a ``val`` list of length V AND a
-    # separate ``sentinel`` variable for what C calls ``val[-1]``.
-    # Rewrite the ``val[t] > val[min]`` comparisons to special-case
-    # ``min == -1`` → use ``sentinel``.
-    val: list[float] = [-_UNSEEN] * V
-    sentinel = -(_UNSEEN + 1.0)
+    arr = np.zeros((V, V), dtype=np.float64)
+    for i in range(V):
+        row = wadj[i]
+        if row is None:
+            continue
+        rlen = min(len(row), V)
+        if rlen > 0:
+            arr[i, :rlen] = row[:rlen]
+    # Symmetrise: row i may not extend into the columns covered by
+    # the query-point rows V-2 / V-1 (which have length V).  Taking
+    # max enforces undirected semantics on every populated cell.
+    arr_sym = np.maximum(arr, arr.T)
+    g = csr_matrix(arr_sym)
 
-    minidx = root
-
-    # C loop: ``while (min != target)``
-    while minidx != target:
-        k = minidx
-        val[k] *= -1  # mark settled
-        minidx = -1
-        if val[k] == _UNSEEN:
-            val[k] = 0.0
-
-        for t in range(V):
-            if val[t] < 0:
-                # Use lower triangle
-                if k >= t:
-                    wkt = wadj[k][t]
-                else:
-                    wkt = wadj[t][k]
-
-                newpri = -(val[k] + wkt)
-                if wkt != 0 and val[t] < newpri:
-                    val[t] = newpri
-                    dad[t] = k
-                # Find new tentative minimum.  C uses val[-1]
-                # (sentinel) as initial min value; we simulate
-                # with the explicit sentinel.
-                cur_min_val = sentinel if minidx == -1 else val[minidx]
-                if val[t] > cur_min_val:
-                    minidx = t
-
+    _, predecessors = dijkstra(
+        g, directed=False, indices=root, return_predecessors=True
+    )
+    # scipy returns -9999 for unreachable nodes and the root itself;
+    # callers expect -1 as the sentinel.
+    dad = [int(p) if p >= 0 else -1 for p in predecessors]
     return dad
 
 

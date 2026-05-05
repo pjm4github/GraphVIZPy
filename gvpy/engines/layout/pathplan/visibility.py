@@ -24,6 +24,7 @@ from __future__ import annotations
 import math
 
 from gvpy.engines.layout.pathplan.pathgeom import Ppoint, Ppoly
+from gvpy.engines.layout.pathplan.visibility_np import clear_vec, get_np_ctx
 from gvpy.engines.layout.pathplan.vispath import POLYID_NONE, POLYID_UNKNOWN, Vconfig
 
 # Note: ``in_poly`` is imported lazily inside :func:`polyhit` to avoid
@@ -193,6 +194,8 @@ def compVis(conf: Vconfig) -> None:
     wadj = conf.vis
     assert wadj is not None, "compVis called before allocArray"
 
+    ctx = get_np_ctx(conf)
+
     for i in range(V):
         # Add the polygon edge between ``i`` and ``previ``.
         # Works for polygons of 1 or 2 vertices at the cost of some
@@ -210,11 +213,13 @@ def compVis(conf: Vconfig) -> None:
         else:
             j_start = i - 1
         j = j_start
+        pi = pts[i]
         while j >= 0:
+            pj = pts[j]
             if (inCone(i, j, pts, nextPt, prevPt) and
                     inCone(j, i, pts, nextPt, prevPt) and
-                    clear(pts[i], pts[j], V, V, V, pts, nextPt)):
-                d = dist(pts[i], pts[j])
+                    clear_vec(pi.x, pi.y, pj.x, pj.y, V, V, ctx)):
+                d = dist(pi, pj)
                 wadj[i][j] = d
                 wadj[j][i] = d
             j -= 1
@@ -279,6 +284,7 @@ def ptVis(conf: Vconfig, pp: int, p: Ppoint) -> list:
     prevPt = conf.prev
 
     vadj: list = [0.0] * (V + 2)
+    ctx = get_np_ctx(conf)
 
     if pp == POLYID_UNKNOWN:
         pp = polyhit(conf, p)
@@ -289,10 +295,12 @@ def ptVis(conf: Vconfig, pp: int, p: Ppoint) -> list:
         start = V
         end = V
 
+    px, py = p.x, p.y
+
     for k in range(0, start):
         pk = pts[k]
         if (in_cone(pts[prevPt[k]], pk, pts[nextPt[k]], p) and
-                clear(p, pk, start, end, V, pts, nextPt)):
+                clear_vec(px, py, pk.x, pk.y, start, end, ctx)):
             vadj[k] = dist(p, pk)
         else:
             vadj[k] = 0.0
@@ -303,7 +311,7 @@ def ptVis(conf: Vconfig, pp: int, p: Ppoint) -> list:
     for k in range(end, V):
         pk = pts[k]
         if (in_cone(pts[prevPt[k]], pk, pts[nextPt[k]], p) and
-                clear(p, pk, start, end, V, pts, nextPt)):
+                clear_vec(px, py, pk.x, pk.y, start, end, ctx)):
             vadj[k] = dist(p, pk)
         else:
             vadj[k] = 0.0
