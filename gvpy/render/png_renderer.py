@@ -175,8 +175,58 @@ def _draw_node(ctx: _Ctx, node: dict):
     elif shape in ("diamond", "Mdiamond"):
         pts = [(cx, cy - hh), (cx + hw, cy), (cx, cy + hh), (cx - hw, cy)]
         ctx.draw.polygon(pts, fill=fill_c, outline=stroke_c, width=pw)
-    elif shape in ("point", "circle", "doublecircle"):
+    elif shape in ("point", "circle"):
         ctx.draw.ellipse(rect, fill=fill_c, outline=stroke_c, width=pw)
+    elif shape == "doublecircle":
+        # C convention (lib/common/shapes.c) — inner filled
+        # circle, outer empty ring with a small white gap
+        # between strokes.  Mirrors the same fix in
+        # ``svg_renderer.py``: inner radius = outer - 4 pt.
+        gap = 4 * ctx.scale
+        inner = [cx - hw + gap, cy - hh + gap, cx + hw - gap, cy + hh - gap]
+        # Inner first (filled), outer second (empty) so the
+        # outer stroke is on top in the rasterized PNG.
+        ctx.draw.ellipse(inner, fill=fill_c, outline=stroke_c, width=pw)
+        ctx.draw.ellipse(rect, fill=None, outline=stroke_c, width=pw)
+    elif shape == "cylinder":
+        # Mirrors the SVG renderer's cylinder: rectangular body
+        # plus an elliptical top cap.  ``cap_ry`` follows
+        # Graphviz's ``YPAD = h/6`` convention (max 1/6 of the
+        # height, minimum 2 pt).
+        cap_ry = max(hh / 3.0, 2 * ctx.scale)  # full cap height = 2*ry
+        # Body rectangle (between the two cap centers).
+        body_top = cy - hh + cap_ry
+        body_bot = cy + hh - cap_ry
+        # Filled body via polygon (rect + bottom cap arc).
+        ctx.draw.rectangle(
+            [cx - hw, body_top, cx + hw, body_bot],
+            fill=fill_c, outline=None,
+        )
+        # Bottom cap (filled half-ellipse to fill the curve).
+        bot_cap = [cx - hw, body_bot - cap_ry,
+                   cx + hw, body_bot + cap_ry]
+        ctx.draw.ellipse(bot_cap, fill=fill_c, outline=None)
+        # Top cap (filled — covers the body's top straight edge).
+        top_cap = [cx - hw, cy - hh,
+                   cx + hw, cy - hh + 2 * cap_ry]
+        ctx.draw.ellipse(top_cap, fill=fill_c, outline=None)
+        # Now stroke the outline.  Sides:
+        ctx.draw.line(
+            [(cx - hw, body_top), (cx - hw, body_bot)],
+            fill=stroke_c, width=pw,
+        )
+        ctx.draw.line(
+            [(cx + hw, body_top), (cx + hw, body_bot)],
+            fill=stroke_c, width=pw,
+        )
+        # Bottom arc (visible front half).
+        ctx.draw.arc(
+            bot_cap, start=0, end=180, fill=stroke_c, width=pw,
+        )
+        # Top cap (full ellipse outline visible).
+        ctx.draw.ellipse(
+            top_cap, fill=None, outline=stroke_c, width=pw,
+        )
     else:
         # Default: ellipse
         ctx.draw.ellipse(rect, fill=fill_c, outline=stroke_c, width=pw)
