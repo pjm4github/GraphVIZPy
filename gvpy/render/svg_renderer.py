@@ -1499,11 +1499,26 @@ def _render_node(node: dict) -> str:
         r = max(hw, hh)
         lines.append(f'<circle cx="{x:.2f}" cy="{y:.2f}" r="{r:.2f}" {base}/>')
     elif shape == "doublecircle":
-        r = max(hw, hh)
-        lines.append(f'<circle cx="{x:.2f}" cy="{y:.2f}" r="{r:.2f}" {base}/>')
+        # C convention (lib/common/shapes.c): inner circle filled,
+        # outer empty ring with a small gap between them.  ``hw``
+        # is the natural outer radius — Graphviz lays out the
+        # node assuming the outer circle is the bounding shape,
+        # so we draw inner at ``r - 4`` and outer at ``r`` to
+        # match the reference output's ``rx=36`` / ``rx=40``
+        # pattern.  Drawing inner first means the outer empty
+        # ring is on top, which gives the visible white gap
+        # between the two strokes.
+        r_outer = max(hw, hh)
+        r_inner = max(r_outer - 4, 1.0)
         lines.append(
-            f'<circle cx="{x:.2f}" cy="{y:.2f}" r="{r - 3:.2f}" '
-            f'fill="none" stroke="{stroke}"{sw}/>')
+            f'<ellipse cx="{x:.2f}" cy="{y:.2f}" '
+            f'rx="{r_inner:.2f}" ry="{r_inner:.2f}" {base}/>'
+        )
+        lines.append(
+            f'<ellipse cx="{x:.2f}" cy="{y:.2f}" '
+            f'rx="{r_outer:.2f}" ry="{r_outer:.2f}" '
+            f'fill="none" stroke="{stroke}"{sw}{node_dash}/>'
+        )
     elif shape == "diamond":
         pts = f"{x:.2f},{y-hh:.2f} {x+hw:.2f},{y:.2f} {x:.2f},{y+hh:.2f} {x-hw:.2f},{y:.2f}"
         lines.append(f'<polygon points="{pts}" {base}/>')

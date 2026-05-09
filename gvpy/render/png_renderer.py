@@ -23,40 +23,52 @@ _ARROW_SIZE = 8.0
 
 # ── Color helpers ───────────────────────────────────
 
-_NAMED_COLORS: dict[str, tuple[int, ...]] = {
-    "black": (0, 0, 0), "white": (255, 255, 255),
-    "red": (255, 0, 0), "green": (0, 128, 0), "blue": (0, 0, 255),
-    "yellow": (255, 255, 0), "cyan": (0, 255, 255), "magenta": (255, 0, 255),
-    "gray": (128, 128, 128), "grey": (128, 128, 128),
-    "lightgray": (211, 211, 211), "lightgrey": (211, 211, 211),
-    "darkgray": (169, 169, 169), "darkgrey": (169, 169, 169),
-    "darkgreen": (0, 100, 0), "darkblue": (0, 0, 139),
-    "darkred": (139, 0, 0), "orange": (255, 165, 0),
-    "purple": (128, 0, 128), "brown": (165, 42, 42),
-    "pink": (255, 192, 203), "indigo": (75, 0, 130),
-    "gold": (255, 215, 0), "navy": (0, 0, 128),
-    "crimson": (220, 20, 60), "coral": (255, 127, 80),
-    "transparent": (0, 0, 0, 0), "none": (0, 0, 0, 0),
-}
-
 
 def _parse_color(name: str) -> tuple[int, ...]:
-    """Convert a color name or #hex to an RGBA tuple."""
+    """Convert a Graphviz color spec to an RGBA tuple.
+
+    Delegates to :func:`gvpy.render.colors.resolve_color` so the
+    PNG renderer accepts the same color grammar as the SVG
+    renderer:
+
+    - SVG named colors (``"red"``, ``"lightgreen"``, ``"gold"``,
+      …)
+    - X11 numbered variants (``"lightcyan2"``, …) → hex via the
+      X11 → SVG translation table.
+    - HSV triples (``"0.7 0.5 0.9"``).
+    - ``#rrggbb`` / ``#rrggbbaa`` literals.
+    - ``"none"`` / ``"transparent"`` → fully transparent.
+
+    Earlier versions of this renderer used a tiny ~30-entry
+    inline lookup that silently fell through to black for
+    anything else (``"lightgreen"``, ``"lightyellow"``, etc.),
+    which made PNG output diverge from the SVG renderer for
+    the same input.  Routing through ``resolve_color`` keeps
+    the two formats in lock-step.
+    """
     if not name:
         return (0, 0, 0, 255)
-    name_lower = name.strip().lower()
-    if name_lower in _NAMED_COLORS:
-        c = _NAMED_COLORS[name_lower]
-        return c if len(c) == 4 else (*c, 255)
-    if name.startswith("#"):
-        h = name.lstrip("#")
+    from gvpy.render.colors import resolve_color
+    resolved = resolve_color(name).strip().lower()
+    if resolved in ("none", "transparent"):
+        return (0, 0, 0, 0)
+    if resolved.startswith("#"):
+        h = resolved.lstrip("#")
         if len(h) == 6:
             return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), 255)
         if len(h) == 8:
             return (int(h[0:2], 16), int(h[2:4], 16),
                     int(h[4:6], 16), int(h[6:8], 16))
-    # Fallback
-    return (0, 0, 0, 255)
+    # ``resolved`` is an SVG named color — map to RGB via Pillow
+    # which has the full SVG color set built in.
+    try:
+        from PIL import ImageColor
+        rgb = ImageColor.getrgb(resolved)
+        if len(rgb) == 4:
+            return rgb  # type: ignore[return-value]
+        return (rgb[0], rgb[1], rgb[2], 255)
+    except (ValueError, ImportError):
+        return (0, 0, 0, 255)
 
 
 def _opaque(c: tuple[int, ...]) -> bool:

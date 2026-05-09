@@ -61,6 +61,13 @@ state (positions for layout, current iteration + block states for sim)
 can be saved, restored, or exchanged with the pictosync graphical
 editor.
 
+## Layout engine comparison
+
+Side-by-side renders of every Python layout engine vs. the
+reference C `dot.exe` are in [Report.md](Report.md), one row
+per engine, each row showing the exact CLI invocation plus the
+PNG output for both implementations.
+
 ## Quick Start
 
 ### Install
