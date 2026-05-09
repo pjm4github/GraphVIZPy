@@ -57,43 +57,33 @@ def text_width_times_roman(text: str, fontsize: float) -> float:
     return total * fontsize / 1000.0
 
 
-_tk_root = None
-_tk_font_cache: dict[tuple[str, int], tuple] = {}
-
-
 def text_width_system(text: str, fontsize: float,
-                      family: str = "Times New Roman") -> float | None:
-    """Compute text width using the system font engine (tkinter).
+                      family: str = "Times New Roman",
+                      bold: bool = False,
+                      italic: bool = False) -> float | None:
+    """Compute text width using the C-aligned font metric LUT.
 
-    Uses the same font engine as Windows Graphviz (GDI+).  Returns
-    width in points, or ``None`` if tkinter is unavailable.  Caches
-    the Tk root and Font for performance.
+    Mirrors Graphviz ``estimate_textspan_size`` (textspan.c:32) which
+    is the path C uses when no Cairo/Pango/GD plugin is loaded — the
+    typical CLion-built ``dot.exe`` on Windows.
+
+    History
+    -------
+    Up to 2026-05-06 this function called tkinter's ``Font.measure``
+    on the assumption that "Windows Graphviz uses GDI+" — but the
+    CLion build (the one we compare against) loads no font plugin and
+    falls through to Graphviz's hardcoded ``textspan_lut.c`` LUT.  So
+    matching tkinter introduced 0.4-1 pt drift per glyph vs C, which
+    accumulated to 30-70 pt of inflation on long HTML labels in 1879
+    (TODO §2.5.12).  Replacing tkinter with the same LUT removes the
+    drift entirely.
+
+    Returns width in points.  Always returns a float (never None) —
+    the optional-None signature is preserved only for back-compat.
     """
-    global _tk_root
-    try:
-        import tkinter as tk
-        from tkinter.font import Font
-    except ImportError:
-        return None
-
-    key = (family, int(fontsize))
-    if key not in _tk_font_cache:
-        try:
-            if _tk_root is None:
-                _tk_root = tk.Tk()
-                _tk_root.withdraw()
-            dpi = _tk_root.winfo_fpixels('1i')
-            f = Font(family=family, size=int(fontsize))
-            _tk_font_cache[key] = (f, dpi)
-        except Exception:
-            return None
-
-    f, dpi = _tk_font_cache[key]
-    try:
-        w_px = f.measure(text)
-        return w_px * 72.0 / dpi
-    except Exception:
-        return None
+    from gvpy.engines.layout.font_metrics_lut import text_width_lut
+    return text_width_lut(text, fontsize, font_name=family,
+                          bold=bold, italic=italic)
 
 
 def avg_char_width_times_roman(fontsize: float) -> float:

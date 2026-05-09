@@ -121,6 +121,13 @@ def resolve_color(spec: str | None) -> str:
     s = spec.strip()
     if not s:
         return "none"
+    # ``"none"`` is the SVG/Graphviz convention for "no fill /
+    # transparent"; pass it straight through.  The X11 table
+    # spuriously has ``none → #fffffe`` (~near-white), but
+    # Graphviz callers using ``"none"`` are asking for a true
+    # absent fill, not a barely-perceptible white.
+    if s.lower() == "none":
+        return "none"
 
     # Already a hex literal (with or without alpha) — pass through.
     if s.startswith("#"):

@@ -295,3 +295,314 @@ def route_edges(layout: Any,
         Pobsclose(vconfig)
 
     _trace(f"routed={n_routed} failed={n_failed} edge_type={edge_type}")
+
+
+# ─────────────────────────────────────────────────────────────────
+# Cluster-aware per-edge routing (fdp ``compoundEdges``)
+# ─────────────────────────────────────────────────────────────────
+#
+# See: ``lib/fdpgen/clusteredges.c`` — ``compoundEdges`` and
+# ``objectList``.
+#
+# Where ``route_edges`` (above) builds one global vconfig with all
+# nodes as obstacles (mirrors neato's ``spline_edges_``), this
+# helper builds a **per-edge** vconfig from a cluster-aware
+# obstacle list:
+#
+# - The endpoints' enclosing clusters (and all common ancestors)
+#   are EXCLUDED so the edge can exit/enter its own cluster.
+# - Sibling clusters and sibling nodes at each level on the
+#   tail-LCA-head path are INCLUDED as obstacles.
+# - Real nodes become axis-aligned-box obstacles
+#   (``_node_bbox_polygon``); clusters become bbox-shaped
+#   obstacles (``_cluster_bbox_polygon``).
+#
+# Engine-agnostic by duck typing: any layout with
+# ``_clusters``, ``_cluster_parent``, ``_cluster_level``,
+# ``_node_to_cluster_obj``, ``lnodes``, and ``graph.edges``
+# works.  fdp is the canonical caller; sfdp / osage may follow.
+#
+# Trace channel: ``GVPY_TRACE_NEATO=1`` (shared with the flat
+# router) emits ``[TRACE neato_splines] compound: ...`` lines.
+
+
+def _cluster_bbox_polygon(cl: Any, margin: float = 4.0) -> Ppoly:
+    """Build a CW Ppoly axis-aligned rectangle for a cluster's
+    post-layout bbox, inflated by ``margin`` (esep equivalent).
+
+    ``cl.bb`` is ``(x_min, y_min, x_max, y_max)`` from
+    :func:`gvpy.engines.layout.fdp.cluster.compute_cluster_bboxes`,
+    which already includes the cluster's own margin.  ``margin``
+    here adds the routing-margin gap on top.
+    """
+    x_min, y_min, x_max, y_max = cl.bb
+    x_min -= margin
+    y_min -= margin
+    x_max += margin
+    y_max += margin
+    pts = [
+        Ppoint(x_min, y_min),  # SW
+        Ppoint(x_min, y_max),  # NW
+        Ppoint(x_max, y_max),  # NE
+        Ppoint(x_max, y_min),  # SE
+    ]
+    return Ppoly(ps=pts)
+
+
+def _gparent(layout: Any, g: Any) -> Any:
+    """C ``GPARENT(g)`` — return the parent cluster of ``g``, or
+    ``None`` if ``g`` is at the root level (or ``g`` is already
+    ``None``)."""
+    if g is None:
+        return None
+    parent_name = layout._cluster_parent.get(g.name)
+    if parent_name is None:
+        return None
+    for cl in layout._clusters:
+        if cl.name is parent_name or cl.name == parent_name:
+            return cl
+    return None
+
+
+def _add_graph_objs(layout: Any, g: Any, tex: Any, hex_: Any,
+                    polys: list[Ppoly], margin: float) -> None:
+    """C ``addGraphObjs(l, g, tex, hex, pm)`` — append obstacles
+    for ``g``'s direct children (clusters + nodes), excluding
+    ``tex`` and ``hex_``.
+
+    ``g`` is an ``FdpCluster`` (or any object with ``.name`` /
+    ``.direct_nodes``) or ``None`` (= root graph; iterate
+    top-level clusters and nodes outside any cluster).
+
+    ``tex`` / ``hex_`` are exclusions — the endpoints' own
+    enclosing clusters and the endpoint nodes themselves.  Each
+    is an ``FdpCluster`` instance, a node-name string, or
+    ``None``.
+    """
+    if g is None:
+        # Root: top-level clusters + nodes with no cluster parent.
+        for cl in layout._clusters:
+            if layout._cluster_parent[cl.name] is None:
+                if cl is tex or cl is hex_:
+                    continue
+                polys.append(_cluster_bbox_polygon(cl, margin))
+        for name, ln in layout.lnodes.items():
+            if layout._node_to_cluster.get(name) is not None:
+                continue
+            if name == tex or name == hex_:
+                continue
+            polys.append(_node_bbox_polygon(
+                ln.x, ln.y, ln.width, ln.height,
+                margin_x=margin, margin_y=margin,
+            ))
+    else:
+        # Cluster g: direct child clusters + direct member nodes.
+        for cl in layout._clusters:
+            if layout._cluster_parent.get(cl.name) == g.name:
+                if cl is tex or cl is hex_:
+                    continue
+                polys.append(_cluster_bbox_polygon(cl, margin))
+        for name in g.direct_nodes:
+            if name == tex or name == hex_:
+                continue
+            ln = layout.lnodes.get(name)
+            if ln is None:
+                continue
+            polys.append(_node_bbox_polygon(
+                ln.x, ln.y, ln.width, ln.height,
+                margin_x=margin, margin_y=margin,
+            ))
+
+
+def object_list(layout: Any, edge: Any,
+                margin: float = 4.0) -> list[Ppoly]:
+    """C ``objectList(ep, pm)`` — per-edge obstacle list.
+
+    Walk both endpoints up to their cluster LCA, accumulating
+    sibling clusters/nodes at each level.  Excludes the
+    endpoints, their enclosing clusters, and any common
+    ancestors so the edge can pass through its own cluster
+    boundary and stay inside common ancestors.
+
+    Returns a list of ``Ppoly`` ready for ``Pobsopen``.
+
+    Mirrors ``lib/fdpgen/clusteredges.c:151``.
+    """
+    t_name = edge.tail.name
+    h_name = edge.head.name
+
+    # PARENT(node): the node's innermost cluster (FdpCluster) or
+    # None for nodes outside any cluster.
+    hg = layout._node_to_cluster_obj.get(h_name)
+    tg = layout._node_to_cluster_obj.get(t_name)
+    # IS_CLUST_NODE branch from C is omitted — Py doesn't materialise
+    # cluster proxy nodes (those are dot-engine artefacts).  The
+    # exclusions are just the endpoint node names themselves.
+    hex_: Any = h_name
+    tex: Any = t_name
+
+    # LEVEL: depth from root.  Root = 0; top-level clusters = 1;
+    # nested = 2.  None (root-level free node) is level 0.
+    hlevel = layout._cluster_level.get(hg.name, 0) if hg else 0
+    tlevel = layout._cluster_level.get(tg.name, 0) if tg else 0
+
+    polys: list[Ppoly] = []
+
+    # raiseLevel: walk the deeper endpoint up until both are at
+    # the same cluster depth.  At each step add the current
+    # cluster's children (excluding the previous level's cluster).
+    if hlevel > tlevel:
+        for _ in range(hlevel - tlevel):
+            _add_graph_objs(layout, hg, hex_, None, polys, margin)
+            hex_ = hg
+            hg = _gparent(layout, hg)
+    elif tlevel > hlevel:
+        for _ in range(tlevel - hlevel):
+            _add_graph_objs(layout, tg, tex, None, polys, margin)
+            tex = tg
+            tg = _gparent(layout, tg)
+
+    # Both at the same level now; walk both up to LCA.
+    while hg is not tg:
+        _add_graph_objs(layout, hg, None, hex_, polys, margin)
+        _add_graph_objs(layout, tg, tex, None, polys, margin)
+        hex_ = hg
+        hg = _gparent(layout, hg)
+        tex = tg
+        tg = _gparent(layout, tg)
+
+    # At the LCA (could be None = root): add its children
+    # excluding both endpoint chains.
+    _add_graph_objs(layout, tg, tex, hex_, polys, margin)
+
+    return polys
+
+
+def route_edges_compound(layout: Any,
+                         edge_type: int | None = None,
+                         margin: float = 4.0) -> None:
+    """Cluster-aware per-edge spline routing.
+
+    For each edge, build a per-edge vconfig from
+    :func:`object_list` and route through it.  Mirrors C
+    ``compoundEdges`` (clusteredges.c:207).
+
+    Result lives in ``layout.edge_routes`` like the flat
+    :func:`route_edges`.  Falls back to a straight line on
+    Pobspath failure.
+
+    When ``edge_type`` is ``EDGETYPE_LINE`` or ``EDGETYPE_NONE``
+    we skip obstacle work entirely — same shape as the flat
+    helper.
+    """
+    if edge_type is None:
+        spl = (layout.graph.get_graph_attr("splines") or "").strip()
+        edge_type = edge_type_from_splines(spl)
+
+    layout.edge_routes = {}
+
+    if edge_type == EDGETYPE_NONE:
+        _trace("compound: splines=false / none — skipping")
+        return
+
+    if edge_type == EDGETYPE_LINE:
+        _trace("compound: splines=line — straight lines")
+        for key, edge in layout.graph.edges.items():
+            t_ln = layout.lnodes.get(edge.tail.name)
+            h_ln = layout.lnodes.get(edge.head.name)
+            if not t_ln or not h_ln:
+                continue
+            if edge.tail.name == edge.head.name:
+                layout.edge_routes[key] = _make_self_arc(t_ln, h_ln)
+            else:
+                layout.edge_routes[key] = EdgeRoute(
+                    points=[(t_ln.x, t_ln.y), (h_ln.x, h_ln.y)],
+                    spline_type="line",
+                )
+        return
+
+    n_routed = 0
+    n_failed = 0
+    n_empty_obs = 0
+
+    for key, edge in layout.graph.edges.items():
+        t_name, h_name = edge.tail.name, edge.head.name
+        t_ln = layout.lnodes.get(t_name)
+        h_ln = layout.lnodes.get(h_name)
+        if not t_ln or not h_ln:
+            continue
+        if t_name == h_name:
+            layout.edge_routes[key] = _make_self_arc(t_ln, h_ln)
+            continue
+
+        polys = object_list(layout, edge, margin=margin)
+
+        p0 = Ppoint(t_ln.x, t_ln.y)
+        p1 = Ppoint(h_ln.x, h_ln.y)
+
+        if not polys:
+            # No obstacles to avoid — straight line is optimal.
+            pl: Ppolyline = Ppolyline(ps=[p0, p1])
+            n_empty_obs += 1
+        else:
+            vconfig = None
+            try:
+                vconfig = Pobsopen(polys)
+            except Exception as exc:
+                _trace(
+                    f"compound: Pobsopen failed for {t_name}->{h_name} "
+                    f"({exc}); falling back to straight line"
+                )
+                pl = Ppolyline(ps=[p0, p1])
+                n_failed += 1
+            if vconfig is not None:
+                try:
+                    pl = Pobspath(
+                        vconfig, p0, POLYID_UNKNOWN, p1, POLYID_UNKNOWN,
+                    )
+                except Exception as exc:
+                    _trace(
+                        f"compound: Pobspath failed for "
+                        f"{t_name}->{h_name} ({exc})"
+                    )
+                    pl = Ppolyline(ps=[p0, p1])
+                    n_failed += 1
+                finally:
+                    Pobsclose(vconfig)
+
+        pts = [(p.x, p.y) for p in pl.ps]
+
+        if len(pts) >= 2:
+            pts[0] = _line_box_intersect(
+                pts[0], pts[1], t_ln.x, t_ln.y,
+                t_ln.width / 2, t_ln.height / 2,
+            )
+            pts[-1] = _line_box_intersect(
+                pts[-1], pts[-2], h_ln.x, h_ln.y,
+                h_ln.width / 2, h_ln.height / 2,
+            )
+
+        if edge_type == EDGETYPE_SPLINE and len(pts) >= 2:
+            try:
+                bez = to_bezier(pts)
+                layout.edge_routes[key] = EdgeRoute(
+                    points=bez, spline_type="bezier",
+                )
+            except Exception as exc:
+                _trace(
+                    f"compound: to_bezier failed {t_name}->{h_name} "
+                    f"({exc}); using polyline"
+                )
+                layout.edge_routes[key] = EdgeRoute(
+                    points=pts, spline_type="polyline",
+                )
+        else:
+            layout.edge_routes[key] = EdgeRoute(
+                points=pts, spline_type="polyline",
+            )
+        n_routed += 1
+
+    _trace(
+        f"compound: routed={n_routed} failed={n_failed} "
+        f"empty_obs_fallback={n_empty_obs} edge_type={edge_type}"
+    )

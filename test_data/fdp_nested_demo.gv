@@ -1,0 +1,21 @@
+// Tiny nested-cluster fixture for the deriveGraph two-level
+// layout: ``cluster_inner`` is wholly contained inside
+// ``cluster_outer``.  Tests that the recursive layout pipeline
+// handles depth>1 correctly:
+//
+//   - cluster_inner is laid out first (deepest).
+//   - cluster_outer lays out (cluster_inner proxy + ``outside``
+//     direct member).
+//   - Root lays out (cluster_outer proxy + ``free`` direct
+//     member).
+graph G {
+    free -- outside;
+    outside -- inside1;
+    inside1 -- inside2;
+    subgraph cluster_outer {
+        outside;
+        subgraph cluster_inner {
+            inside1; inside2;
+        }
+    }
+}

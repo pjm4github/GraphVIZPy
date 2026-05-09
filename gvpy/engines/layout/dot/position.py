@@ -416,12 +416,41 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
                     aux_edges.append((ln_name, rn_name,
                                       max(1, int(lbl_w)), 0))
 
+        # §2.5.16 root-hierarchy: C's contain_subclust runs on the
+        # root graph and emits root.ln→cluster.ln + cluster.rn→root.rn
+        # for every top-level cluster.  Py was missing those 196 edges
+        # on 1879.dot because it skipped section 3d when
+        # tree_parent[cluster] is None.  Fix: create _cln_root /
+        # _crn_root pseudo-cluster boundaries, add them to aux_nodes,
+        # and let section 3d treat None parent as ROOT_NAME.  Gated
+        # behind GVPY_ROOT_HIERARCHY=1 for the first pass; full corpus
+        # regression must pass before flipping the default.
+        ROOT_NAME = "__root__"
+        import os as _os_rh
+        _root_hier_enabled = _os_rh.environ.get(
+            "GVPY_ROOT_HIERARCHY", "") == "1"
+        if _root_hier_enabled:
+            cl_ln[ROOT_NAME] = "_cln_root"
+            cl_rn[ROOT_NAME] = "_crn_root"
+            aux_nodes.extend([cl_ln[ROOT_NAME], cl_rn[ROOT_NAME]])
+
         # Settable routing-channel width floor applied to every
         # cluster-boundary gap below.  The user can bump this via
         # ``layout._routing_channel`` to widen every cluster margin
         # and sibling-cluster separation in one knob.
-        _rc_floor = float(getattr(layout, "_routing_channel",
-                                   getattr(layout, "_CL_OFFSET", 8.0)))
+        # §2.5.17: when GVPY_ROOT_HIERARCHY=1 is set we suppress this
+        # floor to match C's behaviour exactly — C uses
+        # `late_int(g, G_margin, CL_OFFSET, 0)` which does atoi() on
+        # the margin attr, so a fractional `margin="0.8"` parses to 0
+        # in C.  Py's float-then-int path also gives 0, but the
+        # `_rc_floor=8` floor inflated every cluster-boundary gap by
+        # 8 pt, producing the +8 sec3a / sec3d / sec3e drift seen in
+        # the §2.5.17 minlen audit.
+        _rc_floor = (
+            0.0 if _root_hier_enabled
+            else float(getattr(layout, "_routing_channel",
+                               getattr(layout, "_CL_OFFSET", 8.0)))
+        )
 
         # ── 3b. Containment: ln → node, node → rn ───
         # (contain_nodes in C code)
@@ -455,17 +484,61 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
             aux_edges.append((ln_name, rn_name, 1, 128))
 
         # ── 3d. Hierarchy: parent.ln → child.ln, child.rn → parent.rn
-        # (contain_subclust in C code — includes parent border)
+        # (contain_subclust in C code — includes parent border).  C
+        # also runs this on the root graph, anchoring every top-level
+        # cluster to a root.ln/rn frame.  When GVPY_ROOT_HIERARCHY=1
+        # we mirror that: top-level clusters get an edge from the
+        # synthetic _cln_root / _crn_root nodes.  See §2.5.15-16.
+        # Root margin = CL_OFFSET (8pt); root has no cluster border.
+        _CL_OFFSET = float(getattr(layout, "_CL_OFFSET", 8.0))
+        # §2.5.17: read root graph's "margin" attr with atoi-style
+        # parse to mirror C's `late_int(root, G_margin, CL_OFFSET, 0)`.
+        # On a typical graph the root's margin is "0.5,0.5" (inches);
+        # atoi truncates to 0.  If integer "8" is set → margin=8.  If
+        # the attr is missing entirely C returns CL_OFFSET=8.
+        def _atoi_margin(attr_val: str | None, default: int) -> int:
+            if attr_val is None:
+                return default
+            s = attr_val.strip().lstrip("-+")
+            n = 0
+            i = 0
+            sign = 1
+            if attr_val.strip().startswith("-"):
+                sign = -1
+            while i < len(s) and s[i].isdigit():
+                n = n * 10 + int(s[i])
+                i += 1
+            return sign * n
+        _root_margin_attr = layout.graph.get_graph_attr("margin")
+        _root_margin = max(0, _atoi_margin(_root_margin_attr, int(_CL_OFFSET)))
+
         for cl_name, par in tree_parent.items():
             if par is None:
-                continue
-            margin = max(int(cl_by_name[par].margin), int(_rc_floor))
-            par_bl = cl_border_l.get(par, 0.0)
-            par_br = cl_border_r.get(par, 0.0)
-            aux_edges.append((cl_ln[par], cl_ln[cl_name],
-                              max(1, int(margin + par_bl)), 0))
-            aux_edges.append((cl_rn[cl_name], cl_rn[par],
-                              max(1, int(margin + par_br)), 0))
+                if not _root_hier_enabled:
+                    continue
+                # Treat None parent as the synthetic root cluster;
+                # use root's atoi-parsed margin attr (typically 0).
+                margin = max(_root_margin, int(_rc_floor))
+                par_bl = par_br = 0.0
+                par_ln = cl_ln[ROOT_NAME]
+                par_rn = cl_rn[ROOT_NAME]
+            else:
+                margin = max(int(cl_by_name[par].margin), int(_rc_floor))
+                par_bl = cl_border_l.get(par, 0.0)
+                par_br = cl_border_r.get(par, 0.0)
+                par_ln = cl_ln[par]
+                par_rn = cl_rn[par]
+            # §2.5.17: drop the `max(1, ...)` minlen floor when in
+            # C-alignment mode — C passes raw 0 here when margin and
+            # border are both 0 (typical root case), and its NS solver
+            # accepts minlen=0.
+            ml_left = int(margin + par_bl)
+            ml_right = int(margin + par_br)
+            if not _root_hier_enabled:
+                ml_left = max(1, ml_left)
+                ml_right = max(1, ml_right)
+            aux_edges.append((par_ln, cl_ln[cl_name], ml_left, 0))
+            aux_edges.append((cl_rn[cl_name], par_rn, ml_right, 0))
 
         # ── 3e. Sibling separation (separate_subclust) ──
         # See: /lib/dotgen/position.c @ 505
@@ -493,10 +566,15 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
             siblings = tree_children[par]
             if len(siblings) < 2:
                 continue
-            # margin comes from the common parent; fall back to a
-            # child margin when the parent is the virtual root.
+            # margin comes from the common parent; fall back to root
+            # margin when par is None (root-level siblings).  Mirrors
+            # C `separate_subclust(g)` using `late_int(g, G_margin,
+            # CL_OFFSET, 0)` — for root g this typically parses to 0.
             if par is not None and par in cl_by_name:
                 m = int(cl_by_name[par].margin)
+            elif _root_hier_enabled:
+                # §2.5.17: root margin via atoi-of-graph-margin-attr
+                m = _root_margin
             else:
                 m = int(max(
                     cl_by_name[s].margin for s in siblings))
@@ -538,9 +616,12 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
                         left_cl, right_cl = low_name, high_name
                     else:
                         left_cl, right_cl = high_name, low_name
+                    # §2.5.17: drop max(1, ...) floor in C-alignment
+                    # mode; C accepts minlen=0 here.
+                    sib_ml = m if _root_hier_enabled else max(1, m)
                     aux_edges.append((cl_rn[left_cl],
                                       cl_ln[right_cl],
-                                      max(1, m), 0))
+                                      sib_ml, 0))
 
         # ── 3f. Keepout: external nodes outside clusters ─
         # For each rank, if a non-cluster node is adjacent to a
@@ -577,6 +658,13 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
             for _cs in node_sets.values():
                 any_cluster_members.update(_cs)
 
+        # §2.5.12 Phase D: opt-in trace of every keepout aux-edge.
+        # Mirrors C ``[TRACE keepout]`` lines emitted from
+        # ``position.c:keepout_othernodes`` so the two streams can be
+        # diffed line-for-line.  Set ``GVPY_TRACE_KEEPOUT=1`` to enable.
+        _trace_keepout = _os_kpf.environ.get(
+            "GVPY_TRACE_KEEPOUT", "") == "1"
+
         for rank_val, rank_nodes in layout.ranks.items():
             for cl in layout._clusters:
                 cl_ranks_nodes: dict[int, list[str]] = {}
@@ -601,8 +689,27 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
                             not _legacy_filter
                             or ext not in any_cluster_members):
                         rw = int(layout.lnodes[ext].width / 2.0)
-                        aux_edges.append((ext, cl_ln[cl.name],
-                                          max(1, rw + margin), 0))
+                        _ml = max(1, rw + margin)
+                        aux_edges.append((ext, cl_ln[cl.name], _ml, 0))
+                        if _trace_keepout:
+                            _virt = layout.lnodes[ext].virtual
+                            print(
+                                f"[TRACE keepout] cluster={cl.name} "
+                                f"rank={rank_val} side=L "
+                                f"src={ext} dst=ln_{cl.name} "
+                                f"minlen={_ml} weight=0 "
+                                f"src_virtual={int(bool(_virt))}",
+                                file=sys.stderr,
+                            )
+                    elif _trace_keepout:
+                        # Skip reason — helps explain Py-vs-C count gap.
+                        print(
+                            f"[TRACE keepout] cluster={cl.name} "
+                            f"rank={rank_val} side=L "
+                            f"src={ext} dst=ln_{cl.name} "
+                            f"SKIP=in_cluster_member",
+                            file=sys.stderr,
+                        )
 
                 # Node to the RIGHT of the cluster
                 if right_order < len(rank_nodes) - 1:
@@ -611,8 +718,26 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
                             not _legacy_filter
                             or ext not in any_cluster_members):
                         lw = int(layout.lnodes[ext].width / 2.0)
-                        aux_edges.append((cl_rn[cl.name], ext,
-                                          max(1, lw + margin), 0))
+                        _ml = max(1, lw + margin)
+                        aux_edges.append((cl_rn[cl.name], ext, _ml, 0))
+                        if _trace_keepout:
+                            _virt = layout.lnodes[ext].virtual
+                            print(
+                                f"[TRACE keepout] cluster={cl.name} "
+                                f"rank={rank_val} side=R "
+                                f"src=rn_{cl.name} dst={ext} "
+                                f"minlen={_ml} weight=0 "
+                                f"dst_virtual={int(bool(_virt))}",
+                                file=sys.stderr,
+                            )
+                    elif _trace_keepout:
+                        print(
+                            f"[TRACE keepout] cluster={cl.name} "
+                            f"rank={rank_val} side=R "
+                            f"src=rn_{cl.name} dst={ext} "
+                            f"SKIP=in_cluster_member",
+                            file=sys.stderr,
+                        )
 
     if not aux_edges:
         return False
@@ -645,6 +770,21 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
                     seed[cl_ln[cn]] = min(member_seeds) - m
                 if cn in cl_rn:
                     seed[cl_rn[cn]] = max(member_seeds) + m
+        # §2.5.16: seed root.ln/rn relative to all top-level cluster
+        # boundary seeds — without this, NS starts root.ln/rn at 0
+        # and converges to a layout that violates the "root contains
+        # all clusters" relationship.
+        if _root_hier_enabled and ROOT_NAME in cl_ln:
+            cl_ln_seeds = [seed[cl_ln[c.name]]
+                           for c in layout._clusters
+                           if c.name in cl_ln and cl_ln[c.name] in seed]
+            cl_rn_seeds = [seed[cl_rn[c.name]]
+                           for c in layout._clusters
+                           if c.name in cl_rn and cl_rn[c.name] in seed]
+            if cl_ln_seeds:
+                seed[cl_ln[ROOT_NAME]] = min(cl_ln_seeds) - int(_CL_OFFSET)
+            if cl_rn_seeds:
+                seed[cl_rn[ROOT_NAME]] = max(cl_rn_seeds) + int(_CL_OFFSET)
 
     # ── Solve ─────────────────────────────────────────
     trace(
@@ -652,6 +792,87 @@ def ns_x_position(layout: "DotGraphInfo") -> bool:
         f"aux_graph: total_aux_edges={len(aux_edges)} "
         f"total_aux_nodes={len(aux_nodes)}",
     )
+    # §2.5.13 follow-up: section-by-section aux-edge counter,
+    # gated on GVPY_TRACE_AUX_SECTIONS=1.  Lets _diff_aux_sections.py
+    # localise which generator is missing edges vs C.
+    import os as _os_as
+    if _os_as.environ.get("GVPY_TRACE_AUX_SECTIONS", "") == "1":
+        # Bin every aux_edge by which generator emitted it.  Use the
+        # heuristic: ln_/rn_ prefixed nodes belong to cluster sections
+        # (3a-f), _sn_ prefixed to section 2, all-real-pair to section 1.
+        sec_counts = {"sec1": 0, "sec2_align": 0, "sec3a_cont": 0,
+                      "sec3c_compact": 0, "sec3d_hier": 0,
+                      "sec3e_sib": 0, "sec3f_keepout": 0,
+                      "other": 0}
+        keep_seen = set()
+        # Re-scan: easier to bin by (src, dst) heuristics on the prefix.
+        for (src, dst, ml, wt) in aux_edges:
+            if src.startswith("_sn_"):
+                sec_counts["sec2_align"] += 1
+            elif src.startswith("_cln_") and dst.startswith("_cln_"):
+                sec_counts["sec3d_hier"] += 1
+            elif src.startswith("_crn_") and dst.startswith("_crn_"):
+                sec_counts["sec3d_hier"] += 1
+            elif src.startswith("_crn_") and dst.startswith("_cln_"):
+                sec_counts["sec3e_sib"] += 1
+            elif src.startswith("_cln_") and not dst.startswith(("_cln_", "_crn_", "_sn_")):
+                sec_counts["sec3a_cont"] += 1
+            elif dst.startswith("_crn_") and not src.startswith(("_cln_", "_crn_", "_sn_")):
+                sec_counts["sec3a_cont"] += 1
+            elif src.startswith("_cln_") and dst.startswith("_crn_") and wt == 128:
+                sec_counts["sec3c_compact"] += 1
+            elif (not src.startswith(("_cln_", "_crn_", "_sn_"))
+                  and dst.startswith("_cln_") and wt == 0):
+                sec_counts["sec3f_keepout"] += 1
+            elif (src.startswith("_crn_") and not dst.startswith(("_cln_", "_crn_", "_sn_"))
+                  and wt == 0):
+                sec_counts["sec3f_keepout"] += 1
+            elif (not src.startswith(("_cln_", "_crn_", "_sn_"))
+                  and not dst.startswith(("_cln_", "_crn_", "_sn_"))):
+                sec_counts["sec1"] += 1
+            else:
+                sec_counts["other"] += 1
+        print(
+            "[AUX SECTIONS] " +
+            " ".join(f"{k}={v}" for k, v in sec_counts.items()) +
+            f" total={len(aux_edges)}",
+            file=sys.stderr,
+        )
+    # §2.5.17 per-edge minlen dump.  Same per-edge classification
+    # as above but emits one line per edge so the diff script can
+    # aggregate (sec, minlen, weight) → count and compare with C's
+    # [DUMP aux_minlen] output.  Gated on GVPY_DUMP_AUX_MINLENS=1.
+    if _os_as.environ.get("GVPY_DUMP_AUX_MINLENS", "") == "1":
+        for (src, dst, ml, wt) in aux_edges:
+            if src.startswith("_sn_"):
+                sec = "sec2"
+            elif src.startswith("_cln_") and dst.startswith("_cln_"):
+                sec = "sec3d"
+            elif src.startswith("_crn_") and dst.startswith("_crn_"):
+                sec = "sec3d"
+            elif src.startswith("_crn_") and dst.startswith("_cln_"):
+                sec = "sec3e"
+            elif src.startswith("_cln_") and not dst.startswith(("_cln_", "_crn_", "_sn_")):
+                sec = "sec3a"
+            elif dst.startswith("_crn_") and not src.startswith(("_cln_", "_crn_", "_sn_")):
+                sec = "sec3a"
+            elif src.startswith("_cln_") and dst.startswith("_crn_") and wt == 128:
+                sec = "sec3c"
+            elif (not src.startswith(("_cln_", "_crn_", "_sn_"))
+                  and dst.startswith("_cln_") and wt == 0):
+                sec = "sec3f"
+            elif (src.startswith("_crn_") and not dst.startswith(("_cln_", "_crn_", "_sn_"))
+                  and wt == 0):
+                sec = "sec3f"
+            elif (not src.startswith(("_cln_", "_crn_", "_sn_"))
+                  and not dst.startswith(("_cln_", "_crn_", "_sn_"))):
+                sec = "sec1"
+            else:
+                sec = "other"
+            print(
+                f"[DUMP aux_minlen] sec={sec} minlen={int(ml)} weight={int(wt)}",
+                file=sys.stderr,
+            )
     # Log containment edges
     if layout._clusters:
         for cl in layout._clusters:

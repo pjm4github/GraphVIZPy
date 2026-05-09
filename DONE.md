@@ -5,6 +5,1320 @@ short.  Ordered newest → oldest.
 
 ---
 
+## §4.C-full — Circo blockpath.c + circpos.c port (closes circo) — 2026-05-09
+
+Completes the circo port started in §4.C-blocktree.  Both
+``lib/circogen/blockpath.c`` (640 LOC) and
+``lib/circogen/circpos.c`` (426 LOC) are now ported verbatim.
+Combined with §4.C-blocktree, **circo is now fully C-aligned
+end-to-end** — every algorithm in ``lib/circogen/`` has a
+matching Python module.
+
+**New modules**:
+
+- ``gvpy/engines/layout/circo/blockpath.py`` (~480 lines):
+  - ``_remove_pair_edges`` + ``_find_pair_edges`` — skeleton
+    construction.  Iteratively peels lowest-degree nodes,
+    adding synthetic connectivity edges between unpaired
+    neighbours so the spanning tree topology is preserved.
+  - ``_spanning_tree`` — DFS via explicit work stack
+    (sidesteps Python recursion limits on dense blocks).
+    Mirrors C ``spanning_tree`` (blockpath.c:340).
+  - ``_measure_distance`` + ``_find_longest_path`` — diameter
+    via measure-from-every-leaf algorithm.  Iterative version
+    of C's recursion.
+  - ``_place_node`` + ``_place_residual_nodes`` — insert
+    off-path nodes adjacent to neighbours already on the path.
+    Prefer position between two consecutive path neighbours;
+    fall back to "after any one neighbour"; fall back to
+    "append at end".
+  - ``_count_all_crossings`` — open-edge-list sweep.  Two
+    chords (a,b) and (c,d) cross iff one chord opens between
+    the other's endpoints in the cyclic walk.
+  - ``_reduce`` + ``_reduce_edge_crossings`` — try moving each
+    node next to each of its neighbors (both before and
+    after); keep moves that reduce crossings.  Iterates up to
+    ``CROSS_ITER=10`` rounds.
+  - ``layout_block`` — public entry mirroring C
+    ``layout_block`` (blockpath.c:566) verbatim: skeleton →
+    spanning tree → longest path → residual placement →
+    crossings reduction → realign at ISPARENT → place on
+    circle.  Caches per-node PSI on the block.
+
+- ``gvpy/engines/layout/circo/circpos.py`` (~360 lines):
+  - ``get_rotation`` — closed-form rotation math (C
+    circpos.c:50).  Three branches:
+    - 1-node blocks: ``θ + π - parent_pos``.
+    - 2-node blocks: ``θ - π/2`` (perpendicular line of
+      nodes).
+    - N-node blocks: rotate so ``CHILD(sn)`` ends up adjacent
+      to its parent.  Coalesced blocks use a different
+      closed-form involving ``ρ``, ``r``, ``φ``, ``β``.
+  - ``apply_delta`` — recursive rotation + translation cascade
+    through a block subtree.
+  - ``_get_info`` / ``_set_info`` — compute per-articulation-
+    point fan geometry (max child radius, sum of diameters);
+    scale fans so they don't overlap each other on the parent
+    circle.
+  - ``_position_children`` — distribute children at one
+    articulation point around an arc, respecting individual
+    radii.  Calls ``get_rotation`` + ``apply_delta`` per
+    child.
+  - ``position`` — outer loop handling 1/2/N-articulation-point
+    cases.  Includes the **coalescing branch** (C
+    circpos.c:380-385): when the parent has exactly one total
+    child block, shift everything over to merge them and mark
+    the block COALESCED.
+  - ``do_block`` + ``circ_pos`` — top-level recursive
+    orchestrator.  Mirrors C ``doBlock`` / ``circPos``
+    verbatim: depth-first, layout each block, attach children
+    via ``position``.
+
+**Engine wiring** (``CircoLayout``):
+
+- New dispatch matrix.  Three independent gates:
+  - ``GVPY_CIRCO_BLOCKTREE=c|legacy``
+  - ``GVPY_CIRCO_BLOCKPATH=c|legacy``
+  - ``GVPY_CIRCO_CIRCPOS=c|legacy``
+
+  All default to ``c``.  When all three are ``c``, the engine
+  delegates the entire bottom-up + top-down recursion to
+  ``circ_pos`` (which calls ``do_block``, which calls
+  ``layout_block``).  Mixed modes fall back to the older split
+  flow with ``_extract_positions_c_aligned`` /
+  ``_position_block_tree_c_aligned_legacy_layout`` shims.
+
+- ``_extract_positions_c_aligned`` walks the block tree after
+  ``circ_pos`` returns and copies absolute coords into
+  ``self.lnodes``.
+
+**Bug found and fixed during port**:
+
+- Coalescing branch in ``position`` initially used per-
+  articulation-point child count; should be the *total*
+  ``parent_block.children`` count (mirrors C's ``childCount``
+  arg passed from ``doBlock``).  Without this fix, circo_demo
+  rendered as 968×1108 (~2× too tall); after fix, 1027×582 vs
+  system C's 1039×562 — within 4% on both dimensions.
+
+**Verification**:
+
+- 4-cycle: nodes at 90° intervals, radius matches C's
+  ``N · (mindist + largest_node) / (2π)`` formula exactly.
+- ``count_all_crossings`` correct on K4 (1 crossing) and 4-cycle
+  in adjacent order (0 crossings).
+- ``apply_delta`` with rotate=π/2 swaps x↔y axes correctly.
+- ``get_rotation`` 2-node branch returns ``θ - π/2``.
+- ``get_rotation`` 1-node parent_pos branch returns
+  ``θ + π - parent_pos``.
+- 3-block graph (a-b-c-a triangle + b-d edge + d-e-f-d
+  triangle, articulation points b and d): all 6 nodes
+  positioned, no errors.
+- circo_demo.gv (13 nodes, multiple biconnected components):
+  Python canvas 1027×582 vs system C 1039×562 — within 4%.
+
+**Test counts**:
+
+- circo tests: **56 passed** (was 42; +14 new
+  ``TestCircoBlockpathCAligned`` and
+  ``TestCircoCircposCAligned``).
+- Full suite: **1291 passed**, 4 skipped, 1 deselected (was
+  1277).
+
+**Engine status after this session**:
+
+| engine | tests | status |
+|---|---:|---|
+| circo | 56 | **full C-aligned port**: blocktree.c + blockpath.c + circpos.c + block.c + nodelist.c all ported verbatim.  No remaining legacy approximations. |
+
+**All 9 layout engines now have full C-aligned ports.**
+
+| engine | tests | status |
+|---|---:|---|
+| dot | 1141 | full port |
+| neato | 54 | full C-aligned port |
+| twopi | 24 | full C-aligned port |
+| fdp | 43 | full C-aligned port + cluster-aware routing + deriveGraph |
+| sfdp | 50 | full C-aligned port: clusters + multilevel + spring-electrical + stress smoothing |
+| osage | 29 | full C-aligned port |
+| patchwork | 28 | full C-aligned port |
+| **circo** | **56** | **full C-aligned port (DONE §4.C-blocktree + §4.C-full)** |
+| ortho | 18+12+18+4+4+12 | full port |
+
+Files: ``gvpy/engines/layout/circo/blockpath.py`` (new, ~480
+lines), ``gvpy/engines/layout/circo/circpos.py`` (new, ~360
+lines), ``gvpy/engines/layout/circo/circo_layout.py``
+(refactored — 3-gate dispatch + extract helpers, ~80 lines
+changed), ``tests/test_circo_layout.py`` (+14 tests in two
+new test classes).
+
+---
+
+## §4.C-blocktree — Circo blocktree.c + block.c + nodelist.c port — 2026-05-09
+
+**Partial circo port** — replaces the most correctness-critical
+piece (biconnected-component decomposition) with a verbatim
+port of C, while leaving the per-block layout
+(``blockpath.c``) and child-block positioning (``circpos.c``)
+algorithms as the existing homegrown approximations behind a
+gate.  The full C-aligned port of those two files is tracked
+as TODO §4.x-circo follow-up work.
+
+**New modules**:
+
+- ``gvpy/engines/layout/circo/block.py`` (~140 lines):
+  - ``Block`` dataclass mirroring C ``block_t`` (block.h:26):
+    ``sub_graph``, ``child``, ``parent_anchor``, ``radius``,
+    ``rad0``, ``circle_list``, ``children``, ``parent_pos``,
+    ``flags``, ``node_pos``, ``center_x/y``, ``node_psi``.
+  - ``Blocklist`` helper with C-style ``append`` / ``insert``
+    (front-insert) semantics — mirrors ``block.c:47-69``.
+  - Engine-compat property aliases (``nodes`` ↔ ``sub_graph``,
+    ``cut_node`` ↔ ``parent_anchor``, ``circle_order`` ↔
+    ``circle_list``) so the legacy positioning code keeps
+    working without a rename.
+- ``gvpy/engines/layout/circo/nodelist.py`` (~60 lines):
+  - ``append_at`` (mirrors C ``appendNodelist``).
+  - ``realign`` (mirrors ``realignNodelist`` — rotate so np
+    becomes new front).
+  - ``insert_relative`` (mirrors ``insertNodelist`` — re-insert
+    cn before/after neighbor).
+  - ``reverse_append`` (mirrors ``reverseAppend``).
+- ``gvpy/engines/layout/circo/blocktree.py`` (~250 lines):
+  - ``BlockState`` dataclass mirroring C ``circ_state``
+    (circular.h:16).
+  - Tarjan articulation-point DFS via explicit work stack
+    (matches C's edge-stack semantics; sidesteps Python
+    recursion-depth limits on dense graphs).  Mirrors
+    ``blocktree.c::dfs`` verbatim.
+  - ``find_blocks`` and ``create_blocktree`` — the public
+    entry points mirroring ``blocktree.c:113`` and
+    ``blocktree.c:143``.
+  - For each non-root block, finds the smallest-VAL node ("the
+    node IN bp linking to parent") and sets both
+    ``bp.child`` (C-aligned) and ``bp.parent_anchor`` (the
+    DFS parent of that node — the articulation point IN the
+    parent block, which the engine's positioning code reads).
+
+**Engine wiring** (``CircoLayout``):
+
+- ``_layout_component`` dispatches between the C-aligned
+  ``create_blocktree`` and the legacy homegrown Tarjan via
+  ``GVPY_CIRCO_BLOCKTREE=c|legacy`` (default ``c``).
+- New ``_populate_block_edges`` walks the blocktree to fill
+  in ``block.edges`` from the global adjacency dict — the
+  engine's per-block layout / crossings algorithms expect an
+  edge list, which the C-aligned port doesn't track (C uses
+  Graphviz's native graph mutation model).
+- ``oneblock`` mode and tiny graphs (≤ 2 nodes) bypass the
+  blocktree pass and use the legacy single-block fallback.
+
+**What's NOT yet ported** (deferred to TODO §4.x-circo):
+
+- ``blockpath.c`` (640 LOC): spanning-tree construction,
+  longest-path discovery via two-BFS, place_node /
+  place_residual_nodes, count_all_crossings + reduce
+  algorithms.  The existing Python implementation produces
+  valid layouts but uses an approximate crossings-reduction
+  loop (10-iter neighbor-targeted insertion) rather than C's
+  full reduce + reduce_edge_crossings cycles.
+- ``circpos.c`` (426 LOC): getRotation closed-form rotation
+  math, applyDelta cascade, getInfo/setInfo scaling,
+  positionChildren angular distribution, position outer loop
+  handling 1/2/N-parent cases.  The existing Python uses a
+  simpler approximation (uniform angle distribution + scale-
+  based push) that produces valid output but doesn't match
+  C's bit-for-bit angles.
+
+**Test counts**:
+
+- circo tests: **42 passed** (was 25; +17 new
+  ``TestCircoBlocktreeCAligned`` and
+  ``TestCircoBlockNodelistCAligned``).
+- Full suite: **1277 passed**, 4 skipped, 1 deselected (was
+  1260).
+
+**Engine status after this session**:
+
+| engine | tests | status |
+|---|---:|---|
+| circo | 42 | partial C-aligned port: ``block.h`` data types + ``nodelist`` ops + ``blocktree.c`` Tarjan DFS + block-cut tree.  ``blockpath.c`` and ``circpos.c`` still homegrown approximations. |
+
+Files: ``gvpy/engines/layout/circo/block.py`` (new, ~140
+lines), ``gvpy/engines/layout/circo/nodelist.py`` (new, ~60
+lines), ``gvpy/engines/layout/circo/blocktree.py`` (new, ~250
+lines), ``gvpy/engines/layout/circo/circo_layout.py``
+(refactored — module imports + dispatch + edge-population
+helper, ~30 lines changed), ``tests/test_circo_layout.py``
+(+17 tests in two new test classes).
+
+---
+
+## §4.P — Patchwork squarified-treemap layout port — 2026-05-09
+
+Port of ``lib/patchwork/patchwork.c`` (282 C lines) +
+``lib/patchwork/tree_map.c`` (116 lines).  Replaces the
+homegrown squarified treemap with a faithful C-aligned port
+matching Bruls / Huizing / van Wijk 2000.
+
+**New module**: ``gvpy/engines/layout/patchwork/tree_map.py``
+(~210 lines):
+
+- ``Rectangle`` dataclass mirroring C ``rectangle`` (center +
+  size, NOT lower-left + size).
+- ``_squarify`` recursion mirroring C ``squarify``
+  (tree_map.c:19) verbatim:
+  - Fix the shorter side ``w`` of ``fillrec`` as the strip
+    thickness.
+  - Greedy add: extend strip with successive items, accept if
+    worst aspect ratio improves; commit + recurse on remainder
+    when it would worsen.
+  - Strip placement: tall fillrec → strip at top, items
+    left-to-right; wide fillrec → strip at left, items
+    top-to-bottom.
+- ``tree_map(areas, fillrec)`` — top-level entry mirroring C
+  ``tree_map`` (tree_map.c:104).  Returns one rectangle per
+  input area in the same order; returns ``None`` on overflow
+  (matches C's NULL).
+
+**Refactored**: ``gvpy/engines/layout/patchwork/patchwork_layout.py``
+(rewritten, ~370 lines).  Mirrors C structure verbatim:
+
+- ``_make_tree`` — recursive tree builder mirroring C ``mkTree``
+  (patchwork.c:91).  Cluster area = ``(2·inset + sqrt(child_area))²``
+  per C ``fullArea`` (patchwork.c:57).  Leaf area =
+  ``area_attribute × SCALE`` per ``getArea`` (patchwork.c:64),
+  defaulting to ``DFLT_SZ=1.0`` for missing / zero values.
+  Non-cluster subgraphs are flattened into their parent cluster
+  (matches C ``SPARENT`` skipping logic).
+- Inset margin solved closed-form (patchwork.c:169-171):
+
+      delta = h - w
+      disc  = sqrt(delta² + 4·child_area)
+      m     = (h + w - disc) / 2
+
+  This gives a uniform inset on all sides such that the inner
+  rectangle's area exactly equals the children's total area.
+- ``_layout_tree`` — recursive squarify mirroring C
+  ``layoutTree`` (patchwork.c:149): sort children by area
+  descending, compute inset margin, call ``tree_map`` on the
+  inner rectangle, recurse into cluster children.
+- ``_walk_tree`` — pre-order extraction of node coords + cluster
+  bboxes.  **Y-flip** at this seam: the squarify recursion
+  uses math-y (y up) so C's "top of fillrec" semantics work;
+  downstream consumers expect SVG-y (y down) — we negate every
+  y-coord at output time, the smallest possible coord-system
+  seam.
+
+**Differences from the legacy Python implementation** (replaced
+2026-05-09):
+
+- Legacy ``_layout_row`` was an approximation that didn't
+  recursively track aspect-ratio improvement; it committed
+  rows greedily based on a single "side" length and could
+  produce strips with much worse aspect than C.
+- Legacy used a *fixed* inset (``_DFLT_INSET = 8 pt``)
+  regardless of cluster size; C's closed-form margin solve
+  scales appropriately so big clusters get bigger borders.
+- Legacy used ``Rectangle = (LL_x, LL_y, w, h)`` while C uses
+  center+size — port now matches C exactly.
+- Legacy didn't handle non-cluster subgraphs (``subgraph S {
+  ... }`` not starting with ``cluster``); they're now
+  flattened correctly.
+
+**Verification** (smoke + property tests):
+
+- 4 equal areas → 2×2 grid with corners at (25,25), (25,75),
+  (75,25), (75,75) — 50×50 each.
+- Total output area exactly matches sum of input areas.
+- Overflow (input area > fillrec area) returns None (matches C
+  NULL).
+- Squarified 16×1 layout: worst aspect ratio < 2.0 (would be
+  16:1 if naive horizontal strip).
+- Single-rect input fills the whole fillrec.
+- Empty input returns ``[]``.
+- Engine: ``area=4`` node has ~4× the area of ``area=1`` node
+  (allowing ±50% slop for squarification rounding).
+- Engine: nested clusters — child bbox enclosed by parent's;
+  child nodes inside child bbox.
+- Engine: 6 nodes with mixed areas → no leaf-rect overlaps.
+- Engine: 1-node and empty-graph cases handled.
+
+**Test counts**:
+
+- patchwork tests: **28 passed** (was 17; +11 new
+  ``TestPatchworkTreeMapCAligned`` and ``TestPatchworkCAligned``).
+- Full suite: **1260 passed**, 4 skipped, 1 deselected (was
+  1249).  Pre-existing parser test failure unchanged.
+
+**Engine status after this session**:
+
+| engine | tests | status |
+|---|---:|---|
+| patchwork | 28 | full C-aligned port: ``mkTree`` + recursive ``layoutTree`` (squarify + inset margin solve) + ``walkTree`` extraction with y-flip |
+
+Files: ``gvpy/engines/layout/patchwork/tree_map.py`` (new,
+~210 lines), ``gvpy/engines/layout/patchwork/patchwork_layout.py``
+(rewritten, ~370 lines), ``tests/test_patchwork_layout.py``
+(+11 tests).
+
+---
+
+## §4.O — Osage cluster-packing layout port — 2026-05-09
+
+Port of ``lib/osage/osageinit.c`` (368 C lines) plus the
+array-packing portion of ``lib/pack/pack.c`` (~250 LOC of the
+1100-line file — only ``putRects`` / ``arrayRects`` /
+``parsePackModeInfo`` / ``getPackInfo``).  Replaces the
+homegrown osage layout with a faithful C-aligned port.
+
+**New module**: ``gvpy/engines/layout/osage/pack.py`` (~340
+lines):
+
+- ``PackInfo`` dataclass mirroring C ``pack_info``.
+- ``PackMode`` IntEnum mirroring C ``pack_mode`` (``L_ARRAY``,
+  ``L_GRAPH``, etc.).
+- ``PK_*`` flag bits matching C's bit layout.
+- ``parse_pack_mode(spec, default)`` — full ``packmode``
+  attribute parser supporting:
+  - ``array[_<flags>][<size>]`` — array packing with optional
+    flags and explicit column/row count.
+  - Flags: ``c`` (col-major), ``i`` (input order), ``u`` (user
+    values), ``t b l r`` (top/bot/left/right alignment).
+  - ``aspect[<float>]``, ``cluster``, ``graph``, ``node`` modes
+    (osage uses ``array``; others recognized for completeness).
+- ``get_pack_info(pack, packmode, default_mode, default_margin)``
+  — combines ``pack`` (margin) and ``packmode`` reads.
+- ``array_rects(bbs, info)`` — the workhorse:
+  - Grid sizing: ``ceil(sqrt(n))`` cols by default, or explicit
+    ``info.sz`` (rows for col-major).
+  - Sort: ascending by ``info.vals[i]`` if ``PK_USER_VALS`` set;
+    descending by ``width + height`` otherwise (C's ``acmpf``);
+    or input order with ``PK_INPUT_ORDER``.
+  - Per-column/per-row max-size computation.
+  - **Row reversal** — heights are built in reverse so row 0
+    ends up at the *top* of the layout.  Subtle invariant that
+    matches C verbatim and gives osage's "low-sortv at top-left,
+    high-sortv at bottom-right" reading order.
+  - Per-cell placement with full alignment-flag support.
+- ``put_rects(bbs, info)`` — top-level dispatcher.
+
+**Refactored**: ``gvpy/engines/layout/osage/osage_layout.py``
+(~440 lines, was ~363).  Now mirrors C's structure verbatim:
+
+- ``_make_clusters`` — recursive cluster discovery.  Mirrors C
+  ``mkClusters`` (osageinit.c:280).  Non-cluster subgraphs are
+  flattened into their nearest cluster ancestor.
+- ``_layout_pass(box, depth)`` — bottom-up packing.  Mirrors C
+  ``layout(g, depth)`` (osageinit.c:67):
+  - Recurse into subclusters first.
+  - Build bbox list (subclusters + direct nodes).
+  - Call ``put_rects``.
+  - Translate bboxes by displacements.
+  - Compute ``rootbb`` union.
+  - Add label space at top (cluster has label).
+  - Add per-side margin (depth-dependent: 0 at root,
+    ``pinfo.margin / 2`` otherwise).
+  - Translate so ``rootbb.LL == origin``.
+- ``_reposition_pass(box, depth, offset)`` — top-down absolute
+  positioning.  Mirrors C ``reposition(g, depth)``
+  (osageinit.c:236).
+- ``ClusterBox`` dataclass holds per-cluster state (``children``,
+  ``sub_clusters``, ``bb``, ``label``, ``sortv``, ``attrs``).
+- ``LayoutNode`` gains a ``parent_cluster`` field (mirrors C
+  ``ND_alg(n)``, osageinit.c:35).
+
+**Verification**:
+
+- 4 equal rects → 2×2 grid with distinct cells per rect ✓.
+- ``PK_USER_VALS`` sort: rect with lowest sortv lands in
+  top-row.
+- Default size sort: descending by ``w + h`` (biggest first).
+- ``PK_INPUT_ORDER`` flag: top-row rects above the row
+  boundary, bottom-row below.
+- ``packmode="array_u3"`` parsed as ``L_ARRAY`` + ``sz=3`` +
+  ``PK_USER_VALS``.
+- ``packmode="array_clt"`` parsed with col-major + left-align +
+  top-align flags.
+- Engine: ``packmode=array_u`` triggers ``sortv`` ordering;
+  lowest-sortv cluster ends up at top of layout.
+- Engine: ``pack=20`` widens canvas vs default ``pack=8``.
+- Engine: nested clusters — child bbox is fully inside parent
+  bbox.
+- Engine: multi-cluster layout produces 0 overlapping nodes.
+- Engine: labeled cluster reserves top space — node sits below
+  the label header.
+
+**What was deliberately skipped**:
+
+- ``polyRects`` for ``packmode=graph`` (polyomino packing) —
+  ~300 LOC, used by neato component packing not osage.  fdp/sfdp
+  have their own polyomino packer in
+  ``gvpy/engines/layout/neato/_neato_pack.py``.
+- ``aspectRects`` for ``packmode=aspect`` — ~150 LOC,
+  rarely-used aspect-ratio-driven variant.
+- ``computeStep``, ``genBox``, ``placeGraph`` — polyomino
+  packing helpers (only used by ``polyRects``).
+- C label rendering — we estimate label dims via
+  ``len(label) × fontsize × 0.55`` for width and ``fontsize ×
+  1.5`` for height.  Good enough that labels fit and don't
+  overlap interiors, but not pixel-perfect with C's
+  ``do_graph_label``.
+
+**Test counts**:
+
+- osage tests: **29 passed** (was 16; +13 new
+  ``TestOsagePackCAligned``).
+- Full suite: **1249 passed**, 4 skipped, 1 deselected (was
+  1236).  Pre-existing parser-error test failure unchanged.
+
+**Engine status after this session**:
+
+| engine | tests | status |
+|---|---:|---|
+| osage | 29 | full C-aligned port: ``mkClusters`` + bottom-up ``layout`` + top-down ``reposition`` + array packing with ``packmode``/``pack`` attributes |
+
+Files: ``gvpy/engines/layout/osage/pack.py`` (new, ~340 lines),
+``gvpy/engines/layout/osage/osage_layout.py`` (rewritten,
+~440 lines), ``tests/test_osage_layout.py`` (+13 tests in
+``TestOsagePackCAligned``).
+
+---
+
+## §4.S-post-process — Sfdp post_process.c + stress_model.c + sparse_solve.c port — 2026-05-09
+
+Port of ``lib/sfdpgen/post_process.c`` (1034 C lines),
+``lib/sfdpgen/stress_model.c`` (47 lines), and
+``lib/sfdpgen/sparse_solve.c`` (146 lines) — stress
+majorization smoothing for ``smoothing=avg_dist|graph_dist|
+power_dist|spring`` plus the Gansner-Koren-North conjugate-
+gradient solver that drives the inner loop.  Closes out the
+sfdp port arc — sfdp's force pass is now C-aligned end to end.
+
+**New modules**:
+
+- ``gvpy/engines/layout/sfdp/sparse_solve.py`` (~165 lines):
+  - ``_diag_precon_new(A)`` — diagonal Jacobi preconditioner
+    (sparse_solve.c:33).
+  - ``_conjugate_gradient(A, precon, x, rhs, tol, maxit)`` —
+    in-place CG with diagonal preconditioning
+    (sparse_solve.c:56).  Operates on a single dim.
+  - ``sparse_matrix_solve(A, x0, rhs, tol, maxit)`` —
+    multi-dim wrapper; loops CG per coordinate dimension and
+    writes solutions back into ``rhs``
+    (sparse_solve.c:137).  Default maxit = ``floor(sqrt(n))``
+    matches C.
+
+- ``gvpy/engines/layout/sfdp/post_process.py`` (~580 lines):
+  - ``_ideal_distance_matrix(A, x)`` — symmetric-difference
+    ideal distance matrix (post_process.c:36).  Rescales so
+    mean ideal == mean Euclidean.
+  - ``_avg_neighbor_distances(A, x)`` — per-node mean
+    neighbour distance (post_process.c:138).
+  - ``StressMajorizationSmoother`` dataclass mirroring
+    ``StressMajorizationSmoother_struct`` (post_process.h:18).
+  - ``stress_majorization_smoother2_new(A, x, lambda0,
+    ideal_dist_scheme)`` — full builder with distance-2
+    coverage (post_process.c:108).  Supports all three
+    schemes: ``IDEAL_GRAPH_DIST``, ``IDEAL_AVG_DIST``,
+    ``IDEAL_POWER_DIST``.
+  - ``sparse_stress_majorization_smoother_new(A, x)`` —
+    sparse builder used by ``stress_model``
+    (post_process.c:309).  Treats ``A.data`` as distances,
+    not weights.  Auto-randomizes ``x`` if all-zero (matches
+    C's ``72 · drand()``).
+  - ``stress_majorization_smoother_smooth(sm, x, maxit_sm)`` —
+    outer fixed-point iteration (post_process.c:579).  Each
+    iter rebuilds the per-iter ``Lwdd`` off-diags via
+    ``Lwd[i,j] / dist(x_i, x_j)``, computes the RHS
+    ``y = Lwdd · x + λ · x_0``, solves
+    ``Lw · x' = y`` via CG, and converges on
+    ``‖x' - x‖ / ‖x‖ < tol = 0.001``.  Includes the
+    perturbation branch for coincident nodes.
+  - ``stress_model(A, x, maxit_sm)`` — neato-style stress
+    layout entry point (stress_model.c:10).  Builds the
+    sparse smoother, smooths, rescales by ``1/scaling``.
+  - ``post_process_smoothing(A, smoothing, x, *, rng,
+    spring_re_run)`` — top-level dispatcher
+    (post_process.c:974).  Maps GraphvizPy attribute strings
+    (``avg_dist``, ``graph_dist``, ``power_dist``, ``spring``,
+    ``triangle``, ``rng``, ``none``) to C's enum and routes
+    to the appropriate smoother.
+
+**What was deliberately skipped**:
+
+- **TriangleSmoother / RNG smoother** — depend on
+  ``neatogen/call_tri.c`` Delaunay triangulation (~600 LOC,
+  separate port).  Modes ``smoothing=triangle`` /
+  ``smoothing=rng`` print a one-line warning and no-op.
+- **Edge label penalty matrix** (``get_edge_label_matrix``,
+  ``SM_SCHEME_NORMAL_ELABEL``) — needs
+  ``relative_position_constraints`` data structure.
+  GraphvizPy doesn't expose ``edge_labeling_scheme`` yet.
+- **SpringSmoother variant** (uses
+  ``spring_electrical_spring_embedding`` with both adjacency
+  and distance matrices).  Approximated via the
+  ``spring_re_run`` callback which re-descends the existing
+  multilevel hierarchy with ``maxiter=20``, ``step/=2``,
+  ``random_start=False`` (matches C's ``SpringSmoother_new``
+  control mutations, post_process.c:944-947).  Functionally
+  equivalent for the ``smoothing=spring`` user-facing
+  attribute.
+- **Statistics counters** (``_statistics`` debug arrays)
+  and ``DEBUG_PRINT`` blocks.
+
+**Engine wiring** (``SfdpLayout``):
+
+- New ``_post_process_smoothing_c_aligned(A, ctrl, grid, x,
+  node_list)`` method called between the multilevel descent
+  and the pt-space rescale.  Operates on unit-K coords so the
+  smoother's ``Lwd`` matrix matches the per-edge spacing it
+  saw.
+- ``spring_re_run`` callback rebuilds a tightened
+  ``SpringElectricalControl`` and invokes
+  ``multilevel_spring_electrical_embedding`` against the same
+  hierarchy.
+- Dispatch behind ``GVPY_SFDP_POST_PROCESS=c|legacy`` (default
+  ``c``).  Legacy mode skips smoothing entirely (matches the
+  pre-port behaviour where only ``smoothing=spring`` did
+  anything).
+
+**Verification**:
+
+- CG: 4-cycle Laplacian + diagonal shift converges to machine
+  precision (residual < 1e-8).
+- Diagonal preconditioner: returns 1/A[i,i] correctly,
+  including the zero-diagonal fallback.
+- Ideal distance matrix on equilateral triangle: rescaling
+  produces uniform 1.0 entries (matches mean Euclidean).
+- 5-node path with ``smoothing=avg_dist``: smoothed layout
+  has graph-distance proportionality:
+
+      edge dists ~25 pt, distance-2 ~50 pt, distance-4 ~105 pt
+
+  i.e., ~4× ratio for far/edge — exactly what stress
+  majorization should produce.
+- ``stress_model`` on a 3-cycle with unit target distances:
+  embeds as an equilateral triangle (max_side / min_side <
+  1.5).
+- ``smoothing=none``: x is unchanged.
+- ``smoothing=triangle`` / ``rng``: one-line warning to
+  stderr, x unchanged.
+- Empty / 1-node graphs: smoother builder returns ``None``
+  (no crash on ``sbot == 0`` degenerate case).
+- Engine-level: ``smoothing=avg_dist`` on a 5-node path
+  produces ``far / edge_mean > 3``.
+- Engine-level: ``smoothing=graph_dist`` on a small clique
+  runs without crash.
+- ``GVPY_SFDP_POST_PROCESS=legacy`` skips smoothing path.
+
+**Test counts**:
+
+- sfdp tests: **50 passed** (was 39; +11 new
+  ``TestSfdpPostProcessCAligned``).
+- Full suite: **1236 passed**, 4 skipped, 1 deselected (was
+  1225).  Pre-existing ``test_malformed_input_raises`` parser
+  failure unchanged.
+
+**Engine status after this session**:
+
+| engine | tests | status |
+|---|---:|---|
+| sfdp | 50 | C-aligned end to end: clusters (deriveGraph) + multilevel coarsening + spring-electrical force iteration + stress majorization smoothing |
+
+What's left for sfdp is now optional perf work only — see
+TODO §4.S-quadtree for the Barnes-Hut O(n log n) port plan.
+
+Files: ``gvpy/engines/layout/sfdp/sparse_solve.py`` (new,
+~165 lines), ``gvpy/engines/layout/sfdp/post_process.py``
+(new, ~580 lines), ``gvpy/engines/layout/sfdp/sfdp_layout.py``
+(``_post_process_smoothing_c_aligned`` method,
+``GVPY_SFDP_POST_PROCESS`` gate, smoothing-call wired into
+``_layout_component_c_aligned``), ``tests/test_sfdp_layout.py``
+(+11 tests in ``TestSfdpPostProcessCAligned``).
+
+---
+
+## §4.S-spring-electrical — Sfdp spring_electrical.c port — 2026-05-09
+
+Port of ``lib/sfdpgen/spring_electrical.c`` (1206 C lines) —
+the actual force iteration that drives sfdp.  Replaces sfdp's
+homegrown FR + Barnes-Hut path with a faithful C-aligned
+slow-variant embedding plus the multilevel descent that sits on
+top of the Galerkin hierarchy shipped in §4.S-multilevel.
+
+**New module**: ``gvpy/engines/layout/sfdp/spring_electrical.py``
+(~430 lines).  Uses numpy for the all-pairs-repulsion array
+operations and scipy.sparse CSR for per-edge attractive forces.
+
+**What ported** (verbatim mirrors of C):
+
+- ``SpringElectricalControl`` dataclass — defaults match
+  ``spring_electrical_control_new`` (spring_electrical.c:51).
+- ``average_edge_length`` (spring_electrical.c:153) — mean
+  Euclidean distance over CSR entries.
+- ``_update_step`` (spring_electrical.c:171) — three-branch
+  adaptive cooling: ``Fnorm grew → cool=0.90·step``;
+  ``Fnorm in (0.95·prev, prev) → step unchanged``;
+  ``Fnorm dropped sharply → 0.99·step/cool`` (warm up).
+  Non-adaptive fallback always cools.
+- ``_power_law_graph`` (spring_electrical.c:872) — heuristic
+  driving auto-p selection (-1.8 for power-law, -1 otherwise).
+- ``spring_electrical_embedding`` (mirrors
+  ``spring_electrical_embedding_slow``, spring_electrical.c:393):
+  - Per iteration: vectorised O(n²) repulsive force
+    (``f += KP·(xᵢ-xⱼ)/dist^(1-p)``, KP=K^(1-p)) via numpy
+    broadcast over the pairwise difference array; per-edge
+    attractive force (``f -= CRK·(xᵢ-xⱼ)·dist``,
+    CRK=C^((2-p)/3)/K) via CSR indptr/indices loop.
+  - Normalise each node's force to unit length, step by ``step``.
+  - Cool ``step`` adaptively; terminate when ``step < tol·K``
+    or maxiter reached.
+- ``interpolate_coord`` (spring_electrical.c:832) — α=0.5 blend
+  of each node toward its neighbour mean.
+- ``prolongate`` (spring_electrical.c:855) —
+  ``xf = P·xc → interpolate_coord → per-cluster jitter`` for
+  members 2..end (cluster representative untouched).  C uses
+  R's CSR rows to enumerate cluster members; we do the same.
+- ``multilevel_spring_electrical_embedding`` (mirrors
+  ``multilevel_spring_electrical_embedding``,
+  spring_electrical.c:1073, minus QuadTree / edge-label-node /
+  post-process / overlap-removal blocks): walks to coarsest
+  level, runs ``spring_electrical_embedding`` per level,
+  prolongates between levels, applies ``random_start=False``,
+  ``adaptive_cooling=False``, ``step=0.1``, ``K *= 0.75`` for
+  each finer level — verbatim with C.
+- ``pcp_rotate`` (spring_electrical.c:896) — principal-axis
+  rotation for stable orientation; closed-form 2×2
+  eigendecomposition matches C's specific axis selection.
+
+**What was deliberately skipped**:
+
+- **QuadTree / Barnes-Hut** (``spring_electrical_embedding_fast``,
+  ``spring_electrical_embedding`` regular variant): would
+  require porting ``lib/sparse/QuadTree.c`` (~600 lines).  Out
+  of scope; the slow O(n²) variant is correct, vectorised, and
+  fast enough for n ≤ ~500.  The existing Python Barnes-Hut
+  implementation stays available behind
+  ``GVPY_SFDP_SPRING_ELECTRICAL=legacy``.
+- **Edge label node handling** (``shorting_edge_label_nodes``,
+  ``attach_edge_label_coordinates``): GraphvizPy's
+  ``edge_labeling_scheme`` attribute isn't wired through yet.
+- **post_process_smoothing**: separate port (post_process.c
+  1034 LOC), tracked for the next session.
+- **remove_overlap**: handled by the engine's
+  ``_remove_overlap`` / ``xlayout`` after the descent returns
+  — no behavioural change.
+
+**Engine wiring** (``SfdpLayout``):
+
+- Renamed old multi-level body to
+  ``_layout_component_legacy(node_list, adj)``.
+- New ``_layout_component_c_aligned`` builds a CSR adjacency,
+  runs ``multilevel_new`` to build the hierarchy (the
+  §4.S-multilevel port), then calls
+  ``multilevel_spring_electrical_embedding`` with a numpy
+  coords array.  Pinned nodes are mapped into unit-K space and
+  marked in a ``pinned_mask`` so the descent leaves them put.
+  Final coords rescale by ``self.K`` for pt-space consumers.
+- Dispatch in ``_layout_component`` behind
+  ``GVPY_SFDP_SPRING_ELECTRICAL=c|legacy`` (default ``c``).
+
+**Verification** (smoke + property tests):
+
+- 4-cycle: edge:diagonal ratio ≈ √2 (square layout) ✓.
+- 16-path multilevel: 16 → 9 → 5 hierarchy descent; non-edge
+  mean / edge mean ratio ≈ 4.7× — well-separated.
+- ``average_edge_length`` exact on equilateral triangle.
+- ``_update_step`` all three adaptive branches verified.
+- ``interpolate_coord`` correct on triangle (manually checked).
+- ``pcp_rotate`` aligns y=2x noisy cloud principal axis with
+  x-axis (variance ratio inverts after rotation).
+- Pinned-mask honored (3-triangle test: pinned nodes' coords
+  unchanged, unpinned moves toward them).
+- Engine dispatch default = c; legacy still selectable.
+
+**Test counts**:
+
+- sfdp tests: **39 passed** (was 28; +11 ``TestSfdpSpringElectricalCAligned``).
+- Full suite: **1225 passed**, 4 skipped, 1 deselected (was
+  1214).  Pre-existing parser test failure
+  (``test_malformed_input_raises``) is unrelated.
+
+**What this leaves on the table** for the last sfdp session:
+
+- ``post_process.c`` (1034 lines) + ``stress_model.c`` (47 lines)
+  + ``sparse_solve.c`` (146 lines): full stress majorization
+  smoothing for ``smoothing=spring|avg_dist|graph_dist``.
+  Currently ``_smoothing_pass`` is a stub — non-default
+  smoothing modes silently fall through.  Independent of this
+  port; can ship anytime.
+
+Files: ``gvpy/engines/layout/sfdp/spring_electrical.py`` (new,
+~430 lines), ``gvpy/engines/layout/sfdp/sfdp_layout.py``
+(``_layout_component`` dispatcher + ``_layout_component_c_aligned``
++ ``_layout_component_legacy``),
+``tests/test_sfdp_layout.py`` (+11 tests in
+``TestSfdpSpringElectricalCAligned``).
+
+---
+
+## §4.S-multilevel — Sfdp Multilevel.c port (C-aligned coarsening) — 2026-05-08
+
+Port of ``lib/sfdpgen/Multilevel.c`` (304 C lines) — the
+multilevel coarsening hierarchy that sfdp's spring-electrical
+solver runs on.  Replaces the homegrown greedy heaviest-edge
+matching with C's MIES + supervariable preprocessing +
+Galerkin coarsening.
+
+**New module**: ``gvpy/engines/layout/sfdp/multilevel.py``
+(~470 lines).  Uses ``scipy.sparse`` (already a project dep)
+for the SparseMatrix machinery.
+
+**Algorithm** (mirrors C verbatim):
+
+1. **Supervariable decomposition** — ``_decompose_to_supervariables``
+   ports ``SparseMatrix_decompose_to_supervariables`` from
+   ``lib/sparse/SparseMatrix.c:1352``.  Groups nodes that share
+   *identical* neighbour sets ("modules" in graph theory).
+   For most graphs this returns one supervariable per node.
+2. **Supernode pre-clustering** — for every supervariable with
+   ≥ 2 members, cluster up to ``MAX_CLUSTER_SIZE=4`` per
+   cluster.
+3. **MIES heavy-edge matching** —
+   ``_maximal_independent_edge_set`` ports
+   ``maximal_independent_edge_set_heavest_edge_pernode_supernodes_first``
+   from Multilevel.c:56.  Random-permutation order; for each
+   unmatched node, find its heaviest unmatched neighbour and
+   pair them.
+4. **Singleton fallback** — any node still unmatched becomes
+   its own 1-element cluster.
+
+**Galerkin coarsening at each level** (mirrors
+Multilevel.c:146 ``Multilevel_coarsen_internal``):
+
+- Build ``P``: n×nc prolongation matrix; ``P[i, c] = 1`` iff
+  node ``i`` is in cluster ``c``.
+- ``R = P^T`` then row-normalise by degree (so prolongation
+  back averages cluster member positions).
+- ``cA = R · A · P`` — Galerkin product; edge weights aggregate
+  correctly through this matrix multiplication.
+- Strip diagonal of cA.
+
+**Outer coarsening loop** (Multilevel.c:204
+``Multilevel_coarsen``): iterate single steps until reduction
+ratio falls below ``min_coarsen_factor=0.75``.  Multiplies
+P/R together so the cumulative transformation maps the
+original A to the final coarsened cA.
+
+**Hierarchy build** (Multilevel.c:248-294
+``Multilevel_establish`` + ``Multilevel_new``): recursive
+descent; bottoms out when ``n < minsize=4`` or no further
+reduction is possible.
+
+**Adapter**: ``multilevel_to_legacy_levels(grid, node_names)``
+converts the C-aligned hierarchy to the legacy
+``[{nodes, adj, mapping}]`` shape the existing
+``SfdpLayout._spring_electrical`` consumes.  Each cluster at
+every coarsening level is identified by the **first member's
+name** (deterministic via sorted indices) — this keeps every
+hierarchy-level node name resolvable in ``layout.lnodes``,
+so the existing flat solver runs without needing
+synthetic-supernode entries installed.
+
+``mapping[child_rep_name] = parent_rep_name`` lets the
+existing prolongation step interpolate from a coarse level
+to its finer level by copying the parent's position into
+each child.
+
+**Wiring**: ``SfdpLayout._build_hierarchy`` dispatches on
+``GVPY_SFDP_MULTILEVEL`` env var:
+
+- ``c`` (default since 2026-05-08): port of Multilevel.c.
+- ``legacy``: pre-port homegrown matching.  Kept for
+  diagnostic comparison.
+
+**Verification on a 30-node 5-regular graph**:
+
+```
+[TRACE sfdp_multi] level=0 n=30 nz=120 density=0.1333
+[TRACE sfdp_multi] level=1 n=16 nz=84 reduction=0.533
+[TRACE sfdp_multi] level=2 n=8 nz=42 reduction=0.500
+[TRACE sfdp_multi] level=3 n=5 nz=18 reduction=0.625
+```
+
+Each level achieves ≤ 0.75 reduction ratio (faster than the
+``min_coarsen_factor`` threshold); 4 hierarchy levels for a
+30-node graph.
+
+**Tests**: 6 new in ``TestSfdpMultilevelCAligned``:
+- ``test_cycle_8_coarsens``
+- ``test_path_16_multilevel``
+- ``test_singleton_doesnt_coarsen``
+- ``test_galerkin_preserves_edge_weight_sum``
+- ``test_legacy_adapter_resolvable_names``
+- ``test_dispatch_gate``
+
+**Test suite**: **1214 passed**, 4 skipped, 1 deselected
+(was 1208).  28 sfdp tests (was 22).  No regressions.
+
+**What this leaves on the table** for next sessions:
+
+- ``spring_electrical.c`` (1206 lines): the actual force
+  iteration.  Has its own multilevel-aware logic
+  (``stable_outer_loop``, ``prolongate``,
+  ``interpolate_coord``, adaptive cooling) that we'd port to
+  replace ``SfdpLayout._spring_electrical``.
+- ``post_process.c`` (1034 lines) + ``stress_model.c`` (47
+  lines) + ``sparse_solve.c`` (146 lines): stress smoothing
+  for ``smoothing=spring|avg_dist|graph_dist``.
+
+The Galerkin coarsening built here is a foundation those
+ports will compose on top of — the SparseMatrix machinery
+in ``multilevel.py`` is already shaped for the matrix-vector
+operations ``spring_electrical.c`` needs.
+
+**Trace channel**: ``GVPY_TRACE_SFDP=1`` emits
+``[TRACE sfdp_multi] ...`` lines for level/coarsening
+counts.
+
+---
+
+## §4.S-derivegraph — Sfdp inherits fdp's deriveGraph cluster pipeline — 2026-05-08
+
+Sfdp's session-1 deliverable: cluster awareness end-to-end by
+reusing fdp's deriveGraph infrastructure.  Sfdp dispatches to
+the same recursive two-level layout but plugs in its own
+spring-electrical solver via engine-pluggable callbacks.
+
+**Why open this thread:** sfdp needs the same cluster handling
+fdp has — without it, sfdp produces overlapping cluster boxes
+on clustered graphs.  Rather than duplicate the simple-fix
+band-aids fdp shipped 2026-05-08, sfdp inherits the full
+deriveGraph pipeline directly.  The next sessions can layer
+sfdp-specific multilevel coarsening and Barnes-Hut on top
+without compounding band-aids.
+
+**derive.py refactor (engine-agnostic):**
+
+- ``recursive_layout(layout, scope, *, force_solver=None,
+  overlap_solver=None)`` — accepts pluggable callbacks for
+  the per-scope force pass and the bbox-aware overlap pass.
+  Defaults: fdp's ``tlayout`` + ``xlayout``.  Engines that
+  pass alternates (sfdp does) keep all the cluster
+  orchestration: bottom-up recursion, derived graph build,
+  proxy installation, translate-to-proxy, bbox recompute.
+- ``derive_graph_layout(layout, *, force_solver=None,
+  overlap_solver=None)`` — same callback shape at the top
+  level.
+- ``_install_proxy_lnodes`` — duck-types the engine's
+  ``LayoutNode`` class from existing entries instead of
+  importing fdp's directly, so sfdp's LayoutNode (which adds
+  a ``mass`` field) instantiates correctly.
+
+**SfdpLayout wiring:**
+
+- ``__init__`` adds ``_clusters`` / ``_cluster_parent`` /
+  ``_cluster_level`` / ``_node_to_cluster`` /
+  ``_node_to_cluster_obj`` (engine-agnostic fdp helpers).
+- ``_init_from_graph`` calls ``discover_clusters`` +
+  ``build_node_to_cluster`` after node materialisation;
+  edges are enumerated via a new ``_iter_all_edges`` that
+  walks ``gather_all_subgraphs`` (subgraph-edge fix from
+  §4.F-clusters).
+- ``layout()`` dispatches to ``derive_graph_layout`` when
+  clusters present (gated on ``GVPY_SFDP_DERIVE_GRAPH=1``,
+  default on); flat graphs continue through the existing
+  multilevel + quadtree path.
+- New ``_sfdp_force_solver`` adapts sfdp's
+  ``_spring_electrical`` to the
+  ``(layout, node_list, edges, K, maxiter)`` callback shape
+  (builds adjacency from the lifted edge list).
+- New ``_sfdp_overlap_solver`` bridges to fdp's
+  ``xlayout(node_subset=...)`` for proper bbox-aware
+  overlap removal at each scope.  (Sfdp's homegrown
+  ``_remove_overlap`` uses an incorrect distance metric
+  that can't separate cluster proxies whose bboxes are
+  100-200 pt wide.)
+- ``_to_json`` and ``_write_back`` overrides emit cluster
+  bboxes for SVG / -Tdot output (mirror FdpLayout).
+- After ``derive_graph_layout`` returns,
+  ``compute_cluster_bboxes(self)`` runs once to refresh
+  the root-level bboxes (``recursive_layout`` only
+  refreshes non-root scopes).
+
+**Verified on ``test_data/fdp_cluster_demo.gv``** (3 sibling
+clusters + 2 root-level free nodes):
+
+```
+[TRACE fdp_derive] derive_graph_layout: starting recursive layout
+[TRACE fdp_derive] recursive_layout: ROOT (depth=0)
+[TRACE fdp_derive]   recursive_layout: cluster_left (depth=1)
+[TRACE fdp_derive] derive_graph(scope=cluster_left): 3 derived nodes, 2 edges
+[TRACE fdp_xlayout] cleared in attempt=0 iter=3
+[TRACE fdp_derive]   recursive_layout: cluster_right (depth=1)
+[TRACE fdp_derive] derive_graph(scope=cluster_right): 3 derived nodes, 2 edges
+[TRACE fdp_xlayout] cleared in attempt=0 iter=3
+[TRACE fdp_derive]   recursive_layout: cluster_middle (depth=1)
+[TRACE fdp_derive] derive_graph(scope=cluster_middle): 2 derived nodes, 1 edges
+[TRACE fdp_xlayout] cleared in attempt=0 iter=2
+[TRACE fdp_derive] derive_graph(scope=ROOT): 5 derived nodes, 4 edges
+[TRACE fdp_xlayout] cleared in attempt=0 iter=9
+```
+
+Final cluster bboxes are non-overlapping at distinct positions.
+
+**Tests**: 6 new in ``TestSfdpClusters``:
+- ``test_clusters_discovered``
+- ``test_cluster_bboxes_computed_and_emitted``
+- ``test_cluster_bboxes_dont_overlap``
+- ``test_cluster_members_inside_bbox``
+- ``test_flat_graph_skips_derive_graph``
+- ``test_subgraph_edges_drive_cohesion``
+
+Test suite: **1208 passed**, 4 skipped, 1 deselected (was
+1202).  22 sfdp tests (was 16).  43 fdp tests unchanged
+(derive.py refactor preserves fdp behaviour with default
+callbacks).
+
+**What's intentionally NOT ported yet** — these are the
+sfdp-specific pieces that should follow in subsequent
+sessions:
+
+| C source | lines | Py status | next-session port |
+|---|---:|---|---|
+| ``Multilevel.c`` | 304 | homegrown coarsening | C-aligned MIES + heavy-edge matching with proper supernode handling |
+| ``spring_electrical.c`` | 1206 | homegrown F-R + quadtree | C-aligned solver: stable_outer_loop, oned_optimizer step adaptation, prolongate / interpolate_coord |
+| ``post_process.c`` | 1034 | not ported | stress smoothing (smoothing=spring/avg_dist/graph_dist) |
+| ``sparse_solve.c`` | 146 | not ported | sparse linear solver — needed by stress_model |
+| ``stress_model.c`` | 47 | not ported | stress majorization for smoothing |
+| ``sfdpinit.c`` | 319 | minimal | input parsing; partially aligned, mostly attribute reading |
+
+**Open follow-up sessions** (each independently shippable):
+
+1. **Multilevel.c port (1-2 days)** — port C's MIES /
+   heavy-edge matching for proper coarsening hierarchy.
+   Replaces the homegrown matching in
+   ``SfdpLayout._build_hierarchy``.
+2. **spring_electrical.c port (2-3 days)** — port C's
+   stable_outer_loop, prolongate, interpolate_coord, and
+   adaptive cooling.  Replaces ``_spring_electrical``.
+3. **Stress smoothing (post_process.c + stress_model.c +
+   sparse_solve.c, 2-4 days)** — full stress majorization
+   for ``smoothing=spring|avg_dist|graph_dist``.
+
+**Trace channels reused**: ``GVPY_TRACE_FDP=1`` shows
+``[TRACE fdp_cluster] / [TRACE fdp_derive] /
+[TRACE fdp_xlayout]`` lines from the shared infrastructure.
+``GVPY_SFDP_DERIVE_GRAPH=0`` reverts to the homegrown
+multilevel path for diagnostic comparison.
+
+---
+
+## §4.F-derivegraph — Fdp deriveGraph two-level layout (full C port) — 2026-05-08
+
+Full port of C `lib/fdpgen/layout.c: layout()` — the
+deriveGraph two-level recursive pipeline.  Replaces the
+quick-fix post-passes (``remove_cluster_overlap``,
+``push_nonmembers_out_of_clusters``) with a structurally
+correct hierarchical force-directed layout.
+
+**Why:** The simple post-passes shipped 2026-05-08 gave most
+of the visual benefit but the layouts didn't match C's
+hierarchical placement.  When the next engine (sfdp) builds
+on fdp, it should inherit the proper algorithm rather than
+band-aids.
+
+**Algorithm** (mirrors C ``layout()`` at lines 800-923):
+
+1. **Bottom-up recursion**: lay out each cluster's interior
+   first.  When a cluster's recursion returns, its ``bb`` is
+   set to the bbox of its (now-positioned) members.
+2. **deriveGraph(scope)**: at the parent scope, build a
+   *derived graph* — one proxy node per direct child cluster
+   (sized to the cluster's ``bb``), one pass-through node per
+   direct member.  Edges are "lifted" to the derived graph:
+   each endpoint maps to the immediate child of the scope
+   that contains it; self-loops (both endpoints map to the
+   same child) are dropped.
+3. **tlayout** on the derived graph (proxies + free nodes
+   treated as flat F-R nodes; proxy size in the force model =
+   cluster bbox size).
+4. **xlayout** on the derived graph with ``node_subset``
+   restricting overlap removal to this scope's nodes
+   (proxies and direct members).  Crucial: ``tlayout``'s F-R
+   uses K=21.6 by default and can't separate proxies whose
+   bboxes are 100-200 pt wide; xlayout's bbox-aware overlap
+   pass enforces non-overlap.
+5. **Translate**: for each cluster proxy, move every
+   transitive member of the cluster so its centroid lands at
+   the proxy's final position.
+6. **Recompute bboxes**.
+
+**New module**:
+``gvpy/engines/layout/fdp/derive.py`` — ``DerivedNode`` /
+``DerivedGraph`` dataclasses, ``derive_graph(layout, scope)``,
+``recursive_layout(layout, scope, depth=0)``,
+``derive_graph_layout(layout)`` (top-level entry).
+
+**Modifications**:
+
+- ``FdpLayout.layout()``: gated dispatch on
+  ``GVPY_FDP_DERIVE_GRAPH=1`` (default on as of this commit).
+  When clustered, calls ``derive_graph_layout``; flat graphs
+  fall through to the existing per-component
+  ``_layout_component`` path.
+- ``FdpLayout.layout()``: skip the simple-fix post-passes
+  (``remove_cluster_overlap``,
+  ``push_nonmembers_out_of_clusters``) when deriveGraph is
+  active — the deriveGraph pipeline already produces
+  non-overlapping clusters with non-members placed correctly.
+- ``xlayout``: added optional ``node_subset`` parameter so
+  recursive layout can run xlayout at one scope without
+  disturbing already-laid-out nodes from other scopes.
+
+**What's deliberately left out vs C** (kept simple; can be
+added later if needed):
+
+- **Port nodes** (``IS_PORT``, ``getEdgeList``, ``genPorts``).
+  C uses these to provide cluster-edge attachment angles
+  during the recursive layout.  Py routing handles cluster
+  edges via ``compoundEdges`` post-layout — port info not
+  needed for an initial layout.
+- **Pinned-cluster placement** (``chkPos``).  Minor; fdp
+  pins are barely used.
+- **finalCC normalize/translate-to-origin**.  The existing
+  ``apply_normalize`` / ``apply_center`` post-pass handles
+  this.
+- **Connected-component split inside the derived graph**.  C
+  packs disconnected components separately via ``putGraphs``;
+  Py relies on F-R repulsion in tlayout + xlayout's
+  bbox-overlap pass to spread proxies that lack inter-edges.
+  Sufficient for the current test corpus.
+
+**Verification** on ``test_data/fdp_cluster_demo.gv`` (3
+sibling clusters, root-level free nodes a, b):
+
+```
+[TRACE fdp_derive] derive_graph_layout: starting recursive layout
+[TRACE fdp_derive] recursive_layout: ROOT (depth=0)
+[TRACE fdp_derive]   recursive_layout: cluster_left (depth=1)
+[TRACE fdp_derive] derive_graph(scope=cluster_left): 3 derived nodes, 2 edges
+[TRACE fdp_derive]   recursive_layout: cluster_right (depth=1)
+[TRACE fdp_derive] derive_graph(scope=cluster_right): 3 derived nodes, 2 edges
+[TRACE fdp_derive]   recursive_layout: cluster_middle (depth=1)
+[TRACE fdp_derive] derive_graph(scope=cluster_middle): 2 derived nodes, 1 edge
+[TRACE fdp_derive] derive_graph(scope=ROOT): 5 derived nodes, 4 edges
+[TRACE fdp_derive] derive_graph_layout: done
+```
+
+Final cluster bboxes:
+- cluster_left:   x=-170..-29, y=82..264 (left)
+- cluster_right:  x=  1..156,  y=113..253 (right)
+- cluster_middle: x=-112..-18, y=-123..-17 (upper-left)
+
+Three disjoint cluster rects.  Free nodes a, b in the
+central area, both outside every cluster.  No node-node
+overlap.
+
+**Test fixture for nested clusters**:
+``test_data/fdp_nested_demo.gv`` — ``cluster_inner`` inside
+``cluster_outer``.  ``test_derive_graph_nested_clusters``
+asserts inner ⊂ outer post-layout.
+
+**Tests**: 1 new test
+(``test_derive_graph_nested_clusters``).  Also revised
+``test_connected_intruders_escape_same_side`` →
+``test_connected_intruders_not_split_across_cluster`` to
+check the actual property (segment a→b doesn't cross the
+cluster bbox) instead of a tight diagonal threshold tuned
+to the simple-fix path.
+
+Test suite: **1202 passed**, 4 skipped, 1 deselected (was
+1201).  43 fdp tests (was 42).  No regressions.
+
+**Trace channel**: ``GVPY_TRACE_FDP=1`` extends with
+``[TRACE fdp_derive] ...`` for derive-graph build,
+recursive-layout entry/exit, and bbox tracking.
+
+**Default flag**: ``GVPY_FDP_DERIVE_GRAPH=1`` is the default;
+set ``GVPY_FDP_DERIVE_GRAPH=0`` to revert to the simple-fix
+post-passes (kept for diagnostic comparison).
+
+**Why this matters for sfdp**: sfdp builds on fdp
+(multilevel coarsening + Barnes-Hut quadtree + same force
+model).  By making fdp's hierarchical layout structurally
+correct, sfdp inherits a clean foundation rather than
+band-aids that would compound at multiple levels of
+multilevel hierarchy.
+
+---
+
+## §4.F-clusters — Fdp cluster-aware routing + visual cluster passes — 2026-05-08
+
+End-to-end port of fdp's cluster-aware spline routing
+(C `lib/fdpgen/clusteredges.c`) plus the visual passes
+(cluster cohesion, cluster-cluster separation, free-node
+escape, group coordination, perpendicular spread).
+
+After this session the fdp engine produces visually
+clean clustered layouts: cluster members cohesive,
+cluster boxes non-overlapping, free nodes outside
+non-member cluster bboxes, connected free-node pairs
+on the same side of a cluster (short edges), no
+intra-group node overlap.
+
+**Two stacked routing bugs fixed:**
+
+1. ``base._write_back`` ignored ``edge_routes`` — now
+   emits the multi-point spline ``pos`` instead of a
+   2-point straight-line fallback.  Affects fdp / neato
+   / twopi / sfdp / osage / patchwork uniformly.
+2. ``route_edges`` ignored clusters — fdp now dispatches
+   to a new cluster-aware path on clustered graphs.
+
+**Phase A — cluster tracking on FdpLayout.**  New
+module ``gvpy/engines/layout/fdp/cluster.py``:
+
+- ``FdpCluster`` dataclass (name, direct_nodes,
+  transitive nodes, margin, label, attrs, bb).
+- ``discover_clusters(layout)`` — recursive subgraph
+  walk building ``layout._clusters``,
+  ``_cluster_parent`` (mirrors C ``GPARENT``),
+  ``_cluster_level`` (mirrors C ``LEVEL``).
+- ``build_node_to_cluster(layout)`` — populates
+  ``_node_to_cluster`` / ``_node_to_cluster_obj``
+  (mirrors C ``ND_clust(n)`` / ``PARENT(n)``).
+- ``compute_cluster_bboxes(layout)`` — fills each
+  cluster's ``bb`` from member positions plus margin.
+
+Wired into ``FdpLayout.__init__`` /
+``_init_from_graph`` / ``layout()``.
+
+**Phase B — ``objectList`` + ``compoundEdges``.**
+Added to ``common/edge_routing.py``
+(engine-agnostic; duck-types on Phase A's cluster
+fields):
+
+- ``_cluster_bbox_polygon(cl, margin)`` — CW Ppoly
+  from a cluster bbox.
+- ``_gparent(layout, g)`` — C ``GPARENT`` macro.
+- ``_add_graph_objs(layout, g, tex, hex_, polys, margin)``
+  — C ``addGraphObjs`` (clusteredges.c:104).
+- ``object_list(layout, edge, margin)`` — C
+  ``objectList`` (clusteredges.c:151).  Walks both
+  endpoints up to their cluster LCA, excluding the
+  endpoints' enclosing clusters and any common
+  ancestors.
+- ``route_edges_compound(layout)`` — C
+  ``compoundEdges`` (clusteredges.c:207).  Per-edge
+  ``Pobsopen`` / ``Pobspath`` / ``Pobsclose`` loop.
+
+``FdpLayout.layout()`` dispatches to
+``route_edges_compound`` when ``self._clusters`` is
+non-empty; flat graphs continue through
+``route_edges`` (regression-safe).
+
+**Phase C — cluster bbox emission.**  Extended
+``FdpLayout._to_json`` to emit a ``"clusters"`` array
+matching dot's format (so the shared SVG renderer
+draws cluster outlines).  Added an
+``FdpLayout._write_back`` override that walks the
+subgraph tree and writes
+``sub.attr_record["bb"] = "x1,y1,x2,y2"`` on each
+``cluster*`` subgraph, putting cluster geometry into
+``-Tdot`` round-trips.
+
+**Phase D (partial) — visual cluster cohesion +
+separation.**  Quick fixes that give most of the
+visual benefit of C's ``deriveGraph`` two-level
+pipeline at much lower cost:
+
+1. **Edges inside subgraph blocks now contribute to
+   the force model.**  The Py parser stores
+   intra-cluster edges in the subgraph's own
+   ``.edges`` dict (lowest-common-subgraph rule).
+   Added ``FdpLayout._iter_all_edges`` walking
+   ``gather_all_subgraphs`` and used it in every fdp
+   edge-iteration site.  Same fix to base
+   ``_write_back`` and ``_to_json``.  Without this,
+   5 of 10 edges on the demo graph were silently
+   dropped, leaving cluster members with no internal
+   cohesion.
+2. ``remove_cluster_overlap`` — iteratively
+   translates whole top-level clusters apart along
+   the smaller-overlap axis until no top-level pair
+   overlaps (≥ ``sep=20`` pt gap).  Members move
+   with their cluster.
+3. ``push_nonmembers_out_of_clusters`` —
+   coordinated-group escape: for each cluster, group
+   non-member intruders into connected components
+   (via their own edges), then pick the SAME
+   cardinal escape direction for the whole group
+   that minimizes total post-push edge length.
+   Connected pairs end up on the same side of a
+   cluster (short edges) instead of split across
+   opposite sides.
+4. **Intra-group spread.**  After picking the escape
+   direction, sort group members along the
+   perpendicular axis and bump overlapping pairs
+   apart so each consecutive pair sits at least
+   ``half_a + half_b + sep`` apart.
+
+Sequence in ``FdpLayout.layout()``:
+``tlayout → xlayout → compute_cluster_bboxes →
+remove_cluster_overlap →
+push_nonmembers_out_of_clusters →
+compute_cluster_bboxes (recompute) →
+route_edges_compound``.
+
+**Tests: 21 new in ``test_fdp_layout.py``** (5 in
+``TestFdpClusterTracking``, 6 in
+``TestFdpCompoundRouting``, 7 in
+``TestFdpClusterEmit``, 3 inside the cluster-emit
+class for cluster overlap / cohesion / coordinated
+escape / no-stack).  Full suite: **1201 passed**, 4
+skipped, 1 deselected (was 1181 at start of work).
+**42 fdp tests** (was 22).
+
+**Test fixture:** ``test_data/fdp_cluster_demo.gv``
+— three sibling clusters with cross-cluster edges.
+
+**Open follow-up (deferred):** full C ``deriveGraph``
+two-level layout port (collapse clusters → proxy
+nodes; lay out derived graph; recursively lay out
+each cluster's interior; ``expandCluster`` to
+translate members to proxy positions).  The current
+quick-fixes give most of the visual benefit; the
+proper port lands a node-for-node match with C.
+Estimated 1-2 days when needed.
+
+**Trace channels:**
+- ``GVPY_TRACE_FDP=1`` for cluster discovery, bbox,
+  overlap-removal, push-out steps.
+- ``GVPY_TRACE_NEATO=1`` (shared) for routing.
+
+**Note:** neato's ``spline_edges_`` (neatosplines.c:580)
+explicitly says "intra-cluster edges are not
+constrained to remain in the cluster's bounding box"
+— neato is DESIGNED to ignore clusters.  Py's neato
+is correctly matching that.  Only fdp differs.
+
+**Side-issues surfaced (separate parser bugs, not
+blocking):**
+
+- Edges declared INSIDE subgraph blocks aren't
+  registered by the Py parser (e.g. ``subgraph X
+  { a -- b; }`` produces zero edges).
+- Edges declared AFTER subgraph blocks at the root
+  level also aren't registered.
+
+Workaround in fixtures: declare edges BEFORE
+subgraph blocks.  Worth filing properly when next
+touched.
+
+---
+
 ## §4.F — Fdp engine C-alignment (full port) + neato → common refactor — 2026-05-02
 
 Two-pronged work: (1) refactor the engine-agnostic neato modules

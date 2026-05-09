@@ -857,14 +857,17 @@ def _node_attrs(node: dict) -> tuple[str, str, str, float, str, float]:
     """Extract (fill, stroke, font_family, font_size, font_color, penwidth) from node dict."""
     from gvpy.render.colors import resolve_color
     style = node.get("style", "")
-    fill = node.get("fillcolor", node.get("color", ""))
+    fill = node.get("fillcolor", "")
     stroke = node.get("color", _DEF_NODE_STROKE)
+    # Graphviz convention: a node with no explicit fillcolor and no
+    # ``style=filled`` renders with no fill (transparent), letting
+    # the background show through.  The legacy default of white
+    # (#ffffff) covered up cluster backgrounds — fixed 2026-05-09.
     if not fill:
-        fill = _DEF_NODE_FILL if "filled" not in style else stroke
-    if "filled" in style and not node.get("fillcolor"):
-        fill = node.get("color", "#d3d3d3")
-    if node.get("fillcolor"):
-        fill = node["fillcolor"]
+        if "filled" in style:
+            fill = node.get("color", "#d3d3d3")
+        else:
+            fill = "none"
     font_family = node.get("fontname", _DEF_FONT_FAMILY)
     try:
         font_size = float(node.get("fontsize", _DEF_FONT_SIZE))
@@ -1531,6 +1534,34 @@ def _render_node(node: dict) -> str:
                                       "none", stroke, penwidth))
     elif shape == "point":
         lines.append(f'<circle cx="{x:.2f}" cy="{y:.2f}" r="3" fill="{stroke}" stroke="{stroke}"/>')
+    elif shape == "cylinder":
+        # Cylinder: rectangular body with elliptical top cap (full
+        # ellipse outline) and a curved bottom arc that suggests the
+        # back-of-the-cylinder is hidden.  Cap radius is 1/6 of the
+        # height, matching Graphviz's ``YPAD = h/6`` convention.
+        cap_ry = max(hh / 6.0, 2.0)
+        cap_top_y = y - hh + cap_ry        # center y of top cap
+        cap_bot_y = y + hh - cap_ry        # center y of bottom cap
+        # Body rectangle (between the two cap centers).
+        # We render as a single filled <path> so fill closes
+        # cleanly and stroke draws only the visible outline.
+        body_path = (
+            f"M {x - hw:.2f} {cap_top_y:.2f} "
+            f"L {x - hw:.2f} {cap_bot_y:.2f} "
+            f"A {hw:.2f} {cap_ry:.2f} 0 0 0 "
+            f"{x + hw:.2f} {cap_bot_y:.2f} "
+            f"L {x + hw:.2f} {cap_top_y:.2f} "
+            f"A {hw:.2f} {cap_ry:.2f} 0 0 0 "
+            f"{x - hw:.2f} {cap_top_y:.2f} Z"
+        )
+        lines.append(f'<path d="{body_path}" {base}/>')
+        # Top cap as a separate full ellipse so the front-facing
+        # curve renders over the body's top edge.
+        lines.append(
+            f'<ellipse cx="{x:.2f}" cy="{cap_top_y:.2f}" '
+            f'rx="{hw:.2f}" ry="{cap_ry:.2f}" '
+            f'fill="none" stroke="{stroke}"{sw}{node_dash}/>'
+        )
     elif shape in ("plaintext", "plain", "none"):
         pass
     else:
@@ -1550,12 +1581,90 @@ def _render_node(node: dict) -> str:
                 anchor="middle",
             ))
         else:
-            label = escape(raw_label)
-            lines.append(
-                f'<text x="{x:.2f}" y="{y + font_size * 0.35:.2f}" '
-                f'text-anchor="middle" font-family="{font_family}" '
-                f'font-size="{font_size}" fill="{font_color}">{label}</text>'
-            )
+            # Multi-line labels: Graphviz allows ``\n`` (centered),
+            # ``\l`` (left-justified), and ``\r`` (right-justified)
+            # newline escapes inside DOT label strings.  The DOT
+            # parser converts the two-char ``\n`` / ``\r``
+            # escapes into actual newline / carriage-return
+            # characters, so we accept both forms here.  ``\l``
+            # has no native equivalent — the parser passes that
+            # one through literally, so we still detect the
+            # two-char form for it.
+            line_break_chars = ("\\n", "\\l", "\\r", "\n", "\r")
+            has_break = any(c in raw_label for c in line_break_chars)
+            if not has_break:
+                # Single-line fast path — keep the simple
+                # ``<text>`` markup so existing tests / consumers
+                # that grep for ``>label</text>`` keep working.
+                label = escape(raw_label)
+                lines.append(
+                    f'<text x="{x:.2f}" y="{y + font_size * 0.35:.2f}" '
+                    f'text-anchor="middle" font-family="{font_family}" '
+                    f'font-size="{font_size}" fill="{font_color}">'
+                    f'{label}</text>'
+                )
+            else:
+                # Split into (text, anchor_kind) tuples.
+                # ``anchor_kind``: "n" / "l" / "r" — derived from
+                # the escape that introduced the break.  Both
+                # the two-char ``\n`` / ``\r`` and the literal
+                # newline / CR are mapped to ``n``.
+                lines_split: list[tuple[str, str]] = []
+                remaining = raw_label
+                while remaining:
+                    next_idx = -1
+                    next_kind = "n"
+                    next_len = 1
+                    for esc in line_break_chars:
+                        idx = remaining.find(esc)
+                        if idx >= 0 and (next_idx < 0 or idx < next_idx):
+                            next_idx = idx
+                            # 2-char escapes start with backslash;
+                            # 1-char are real \n / \r.
+                            if len(esc) == 2:
+                                next_kind = esc[1]
+                                next_len = 2
+                            else:
+                                next_kind = "n"
+                                next_len = 1
+                    if next_idx < 0:
+                        lines_split.append((remaining, "n"))
+                        remaining = ""
+                    else:
+                        lines_split.append(
+                            (remaining[:next_idx], next_kind)
+                        )
+                        remaining = remaining[next_idx + next_len:]
+                n_lines = len(lines_split)
+                line_height = font_size * 1.2
+                # Center the block vertically on (x, y).  First
+                # line baseline sits at ``y - (n-1)/2·line_height
+                # + font_size·0.35`` (descent compensation).
+                first_y = (
+                    y - (n_lines - 1) * line_height / 2
+                    + font_size * 0.35
+                )
+                tspans: list[str] = []
+                for i, (text, kind) in enumerate(lines_split):
+                    if kind == "l":
+                        line_x = x - w / 2 + 4
+                        anchor = "start"
+                    elif kind == "r":
+                        line_x = x + w / 2 - 4
+                        anchor = "end"
+                    else:
+                        line_x = x
+                        anchor = "middle"
+                    line_y = first_y + i * line_height
+                    tspans.append(
+                        f'<tspan x="{line_x:.2f}" y="{line_y:.2f}" '
+                        f'text-anchor="{anchor}">{escape(text)}</tspan>'
+                    )
+                lines.append(
+                    f'<text font-family="{font_family}" '
+                    f'font-size="{font_size}" fill="{font_color}">'
+                    + "".join(tspans) + '</text>'
+                )
     # External label (xlabel) — positioned by collision-aware placement
     xlabel = node.get("xlabel", "")
     xlabel_x = node.get("_xlabel_pos_x", "")

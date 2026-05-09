@@ -51,7 +51,8 @@ def _node_radius(ln: Any) -> float:
 
 
 def xlayout(layout: Any, K: float, sep: float, max_iter: int,
-            tries: int = _DFLT_MAX_ATTEMPTS) -> int:
+            tries: int = _DFLT_MAX_ATTEMPTS,
+            node_subset: list[str] | None = None) -> int:
     """Force-based overlap removal.
 
     Outer loop: up to ``tries`` attempts; ``K`` grows additively
@@ -59,10 +60,21 @@ def xlayout(layout: Any, K: float, sep: float, max_iter: int,
     xlayout.c:300).  Inner loop: F-R-style force iteration with
     overlap-aware repulsion + clearance-distance attraction.
 
+    ``node_subset`` (if given) restricts the pass to a specific
+    set of names — used by the deriveGraph two-level layout
+    (``derive.py``) to run xlayout on cluster proxies + direct
+    members at one scope without disturbing already-laid-out
+    nodes from other scopes.  When ``None``, iterates every
+    node in ``layout.lnodes`` (the original signature).
+
     Returns the number of overlapping pairs *remaining* (0 means
     fully cleared).  Mirrors ``xlayout.c::x_layout``.
     """
-    nodes = list(layout.lnodes.values())
+    if node_subset is not None:
+        nodes = [layout.lnodes[n] for n in node_subset
+                 if n in layout.lnodes]
+    else:
+        nodes = list(layout.lnodes.values())
     N = len(nodes)
     if N < 2:
         return 0

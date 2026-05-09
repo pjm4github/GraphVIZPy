@@ -1,0 +1,34 @@
+// Tiny fdp test fixture: two sibling clusters with an edge between
+// nodes that are NOT in either cluster but whose path passes BETWEEN
+// them.  The middle cluster_C should NOT block edge a -> b because
+// neither endpoint is in C, but C's compoundEdges routes around C
+// via objectList (which adds C as an obstacle).  Py's flat single-
+// vconfig router currently treats all clusters identically (or
+// rather, ignores them as obstacles since clusters aren't in the
+// node list at all) — so this graph exposes the gap.
+graph G {
+    splines=true;
+    a;
+    b;
+    subgraph cluster_left {
+        label="LEFT";
+        l1; l2; l3;
+        l1 -- l2 -- l3;
+    }
+    subgraph cluster_right {
+        label="RIGHT";
+        r1; r2; r3;
+        r1 -- r2 -- r3;
+    }
+    subgraph cluster_middle {
+        label="MIDDLE";
+        m1; m2;
+        m1 -- m2;
+    }
+    // Cross-cluster edges (the cluster-aware-routing test cases):
+    l2 -- r2;
+    a -- b;
+    l1 -- r3;
+    a -- m1;
+    b -- m2;
+}

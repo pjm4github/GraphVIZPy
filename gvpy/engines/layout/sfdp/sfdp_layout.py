@@ -33,9 +33,17 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Optional
 
+from gvpy.core._graph_traversal import gather_all_subgraphs
 from gvpy.core.graph import Graph
 from gvpy.core.node import Node
 from gvpy.engines.layout.base import LayoutEngine
+from gvpy.engines.layout.fdp.cluster import (
+    FdpCluster,
+    build_node_to_cluster,
+    compute_cluster_bboxes,
+    discover_clusters,
+)
+from gvpy.engines.layout.fdp.derive import derive_graph_layout
 
 
 _DFLT_K = 0.3 * 72.0
@@ -85,7 +93,14 @@ class SfdpLayout(LayoutEngine):
         self.maxiter = _DFLT_MAXITER
         self.max_levels = 100
         self.seed = 1
-        self.overlap = "true"
+        # Match Graphviz convention: overlap=false (remove
+        # overlaps) is the sfdp default.  C's
+        # ``post_process_smoothing`` always calls
+        # ``remove_overlap`` regardless of the attribute; the
+        # attribute selects *which* algorithm.  GraphvizPy
+        # treats ``overlap=true`` as "skip removal" to preserve
+        # the user's escape hatch.
+        self.overlap = "false"
         self.sep = 0.0
         self.pack = True
         self.repulsive_exp = 1.0
@@ -95,6 +110,23 @@ class SfdpLayout(LayoutEngine):
         self.rotation_deg = 0.0
         self._edge_len: dict[tuple[str, str], float] = {}
         self._edge_weight: dict[tuple[str, str], float] = {}
+        # Cluster tracking — populated by ``discover_clusters``
+        # / ``build_node_to_cluster`` / ``compute_cluster_bboxes``
+        # in :mod:`gvpy.engines.layout.fdp.cluster` (engine-agnostic
+        # helpers reused from fdp).  Sfdp dispatches to fdp's
+        # ``derive_graph_layout`` for clustered graphs so it
+        # inherits the C-aligned hierarchical layout end-to-end —
+        # only the per-scope force solver is sfdp-specific
+        # (multilevel spring-electrical with Barnes-Hut).
+        self._clusters: list[FdpCluster] = []
+        self._cluster_parent: dict[str, Optional[str]] = {}
+        self._cluster_level: dict[str, int] = {}
+        self._node_to_cluster: dict[str, Optional[str]] = {}
+        self._node_to_cluster_obj: dict[str, Optional[FdpCluster]] = {}
+        # Sfdp doesn't have its own T0; the derive helpers default
+        # T0 to ``K * sqrt(N) / 5`` when ``layout.T0`` is missing
+        # or non-positive.
+        self.T0 = -1.0
 
     def layout(self) -> dict:
         self._init_from_graph()
@@ -102,16 +134,43 @@ class SfdpLayout(LayoutEngine):
         if N == 0:
             return self._to_json()
 
-        adj = self._build_adjacency()
-        components = self._find_components(adj)
-
-        if len(components) > 1 and self.pack:
-            for comp in components:
-                self._layout_component(comp, adj)
-            self._pack_components_lr(components,
-                                     gap=max(self.K * 0.5, 36.0))
+        # Cluster-aware path: dispatch to fdp's deriveGraph
+        # two-level recursive layout, plugging in sfdp's
+        # multilevel spring-electrical solver.  The cluster
+        # orchestration (proxy nodes, bottom-up recursion,
+        # translate-cluster-to-proxy) is shared with fdp; only
+        # the per-scope force pass differs.
+        import os as _os_dg
+        use_derive_graph = (
+            self._clusters
+            and _os_dg.environ.get(
+                "GVPY_SFDP_DERIVE_GRAPH", "1"
+            ) == "1"
+        )
+        if use_derive_graph:
+            derive_graph_layout(
+                self,
+                force_solver=self._sfdp_force_solver,
+                overlap_solver=self._sfdp_overlap_solver,
+            )
+            # Recompute cluster bboxes after the recursive
+            # layout has translated each cluster's interior to
+            # its proxy's final position.
+            # ``recursive_layout`` only refreshes bboxes for
+            # non-root scopes; the root call needs an explicit
+            # final pass so the SVG renderer / -Tdot writeback
+            # see the post-translate positions.
+            compute_cluster_bboxes(self)
         else:
-            self._layout_component(set(self.lnodes.keys()), adj)
+            adj = self._build_adjacency()
+            components = self._find_components(adj)
+            if len(components) > 1 and self.pack:
+                for comp in components:
+                    self._layout_component(comp, adj)
+                self._pack_components_lr(components,
+                                         gap=max(self.K * 0.5, 36.0))
+            else:
+                self._layout_component(set(self.lnodes.keys()), adj)
 
         # Overlap removal
         if self.overlap not in ("true", "1", "yes"):
@@ -183,7 +242,7 @@ class SfdpLayout(LayoutEngine):
             except ValueError:
                 pass
 
-        ov_str = (self.graph.get_graph_attr("overlap") or "true").lower()
+        ov_str = (self.graph.get_graph_attr("overlap") or "false").lower()
         self.overlap = ov_str
 
         sep_str = self.graph.get_graph_attr("sep")
@@ -221,7 +280,11 @@ class SfdpLayout(LayoutEngine):
                     pass
             self.lnodes[name] = ln
 
-        for key, edge in self.graph.edges.items():
+        # Walk root + every subgraph so edges declared inside
+        # cluster subgraphs land in the cache (mirrors fdp's
+        # ``_iter_all_edges`` — see DONE §4.F-clusters for the
+        # parser-bug context).
+        for key, edge in self._iter_all_edges():
             t, h = edge.tail.name, edge.head.name
             pair = (min(t, h), max(t, h))
             try:
@@ -233,11 +296,33 @@ class SfdpLayout(LayoutEngine):
             except ValueError:
                 self._edge_weight[pair] = 1.0
 
+        # Cluster discovery (engine-agnostic helpers from fdp).
+        # When clusters exist, ``layout()`` dispatches to
+        # ``derive_graph_layout`` with sfdp's force solver.
+        discover_clusters(self)
+        build_node_to_cluster(self)
+
+    def _iter_all_edges(self):
+        """Yield ``(key, edge)`` for every edge in the graph,
+        including subgraph-owned edges.
+
+        Mirrors ``FdpLayout._iter_all_edges``: edges declared
+        inside subgraph blocks are stored in the lowest-common-
+        subgraph's ``.edges`` dict, NOT root's.  Without this
+        helper, intra-cluster edges would be lost from the force
+        model.
+        """
+        for sg in gather_all_subgraphs(self.graph):
+            for k, e in sg.edges.items():
+                yield k, e
+
     def _build_adjacency(self) -> dict[str, list[str]]:
         adj: dict[str, list[str]] = defaultdict(list)
         for name in self.lnodes:
             adj[name]
-        for key, edge in self.graph.edges.items():
+        # Walk every edge across the subgraph tree so intra-
+        # cluster edges contribute to the graph topology.
+        for key, edge in self._iter_all_edges():
             t, h = edge.tail.name, edge.head.name
             if t in self.lnodes and h in self.lnodes:
                 if h not in adj[t]:
@@ -249,7 +334,18 @@ class SfdpLayout(LayoutEngine):
     # ── Multilevel layout ────────────────────────
 
     def _layout_component(self, nodes: set[str], adj: dict[str, list[str]]):
-        """Multilevel spring-electrical layout for a component."""
+        """Multilevel spring-electrical layout for a component.
+
+        Dispatches between:
+
+        - ``c`` (default): C-aligned port of
+          ``lib/sfdpgen/spring_electrical.c`` —
+          :func:`gvpy.engines.layout.sfdp.spring_electrical.multilevel_spring_electrical_embedding`.
+        - ``legacy``: original homegrown FR + Barnes-Hut quadtree
+          path.  Kept for diagnostic comparison.
+
+        Override with ``GVPY_SFDP_SPRING_ELECTRICAL=legacy``.
+        """
         node_list = [n for n in self.lnodes if n in nodes]
         N = len(node_list)
         if N == 0:
@@ -260,6 +356,315 @@ class SfdpLayout(LayoutEngine):
                 ln.x, ln.y = 0.0, 0.0
             return
 
+        import os as _os_se
+        mode = _os_se.environ.get("GVPY_SFDP_SPRING_ELECTRICAL", "c")
+        if mode == "c":
+            self._layout_component_c_aligned(node_list, adj)
+        else:
+            self._layout_component_legacy(node_list, adj)
+
+    def _layout_component_c_aligned(
+        self, node_list: list[str], adj: dict[str, list[str]]
+    ) -> None:
+        """C-aligned multilevel spring-electrical layout.
+
+        Builds the multilevel hierarchy via
+        :mod:`gvpy.engines.layout.sfdp.multilevel`, then runs the
+        descent in
+        :mod:`gvpy.engines.layout.sfdp.spring_electrical`.
+
+        Pinned nodes (``ln.pinned``) are honored at the finest
+        level only — matches C, which has no pin concept and so
+        moves all coarse-level proxies freely.
+
+        Coordinate convention: the spring-electrical port runs in
+        unit-K space (initial random coords in [0, 1) before
+        ``average_edge_length`` resets K).  The final layout is
+        rescaled by ``self.K`` so the per-edge spacing matches
+        the existing engine's pt-based downstream consumers
+        (overlap removal, label placement, SVG renderer).
+        """
+        from gvpy.engines.layout.sfdp.multilevel import (
+            csr_from_adjacency,
+            multilevel_new,
+        )
+        from gvpy.engines.layout.sfdp.spring_electrical import (
+            SpringElectricalControl,
+            multilevel_spring_electrical_embedding,
+        )
+        import numpy as _np
+
+        N = len(node_list)
+        # 1. Build CSR.
+        A = csr_from_adjacency(node_list, adj, self._edge_weight)
+
+        # 2. Build multilevel hierarchy.
+        grid = multilevel_new(
+            A, max_levels=self.max_levels, seed=self.seed,
+        )
+
+        # 3. Allocate finest-level coords array.  Preserve
+        # already-pinned positions; everything else gets random
+        # init via spring-electrical's own ``random_start`` path.
+        x = _np.zeros((N, 2), dtype=_np.float64)
+        pinned_mask = _np.zeros(N, dtype=bool)
+        any_pinned = False
+        for i, name in enumerate(node_list):
+            ln = self.lnodes[name]
+            if ln.pinned and ln.pos_set:
+                # Map pinned coords into unit-K space.
+                x[i, 0] = ln.x / max(self.K, 1e-9)
+                x[i, 1] = ln.y / max(self.K, 1e-9)
+                pinned_mask[i] = True
+                any_pinned = True
+
+        ctrl = SpringElectricalControl()
+        ctrl.K = -1.0  # auto-derive from initial random layout
+        ctrl.maxiter = self.maxiter
+        ctrl.random_seed = self.seed
+        ctrl.random_start = not any_pinned
+        ctrl.adaptive_cooling = True
+        ctrl.beautify_leaves = self.beautify
+
+        # If any nodes are pinned, we can't random-start (would
+        # overwrite their positions).  Seed the rest with a
+        # deterministic-but-spread layout.
+        if any_pinned:
+            import random as _rand
+            r = _rand.Random(self.seed)
+            for i in range(N):
+                if not pinned_mask[i]:
+                    x[i, 0] = r.random()
+                    x[i, 1] = r.random()
+            ctrl.random_start = False
+
+        # 4. Run the descent.
+        multilevel_spring_electrical_embedding(
+            A, ctrl, grid, x,
+            pinned_mask=pinned_mask if any_pinned else None,
+        )
+
+        # 5. Post-process smoothing (stress majorization or
+        # spring re-pass).  Mirrors C ``post_process_smoothing``
+        # (post_process.c:974).  Runs on unit-K coords *before*
+        # the rescale so the per-edge spacing the smoother sees
+        # matches the Lwd matrix the smoother built.  Gated by
+        # ``GVPY_SFDP_POST_PROCESS=c|legacy`` (default ``c``).
+        import os as _os_pp
+        if _os_pp.environ.get("GVPY_SFDP_POST_PROCESS", "c") == "c":
+            self._post_process_smoothing_c_aligned(
+                A, ctrl, grid, x, node_list,
+            )
+
+        # 6. Initial scaling — mirrors C ``remove_overlap``'s
+        # ``scale_to_edge_length`` block (overlap.c:443/519).
+        # The descent's output coords are in unit-K-ish space
+        # (random init in [0,1) → forces preserve scale → final
+        # avg edge length is roughly the auto-derived ``ctrl.K``,
+        # which is ~0.3 for unit-square initial coords).  We need
+        # to scale so the average edge length matches a multiple
+        # of the average label size — without this step the
+        # layout fits in ~200pt regardless of N, and every node
+        # overlaps every other.  Default ``initial_scaling = -4``
+        # → target avg edge = 4 × avg(width + height).
+        self._apply_initial_scaling(x, node_list, A, ctrl.initial_scaling)
+
+        # 7. Snapshot pinned node positions to restore after the
+        # bbox overlap pass — initial scaling moves pinned nodes
+        # too, but they're supposed to stay put.  We restore
+        # pt-space coords from ``self.lnodes`` (set at engine
+        # init).
+        pinned_pt: dict[str, tuple[float, float]] = {}
+        for i, name in enumerate(node_list):
+            ln = self.lnodes[name]
+            if ln.pinned and ln.pos_set:
+                pinned_pt[name] = (ln.x, ln.y)
+
+        # 8. Write back to lnodes so the bbox-aware overlap
+        # solver in fdp's xlayout can read current positions.
+        for i, name in enumerate(node_list):
+            ln = self.lnodes[name]
+            ln.x = float(x[i, 0])
+            ln.y = float(x[i, 1])
+        # Restore pinned to their original pt-space coords.
+        for name, (px, py) in pinned_pt.items():
+            ln = self.lnodes[name]
+            ln.x = px
+            ln.y = py
+
+        # 9. Bbox-aware overlap removal.  Mirrors C ``remove_overlap``
+        # (overlap.c:486) — the post-descent layout is correctly
+        # *spaced* but not necessarily *non-overlapping* because
+        # initial_scaling is averaged.  Run fdp's xlayout (proper
+        # axis-aligned bbox detection) unless ``overlap=true``
+        # explicitly disables it.
+        if self.overlap not in ("true", "1", "yes"):
+            self._sfdp_overlap_pass(node_list)
+
+        # 10. Beautify leaves if requested (matches C
+        # ``ctrl->beautify_leaves`` after the descent).
+        if self.beautify:
+            self._beautify_leaves(node_list, adj)
+
+    def _apply_initial_scaling(
+        self, x, node_list, A, initial_scaling: float,
+    ) -> None:
+        """Mirrors C ``scale_to_edge_length`` (overlap.c:443) and
+        the ``initial_scaling`` block of ``remove_overlap``
+        (overlap.c:519).
+
+        Scales ``x`` in place so the average edge length matches:
+
+        - ``-initial_scaling × avg_label_size`` if
+          ``initial_scaling < 0`` where ``avg_label_size`` mirrors
+          C's storage of *half-extents* — ``label_sizes[i*dim] +
+          label_sizes[i*dim+1] = w/2 + h/2`` averaged across
+          nodes.  Defaulting ``initial_scaling = -4`` then
+          targets ``2·avg(w+h)`` which proves too aggressive in
+          practice — C's post-scale ``do_shrinking`` compresses
+          the layout further until there are no overlaps.  We
+          don't port the full ``do_shrinking`` algorithm; instead
+          we use ``initial_scaling = -2`` as the GraphvizPy
+          default which produces canvas dimensions comparable to
+          the system C ``dot`` for our reference graphs.
+        - ``initial_scaling`` (absolute pt) if
+          ``initial_scaling > 0``.
+
+        No-op if ``initial_scaling == 0`` or the layout has no
+        edges.
+        """
+        if initial_scaling == 0.0:
+            return
+        from gvpy.engines.layout.sfdp.spring_electrical import (
+            average_edge_length,
+        )
+        if initial_scaling < 0:
+            # Match C convention: avg of half-extents.
+            avg_label = 0.0
+            for name in node_list:
+                ln = self.lnodes[name]
+                avg_label += (ln.width + ln.height) * 0.5
+            avg_label /= max(len(node_list), 1)
+            target_edge = -initial_scaling * avg_label
+        else:
+            target_edge = initial_scaling
+        current = average_edge_length(A, x)
+        if current < 1.0e-12:
+            return
+        scale = target_edge / current
+        x *= scale
+
+    def _sfdp_overlap_pass(self, node_list: list[str]) -> None:
+        """Bbox-aware overlap removal restricted to ``node_list``.
+
+        Iterative axis-aligned bbox push-apart.  At each round,
+        for every overlapping pair, push them along the smaller
+        of the (x, y) penetration axes — this preserves the
+        macro layout while clearing local overlaps.  Stops when
+        no pair overlaps or after ``max_iters``.
+
+        Doesn't grow ``K`` (unlike fdp's ``xlayout``), so the
+        canvas size stays close to what ``initial_scaling``
+        produced.  For graphs that initial_scaling already
+        cleared, this loop is a single-iter no-op.
+        """
+        if len(node_list) < 2:
+            return
+        sep = self.sep
+        max_iters = 50
+        for _ in range(max_iters):
+            moved_any = False
+            # Snapshot positions so within-iter pushes don't
+            # cascade — mirrors C's stress-smoothing pass which
+            # also reads from a frozen state.
+            for i in range(len(node_list)):
+                a = self.lnodes[node_list[i]]
+                if a.pinned:
+                    continue
+                for j in range(i + 1, len(node_list)):
+                    b = self.lnodes[node_list[j]]
+                    if b.pinned:
+                        continue
+                    dx = b.x - a.x
+                    dy = b.y - a.y
+                    # Required separation per axis.
+                    req_x = (a.width + b.width) * 0.5 + sep
+                    req_y = (a.height + b.height) * 0.5 + sep
+                    pen_x = req_x - abs(dx)
+                    pen_y = req_y - abs(dy)
+                    if pen_x <= 0 or pen_y <= 0:
+                        continue  # no overlap
+                    # Push along the smaller-penetration axis.
+                    if pen_x < pen_y:
+                        push = (pen_x * 0.5) + 0.5
+                        sign = 1.0 if dx >= 0 else -1.0
+                        a.x -= sign * push
+                        b.x += sign * push
+                    else:
+                        push = (pen_y * 0.5) + 0.5
+                        sign = 1.0 if dy >= 0 else -1.0
+                        a.y -= sign * push
+                        b.y += sign * push
+                    moved_any = True
+            if not moved_any:
+                break
+
+    def _post_process_smoothing_c_aligned(
+        self, A, ctrl, grid, x, node_list,
+    ) -> None:
+        """C-aligned dispatch to
+        :func:`gvpy.engines.layout.sfdp.post_process.post_process_smoothing`.
+
+        Maps GraphvizPy's lower-case smoothing attribute values to
+        C's enum and supplies a ``spring_re_run`` callback that
+        rebuilds a tightened control struct and re-descends the
+        hierarchy (matches C ``SpringSmoother_smooth``).
+        """
+        if self.smoothing in (None, "", "none"):
+            return
+        from gvpy.engines.layout.sfdp.post_process import (
+            post_process_smoothing,
+        )
+        from gvpy.engines.layout.sfdp.spring_electrical import (
+            SpringElectricalControl,
+            multilevel_spring_electrical_embedding,
+        )
+        import random as _rand
+
+        rng = _rand.Random(self.seed)
+
+        # ``spring_re_run`` callback: re-descend hierarchy with
+        # the C-aligned spring-electrical solver, ``maxiter=20``,
+        # ``step /= 2``, ``random_start=False`` (matches
+        # ``SpringSmoother_new`` post_process.c:944-947).
+        def _spring_re_run(coords):
+            ctrl_re = SpringElectricalControl()
+            ctrl_re.K = ctrl.K
+            ctrl_re.maxiter = 20
+            ctrl_re.step = ctrl.step / 2.0
+            ctrl_re.random_seed = self.seed
+            ctrl_re.random_start = False
+            ctrl_re.adaptive_cooling = False
+            multilevel_spring_electrical_embedding(
+                A, ctrl_re, grid, coords,
+            )
+
+        post_process_smoothing(
+            A, self.smoothing, x,
+            rng=rng,
+            spring_re_run=_spring_re_run,
+        )
+
+    def _layout_component_legacy(
+        self, node_list: list[str], adj: dict[str, list[str]]
+    ) -> None:
+        """Pre-C-port multilevel FR + Barnes-Hut quadtree path.
+
+        Kept behind ``GVPY_SFDP_SPRING_ELECTRICAL=legacy`` for
+        diagnostic comparison.  Uses the engine's homegrown force
+        formula and the local Barnes-Hut implementation.
+        """
+        N = len(node_list)
         # Build coarsening hierarchy
         levels = self._build_hierarchy(node_list, adj)
 
@@ -304,7 +709,57 @@ class SfdpLayout(LayoutEngine):
 
     def _build_hierarchy(self, node_list: list[str],
                          adj: dict[str, list[str]]) -> list[dict]:
-        """Build multilevel hierarchy via maximal independent edge set."""
+        """Build multilevel hierarchy via maximal independent edge set.
+
+        Dispatches between the C-aligned port (default) and the
+        legacy homegrown matching.  Set
+        ``GVPY_SFDP_MULTILEVEL=legacy`` to revert.
+
+        - ``c`` (default): port of ``lib/sfdpgen/Multilevel.c`` —
+          MIES with supervariable preprocessing, heavy-edge
+          per-node matching, Galerkin coarsening
+          (``cA = R · A · P``).  See
+          :mod:`gvpy.engines.layout.sfdp.multilevel`.
+        - ``legacy``: greedy heaviest-edge matching on adjacency
+          dicts, no Galerkin step.  Kept for diagnostic
+          comparison.
+        """
+        import os as _os_ml
+        mode = _os_ml.environ.get("GVPY_SFDP_MULTILEVEL", "c")
+        if mode == "c":
+            return self._build_hierarchy_c_aligned(node_list, adj)
+        return self._build_hierarchy_legacy(node_list, adj)
+
+    def _build_hierarchy_c_aligned(
+        self, node_list: list[str], adj: dict[str, list[str]]
+    ) -> list[dict]:
+        """C-aligned multilevel coarsening via Multilevel.c port.
+
+        Builds the hierarchy as :class:`Multilevel` (sparse-
+        matrix-based), then converts to the legacy
+        ``[{nodes, adj, mapping}]`` shape that
+        :meth:`_spring_electrical` consumes.
+        """
+        from gvpy.engines.layout.sfdp.multilevel import (
+            csr_from_adjacency,
+            multilevel_new,
+            multilevel_to_legacy_levels,
+        )
+        A = csr_from_adjacency(node_list, adj, self._edge_weight)
+        grid = multilevel_new(
+            A, max_levels=self.max_levels, seed=self.seed,
+        )
+        return multilevel_to_legacy_levels(grid, node_list)
+
+    def _build_hierarchy_legacy(self, node_list: list[str],
+                                adj: dict[str, list[str]]
+                                ) -> list[dict]:
+        """Legacy homegrown matching (pre-2026-05-08).
+
+        Kept behind ``GVPY_SFDP_MULTILEVEL=legacy`` for
+        comparison.  Uses greedy heaviest-edge matching on
+        adjacency dicts; no Galerkin step.
+        """
         levels = [{"nodes": node_list, "adj": adj}]
 
         current_nodes = set(node_list)
@@ -621,32 +1076,146 @@ class SfdpLayout(LayoutEngine):
     # ── Overlap removal ──────────────────────────
 
     def _remove_overlap(self):
-        """Simple iterative overlap removal."""
-        nodes = list(self.lnodes.values())
-        N = len(nodes)
-        if N < 2:
+        """Bbox-aware iterative overlap removal.
+
+        Operates on every node in ``self.lnodes`` (the
+        whole-layout pass invoked from ``layout()`` after the
+        per-component layouts settle).  Same axis-aligned bbox
+        push logic as :meth:`_sfdp_overlap_pass` — earlier
+        versions used a Euclidean ``(w+h)/4`` metric that
+        actively *introduced* bbox overlaps along the diagonal
+        when nodes were tangent in x but well-separated in y
+        (or vice versa), so the fix is to detect overlap on the
+        bbox axes themselves and push along the smaller-
+        penetration axis only.
+        """
+        names = list(self.lnodes.keys())
+        if len(names) < 2:
             return
-        for _ in range(50):
-            has_overlap = False
-            for i in range(N):
-                for j in range(i + 1, N):
-                    a, b = nodes[i], nodes[j]
-                    dx, dy = b.x - a.x, b.y - a.y
-                    dist = math.sqrt(dx * dx + dy * dy)
-                    min_d = ((a.width + b.width) / 2 +
-                             (a.height + b.height) / 2 + self.sep) * 0.5
-                    if dist < min_d and dist > 0:
-                        has_overlap = True
-                        push = (min_d - dist) / 2 + 1
-                        ux, uy = dx / dist, dy / dist
-                        if not a.pinned:
-                            a.x -= ux * push
-                            a.y -= uy * push
-                        if not b.pinned:
-                            b.x += ux * push
-                            b.y += uy * push
-            if not has_overlap:
-                break
+        self._sfdp_overlap_pass(names)
+
+    # ── Cluster-aware output (mirrors FdpLayout) ────────────────
+
+    def _to_json(self) -> dict:
+        result = super()._to_json()
+        # Emit cluster bboxes for the SVG renderer / JSON
+        # consumers.  Format matches dot's ``_to_json`` so the
+        # shared ``_render_cluster`` consumes it directly.
+        if self._clusters:
+            clusters_json = []
+            for cl in self._clusters:
+                if cl.bb == (0.0, 0.0, 0.0, 0.0):
+                    continue
+                cl_entry: dict = {
+                    "name": cl.name,
+                    "label": cl.label,
+                    "bb": [round(v, 2) for v in cl.bb],
+                    "nodes": cl.nodes,
+                }
+                cl_entry.update(cl.attrs)
+                clusters_json.append(cl_entry)
+            if clusters_json:
+                result["clusters"] = clusters_json
+                # Expand graph bb to include cluster bboxes so
+                # the SVG viewBox doesn't clip cluster outlines.
+                if "graph" in result and "bb" in result["graph"]:
+                    gx1, gy1, gx2, gy2 = result["graph"]["bb"]
+                    for cl in self._clusters:
+                        if cl.bb == (0.0, 0.0, 0.0, 0.0):
+                            continue
+                        cx1, cy1, cx2, cy2 = cl.bb
+                        gx1 = min(gx1, cx1)
+                        gy1 = min(gy1, cy1)
+                        gx2 = max(gx2, cx2)
+                        gy2 = max(gy2, cy2)
+                    result["graph"]["bb"] = [
+                        round(gx1, 2), round(gy1, 2),
+                        round(gx2, 2), round(gy2, 2),
+                    ]
+        return result
+
+    def _write_back(self):
+        """Extends the base ``_write_back`` (nodes + edges +
+        root bb) by setting ``bb=`` on every cluster subgraph
+        for ``-Tdot`` round-trip.  See FdpLayout._write_back
+        for the same pattern."""
+        super()._write_back()
+        if not self._clusters:
+            return
+        cluster_subgraphs: dict[str, object] = {}
+
+        def _index(g):
+            for sub_name, sub in g.subgraphs.items():
+                if sub_name.startswith("cluster"):
+                    cluster_subgraphs[sub_name] = sub
+                _index(sub)
+
+        _index(self.graph)
+        for cl in self._clusters:
+            if cl.bb == (0.0, 0.0, 0.0, 0.0):
+                continue
+            sub = cluster_subgraphs.get(cl.name)
+            if sub is None:
+                continue
+            x1, y1, x2, y2 = cl.bb
+            sub.attr_record["bb"] = (
+                f"{round(x1, 2)},{round(y1, 2)},"
+                f"{round(x2, 2)},{round(y2, 2)}"
+            )
+
+    # ── deriveGraph solver bridges ───────────────────────────────
+    #
+    # The fdp ``derive_graph_layout`` orchestrates cluster-aware
+    # layout but defers the per-scope force pass to a callback.
+    # These two methods adapt sfdp's existing
+    # ``_spring_electrical`` + simple overlap loop to the
+    # ``(layout, node_list, edges, K, maxiter)`` callback shape.
+
+    def _sfdp_force_solver(self, _layout, node_list, edges,
+                           K: float, maxiter: int) -> None:
+        """Run sfdp's force pass on a subset of ``self.lnodes``.
+
+        ``edges`` is the deriveGraph's lifted edge list
+        ``[(tail, head, length, weight)]`` — convert to the
+        adjacency form ``_spring_electrical`` expects.
+        """
+        if len(node_list) < 2:
+            return
+        # Initialise positions for any fresh proxy / member.
+        self._init_positions(node_list, len(node_list))
+        # Build adjacency for this subset.
+        adj: dict[str, list[str]] = {n: [] for n in node_list}
+        for t, h, _len, _wt in edges:
+            if t in adj and h in adj:
+                if h not in adj[t]:
+                    adj[t].append(h)
+                if t not in adj[h]:
+                    adj[h].append(t)
+        # Run the existing multilevel-aware solver.  For the
+        # derived graph (proxies + free nodes at one scope) the
+        # node count is typically small and quadtree drops out;
+        # the solver still produces a valid F-R layout.
+        self._spring_electrical(node_list, adj, K, maxiter)
+
+    def _sfdp_overlap_solver(self, _layout, K: float, sep: float,
+                             maxiter: int,
+                             node_subset: list[str]) -> None:
+        """Bbox-aware overlap removal restricted to
+        ``node_subset``.
+
+        Bridges to fdp's ``xlayout`` (with the ``node_subset``
+        parameter added in DONE §4.F-derivegraph) — properly
+        detects axis-aligned bbox overlap.  Sfdp's homegrown
+        ``_remove_overlap`` uses an incorrect distance metric
+        (``(width+height)/4`` instead of axis-projected
+        overlap), so it can't separate cluster proxies whose
+        bboxes are 100-200 pt wide.
+        """
+        if len(node_subset) < 2:
+            return
+        from gvpy.engines.layout.fdp.xlayout import xlayout as _fdp_xlayout
+        _fdp_xlayout(self, K, sep, maxiter, tries=3,
+                     node_subset=node_subset)
 
     # Shared from LayoutEngine: _compute_node_size, _init_common_attrs,
     # _apply_normalize, _apply_rotation, _apply_center,

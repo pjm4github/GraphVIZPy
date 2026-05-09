@@ -1520,6 +1520,46 @@ class DotGraphInfo(LayoutEngine):
         class and are called by the module via ``layout._xxx()``.  See
         ``TODO_core_refactor.md`` step 4 for the full extraction plan.
         """
+        # §2.5.13 D7-validation override: when GVPY_C_WIDTH_OVERRIDE
+        # points to a [DUMP widths] file produced by the
+        # GV_DUMP_WIDTHS=1 instrumented dot.exe, replace each lnode's
+        # width/height with the C-side values right before Phase 3.
+        # One-shot experiment to confirm whether D7 (font metrics)
+        # is sufficient to close 1879's spatial-cross sprawl.
+        import os as _os_co
+        _override_path = _os_co.environ.get(
+            "GVPY_C_WIDTH_OVERRIDE", "")
+        if _override_path:
+            import re as _re_co
+            import sys as _sys_co
+            _pat = _re_co.compile(
+                r"\[DUMP widths\] node=(\S+) lw=([\d.]+) "
+                r"rw=([\d.]+) ht=([\d.]+)"
+            )
+            n_overridden = 0
+            n_missing = 0
+            with open(_override_path, "r",
+                      encoding="utf-8", errors="replace") as _f:
+                for _line in _f:
+                    m = _pat.search(_line)
+                    if not m:
+                        continue
+                    nm = m.group(1)
+                    lw = float(m.group(2))
+                    rw = float(m.group(3))
+                    ht = float(m.group(4))
+                    if nm in self.lnodes:
+                        self.lnodes[nm].width = lw + rw
+                        self.lnodes[nm].height = ht
+                        n_overridden += 1
+                    else:
+                        n_missing += 1
+            print(
+                f"[CWIDTH] override applied: {n_overridden} nodes "
+                f"matched, {n_missing} dump entries had no matching "
+                f"Py lnode",
+                file=_sys_co.stderr,
+            )
         position.phase3_position(self)
 
     def _expand_leaves(self):

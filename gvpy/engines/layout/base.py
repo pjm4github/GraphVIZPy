@@ -490,23 +490,50 @@ class LayoutEngine(LayoutView):
                 ln.node.agset("width", str(round(ln.width / 72.0, 4)))
                 ln.node.agset("height", str(round(ln.height / 72.0, 4)))
 
-        for key, edge in self.graph.edges.items():
+        edge_routes = getattr(self, "edge_routes", None) or {}
+        # Walk root + every subgraph so edges declared inside cluster
+        # subgraphs (e.g. ``cluster_X { a -- b; }``) get their ``pos``
+        # attribute written back.  The Py parser stores such edges in
+        # the lowest-common-subgraph's ``.edges`` dict, NOT the
+        # root's; iterating ``self.graph.edges`` alone misses them.
+        from gvpy.core._graph_traversal import gather_all_subgraphs
+        all_edge_items: list[tuple] = []
+        for sg in gather_all_subgraphs(self.graph):
+            for k, e in sg.edges.items():
+                all_edge_items.append((k, e))
+        for key, edge in all_edge_items:
             t_ln = self.lnodes.get(edge.tail.name)
             h_ln = self.lnodes.get(edge.head.name)
-            if t_ln and h_ln:
-                t_shape = (edge.tail.attributes.get("shape", "ellipse")
-                           if edge.tail else "ellipse")
-                h_shape = (edge.head.attributes.get("shape", "ellipse")
-                           if edge.head else "ellipse")
-                p1 = self._clip_to_boundary(
-                    t_ln.x, t_ln.y, t_ln.width, t_ln.height,
-                    h_ln.x, h_ln.y, t_shape)
-                p2 = self._clip_to_boundary(
-                    h_ln.x, h_ln.y, h_ln.width, h_ln.height,
-                    t_ln.x, t_ln.y, h_shape)
-                edge.agset("pos",
-                           f"s,{round(p1[0], 2)},{round(p1[1], 2)} "
-                           f"e,{round(p2[0], 2)},{round(p2[1], 2)}")
+            if not (t_ln and h_ln):
+                continue
+            # Honor multi-point spline / polyline routes computed by
+            # ``common.edge_routing.route_edges`` (used by neato / fdp /
+            # twopi / sfdp).  Without this, every engine fell back to a
+            # 2-point straight-line ``pos`` regardless of routing
+            # output, so ``-Tdot`` output looked nothing like C's even
+            # when the router computed a real spline.  The dot engine
+            # has its own ``_write_back`` override and isn't affected.
+            route = edge_routes.get(key)
+            if route and len(route.points) >= 2:
+                pts = " ".join(
+                    f"{round(p[0], 3)},{round(p[1], 3)}"
+                    for p in route.points
+                )
+                edge.agset("pos", pts)
+                continue
+            t_shape = (edge.tail.attributes.get("shape", "ellipse")
+                       if edge.tail else "ellipse")
+            h_shape = (edge.head.attributes.get("shape", "ellipse")
+                       if edge.head else "ellipse")
+            p1 = self._clip_to_boundary(
+                t_ln.x, t_ln.y, t_ln.width, t_ln.height,
+                h_ln.x, h_ln.y, t_shape)
+            p2 = self._clip_to_boundary(
+                h_ln.x, h_ln.y, h_ln.width, h_ln.height,
+                t_ln.x, t_ln.y, h_shape)
+            edge.agset("pos",
+                       f"s,{round(p1[0], 2)},{round(p1[1], 2)} "
+                       f"e,{round(p2[0], 2)},{round(p2[1], 2)}")
 
         real = list(self.lnodes.values())
         if real:
@@ -539,7 +566,15 @@ class LayoutEngine(LayoutView):
             nodes_json.append(entry)
 
         edges_json = []
-        for key, edge in self.graph.edges.items():
+        # Walk root + every subgraph so edges declared inside cluster
+        # subgraphs land in the JSON output too.  See the matching
+        # comment in ``_write_back``.
+        from gvpy.core._graph_traversal import gather_all_subgraphs
+        all_edges_iter = []
+        for sg in gather_all_subgraphs(self.graph):
+            for k, e in sg.edges.items():
+                all_edges_iter.append((k, e))
+        for key, edge in all_edges_iter:
             t_name, h_name = edge.tail.name, edge.head.name
             t_ln, h_ln = self.lnodes.get(t_name), self.lnodes.get(h_name)
             if not t_ln or not h_ln:
