@@ -220,7 +220,7 @@ python gvcli.py [options] [FILE ...]
 | Flag | Description |
 |------|-------------|
 | `-K ENGINE` | Layout engine: `dot`, `circo`, `neato`, `fdp`, `sfdp`, `twopi`, `osage`, `patchwork` |
-| `-T FORMAT` | Output format: `json` (default), `svg`, `png`, `dot`, `json0`, `gxl` |
+| `-T FORMAT` | Output format: `json` (default), `svg`, `png`, `dot`, `json0`, `gxl`, `plain`, `plain-ext` |
 | `-o FILE` | Write output to file |
 | `-O` | Auto-name output file: `input.svg`, `input.json`, etc. |
 | `-G name=val` | Set graph attribute (e.g. `-Grankdir=LR`) |
@@ -253,6 +253,9 @@ python gvcli.py input.gv -Tsvg -O
 
 # DOT output with embedded layout coordinates
 python gvcli.py input.gv -Tdot
+
+# Plain text format (canonical Graphviz: graph/node/edge/stop lines)
+python gvcli.py input.gv -Tplain -o input.txt
 
 # Structural JSON (no layout)
 python gvcli.py input.gv -Tjson0
@@ -313,11 +316,29 @@ Input ──> Parse ──> ─┬──┤─── -Tgxl  ──→ GXL XML
  stdin               │
                      └──> Layout (-K engine) ──> Post-process ──> Render
                               ↑                      ↑              ↑
-                           dot (impl.)           write-back      -Tsvg → SVG
-                           circo (impl.)         scale (-s)      -Tjson → JSON
-                           neato (future)        invert (-y)     -Tdot → DOT+pos
-                           ...                   pack components
+                           dot                  write-back      -Tsvg   → SVG
+                           neato                scale (-s)      -Tpng   → PNG
+                           twopi                invert (-y)     -Tjson  → JSON
+                           fdp                  pack components -Tdot   → DOT+pos
+                           sfdp                                 -Tplain → Graphviz plain text
+                           circo                                -Tplain-ext → plain + ports
+                           osage                                -Tgxl   → GXL
+                           patchwork
 ```
+
+The plain text format (`-Tplain`) emits the canonical Graphviz
+line format documented at https://graphviz.org/docs/outputs/plain/:
+
+```
+graph SCALE WIDTH HEIGHT
+node NAME X Y W H LABEL STYLE SHAPE COLOR FILLCOLOR
+edge TAIL HEAD N x1 y1 ... xN yN [label LX LY] STYLE COLOR
+stop
+```
+
+All coordinates are in **inches** with the origin at the
+bottom-left of the bounding box (math-y).  Useful for piping
+into other Graphviz tools or grep-based diff scripts.
 
 After layout, `pos`, `width`, `height` are written back to graph attributes, and `-Tdot` produces DOT with embedded coordinates:
 
