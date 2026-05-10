@@ -412,6 +412,69 @@ class LayoutWizard(QMainWindow):
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(0, self._run_layout)
 
+    # ── Right-pane toggle ────────────────────────────
+
+    def _on_splitter_moved(self, pos: int, index: int) -> None:
+        """When the user drags the right-pane handle, remember
+        the new width so a future ``Show`` (after a collapse)
+        restores to the same size.
+
+        The splitter emits one ``splitterMoved`` signal per
+        drag step; we only care about the final position which
+        Qt gives us via ``self._splitter.sizes()``.
+        """
+        sizes = self._splitter.sizes()
+        if len(sizes) >= 3 and sizes[2] > 0:
+            self._right_pane_width = sizes[2]
+
+    def _cycle_right_pane(self) -> None:
+        """Cycle the right pane through three preset widths:
+
+        - **Hidden** (0): graph display takes the whole middle
+          area — useful when focused on the layout preview.
+        - **Visible** (last user-set width, defaulting to 380):
+          standard editing.
+        - **Wide** (≈ 50% of the splitter): roomy reading
+          when scanning long attribute descriptions.
+
+        The cycle order is hidden → visible → wide → hidden.
+        Picks the next state based on the current right-pane
+        size relative to the total splitter width.
+        """
+        sizes = self._splitter.sizes()
+        if len(sizes) < 3:
+            return
+        total = sum(sizes)
+        if total <= 0:
+            return
+        right_w = sizes[2]
+        right_frac = right_w / total
+
+        if right_w == 0:
+            # Hidden → Visible.  Restore last remembered width
+            # (or fall back to 380 if no drag has happened).
+            target = self._right_pane_width or 380
+            new_right = min(target, max(220, total // 4))
+            new_middle = max(200, total - sizes[0] - new_right)
+            self._splitter.setSizes([sizes[0], new_middle, new_right])
+            self._panel_btn.setText("◀ Panel")
+        elif right_frac < 0.40:
+            # Visible (normal) → Wide.  Take roughly half the
+            # splitter, splitting the increase out of the
+            # middle pane (the graph display) — that's where
+            # "grow into the graph display" lives.
+            self._right_pane_width = right_w
+            new_right = total // 2
+            new_middle = max(200, total - sizes[0] - new_right)
+            self._splitter.setSizes([sizes[0], new_middle, new_right])
+            self._panel_btn.setText("◀ Panel (wide)")
+        else:
+            # Wide → Hidden.  Save current size and collapse.
+            self._right_pane_width = right_w
+            new_middle = sizes[1] + sizes[2]
+            self._splitter.setSizes([sizes[0], new_middle, 0])
+            self._panel_btn.setText("▶ Show panel")
+
     def _build_menu(self):
         menu = self.menuBar()
         file_menu = menu.addMenu("File")
@@ -443,6 +506,12 @@ class LayoutWizard(QMainWindow):
         run_act.triggered.connect(self._run_layout)
         view_menu.addAction(run_act)
 
+        view_menu.addSeparator()
+        toggle_panel_act = QAction("Toggle Right Panel", self)
+        toggle_panel_act.setShortcut(QKeySequence("F9"))
+        toggle_panel_act.triggered.connect(self._cycle_right_pane)
+        view_menu.addAction(toggle_panel_act)
+
     def _build_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
@@ -450,6 +519,13 @@ class LayoutWizard(QMainWindow):
         main_layout.setContentsMargins(4, 4, 4, 4)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        # Visible drag handle so the user can find / grab it
+        # easily.  The right pane is collapsible (drag to 0)
+        # and can grow to take space from the graph display.
+        splitter.setHandleWidth(6)
+        # Saved on self so the toggle action / button can call
+        # ``setSizes`` after construction.
+        self._splitter = splitter
 
         # Left: DOT source editor
         self._editor = QPlainTextEdit()
@@ -471,8 +547,17 @@ class LayoutWizard(QMainWindow):
         # Right: parameter tabs
         param_scroll = QScrollArea()
         param_scroll.setWidgetResizable(True)
-        param_scroll.setMinimumWidth(280)
-        param_scroll.setMaximumWidth(420)
+        # Minimum width keeps the form-row labels readable when
+        # the user shrinks the panel.  No maximum cap — the
+        # right pane is meant to grow into the graph display
+        # area when the user wants more attribute / switch
+        # space, and shrink (or collapse to zero) when they
+        # want to focus on the layout preview.
+        param_scroll.setMinimumWidth(220)
+        # Track the param scroll so the toggle handler can pick
+        # a sensible "restore" width if the user collapses
+        # before resizing.
+        self._param_scroll = param_scroll
 
         param_container = QWidget()
         param_vlayout = QVBoxLayout(param_container)
@@ -665,7 +750,27 @@ class LayoutWizard(QMainWindow):
         param_scroll.setWidget(param_container)
         splitter.addWidget(param_scroll)
 
+        # Allow the right pane to fully collapse via drag (or via
+        # the toggle button below) — index 2 = third widget.
+        # Editor (0) and graph display (1) stay open so the user
+        # can never lose the central preview.
+        splitter.setCollapsible(0, True)
+        splitter.setCollapsible(1, False)
+        splitter.setCollapsible(2, True)
+        # The middle (graph) pane gets the elastic stretch — when
+        # the right pane grows or shrinks via drag/toggle, the
+        # change comes out of the graph display first, not the
+        # editor.
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 3)
+        splitter.setStretchFactor(2, 0)
+
         splitter.setSizes([380, 500, 380])
+        # Width remembered for the toggle-restore action.
+        # Updated whenever the user drags the handle so the
+        # next "Show" matches their last preferred width.
+        self._right_pane_width = 380
+        splitter.splitterMoved.connect(self._on_splitter_moved)
         main_layout.addWidget(splitter, stretch=1)
 
         # Bottom bar — editable command line with Reset and Run
@@ -681,6 +786,18 @@ class LayoutWizard(QMainWindow):
         self._cmd_line.editingFinished.connect(self._parse_command_to_controls)
         self._updating_from_cmd = False  # prevent recursive updates
         bottom.addWidget(self._cmd_line, stretch=1)
+        # Right-pane toggle.  Cycles between three states:
+        # collapsed (panel hidden, graph display takes its
+        # space), normal (default ~380px), and wide (panel
+        # takes ~half the splitter — useful when reading long
+        # attribute descriptions).  F9 also triggers it.
+        self._panel_btn = QPushButton("◀ Panel")
+        self._panel_btn.setToolTip(
+            "Toggle the right panel (F9).\n"
+            "Cycles: visible → hidden → wide → visible.\n"
+            "Tip: drag the splitter handle for fine control.")
+        self._panel_btn.clicked.connect(self._cycle_right_pane)
+        bottom.addWidget(self._panel_btn)
         reset_btn = QPushButton("Reset")
         reset_btn.setToolTip("Rebuild command line from control panel settings")
         reset_btn.clicked.connect(self._rebuild_command)
