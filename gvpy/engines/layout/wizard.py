@@ -41,6 +41,7 @@ from PyQt6.QtGui import QAction, QFont, QKeySequence
 from PyQt6.QtSvgWidgets import QSvgWidget
 
 from gvpy.grammar.gv_reader import read_gv, GVParseError
+from gvpy.grammar.dot_highlighter import DotSyntaxHighlighter
 from gvpy.engines import get_engine, list_engines
 from gvpy.engines.layout.layout_features import (
     _ATTR_TABLE, get_description, is_supported,
@@ -455,6 +456,10 @@ class LayoutWizard(QMainWindow):
         self._editor.setFont(QFont("Consolas", 11))
         self._editor.setPlaceholderText("Enter DOT source here...")
         self._editor.setTabStopDistance(28)
+        # Attach the grammar-driven syntax highlighter.  The
+        # highlighter parents itself to the editor's document
+        # and stays alive as long as the editor does.
+        self._highlighter = DotSyntaxHighlighter(self._editor.document())
         splitter.addWidget(self._editor)
 
         # Center: SVG preview
