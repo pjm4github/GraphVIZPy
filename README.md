@@ -68,6 +68,84 @@ reference C `dot.exe` are in [Report.md](Report.md), one row
 per engine, each row showing the exact CLI invocation plus the
 PNG output for both implementations.
 
+## Environment variables
+
+Many engine subsystems and dot-pipeline behaviours can be
+toggled at runtime via `GVPY_*` environment variables.  Most
+default to the **C-aligned** behaviour ported during the
+engine arc; the legacy or experimental alternatives are kept
+behind opt-out / opt-in gates so divergences can be
+diagnosed by side-by-side comparison.
+
+### Engine-dispatch gates (production)
+
+These select which implementation runs.  Defaults are the
+fully ported, C-aligned algorithms.  Set the variable to the
+listed alternative to revert to the homegrown / legacy path
+for diagnostic comparison.
+
+| Variable | Default | Other values | Description | Used in |
+|---|---|---|---|---|
+| `GVPY_SFDP_SPRING_ELECTRICAL` | `c` | `legacy` | C port of `lib/sfdpgen/spring_electrical.c` (force iteration with adaptive cooling). `legacy` = pre-port homegrown FR + Barnes-Hut. | `gvpy/engines/layout/sfdp/sfdp_layout.py:360` |
+| `GVPY_SFDP_MULTILEVEL` | `c` | `legacy` | C port of `Multilevel.c` (MIES + Galerkin coarsening). `legacy` = greedy heaviest-edge matching. | `gvpy/engines/layout/sfdp/sfdp_layout.py:728` |
+| `GVPY_SFDP_POST_PROCESS` | `c` | `legacy` | C port of `post_process.c` + `stress_model.c` + `sparse_solve.c` (stress majorization). `legacy` = skip smoothing entirely. | `gvpy/engines/layout/sfdp/sfdp_layout.py:454` |
+| `GVPY_SFDP_DERIVE_GRAPH` | `1` | `0` | Cluster-aware deriveGraph two-level layout via fdp's recursion. `0` = treat clusters as a flat graph. | `gvpy/engines/layout/sfdp/sfdp_layout.py:147` |
+| `GVPY_FDP_DERIVE_GRAPH` | `1` | `0` | C port of `lib/fdpgen/dbg.c` deriveGraph (bottom-up cluster recursion + xlayout overlap). `0` = simple flat layout. | `gvpy/engines/layout/fdp/fdp_layout.py:176` |
+| `GVPY_CIRCO_BLOCKTREE` | `c` | `legacy` | C port of `lib/circogen/blocktree.c` (Tarjan articulation-point DFS). `legacy` = homegrown bridge-finding. | `gvpy/engines/layout/circo/circo_layout.py:622` |
+| `GVPY_CIRCO_BLOCKPATH` | `c` | `legacy` | C port of `blockpath.c` (spanning tree + longest path + crossings reduction). `legacy` = approximate FR-style. | `gvpy/engines/layout/circo/circo_layout.py:623` |
+| `GVPY_CIRCO_CIRCPOS` | `c` | `legacy` | C port of `circpos.c` (rotation math + child-block positioning). `legacy` = uniform-angle approximation. | `gvpy/engines/layout/circo/circo_layout.py:624` |
+| `GVPY_ORTHO_LEGACY` | unset | `1` | When set, falls back to the legacy Z-router for `splines=ortho`. Default = use the new `lib/ortho/` port. | `gvpy/engines/layout/dot/dotsplines.py:465` |
+
+### Dot-engine experimental gates (opt-in)
+
+These enable D5/D6/D7 alignment work that's not yet default-on
+because of corpus regressions or other risk.  See
+[DONE.md](DONE.md) §2.5 archive for the research history.
+
+| Variable | Default | Values | Description | Used in |
+|---|---|---|---|---|
+| `GVPY_CLUSTER_CARVE` | unset | `1` | D6 corridor-carve MVP — `rank_box_gapped` shrinks rank-box x-extent for same-side non-member clusters. Net -3 corpus crossings, but ~9 spurious triangulation failures on 2796.dot. | `gvpy/engines/layout/dot/regular_edge.py:511` |
+| `GVPY_ROOT_HIERARCHY` | unset | `1` | Adds the missing 196 root-hierarchy aux-edges (sec3d) to the NS constraint graph. Makes Py's aux-graph topologically match C, but audit metric regresses pending HTML-table sizing fix. | `gvpy/engines/layout/dot/position.py:431` |
+| `GVPY_FLAT_LABEL_CONSTRAINTS` | unset | `1` | Phase A.1 flat-edge label constraints with `canreach()` cycle guard. Wins 1474/1879/2620 (-10), regresses 2470/2796 (+21) — re-enable after font-metrics fix. | `gvpy/engines/layout/dot/position.py:282` |
+| `GVPY_LEGACY_KEEPOUT_FILTER` | unset | `1` | Restores the pre-§2.5.10 `any_cluster_members` filter on §3f keepout (legacy behaviour). Use to A/B test Phase B keepout. | `gvpy/engines/layout/dot/position.py:655` |
+| `GVPY_LEGACY_PHASE1_RANKS` | unset | `1` | Restores the pre-§2.5.7 path that skips the C-aligned `build_ranks_on_skeleton` rebuild and inherits phase-1 ranks into mincross. | `gvpy/engines/layout/dot/mincross.py:1277` |
+| `GVPY_LEGACY_BUILD_RANKS` | unset | `1` | Restores the pre-port DFS-only `build_ranks` path. Default = C-aligned BFS-on-skeleton. | `gvpy/engines/layout/dot/rank.py:785` |
+| `GVPY_LEGACY_MINCROSS` | unset | `1` | Falls back to the legacy mincross implementation. Default = C-aligned port. | `gvpy/engines/layout/dot/mincross.py:487` |
+| `GVPY_LEGACY_MINCROSS_LOOP` | unset | `1` | Restores the legacy outer mincross loop (pre-§2.5.7 caps + save_best/restore_best behaviour). Default = C-aligned loop. | `gvpy/engines/layout/dot/mincross.py:554` |
+| `GVPY_C_MINCROSS_RESTART` | unset | `1` | Re-enables C's per-pass restart in the mincross loop. Default = no restart (matches more recent C versions). | `gvpy/engines/layout/dot/mincross.py:555` |
+| `GVPY_LEGACY_ICV` | unset | `1` | Restores the legacy inter-cluster-virtual creation path. Default = C-aligned `interclrep` mirror. | `gvpy/engines/layout/dot/mincross.py:1017` |
+| `GVPY_SKEL_FULL_REFINE` | unset | `1` | After `remincross_full`, runs an unrestricted `_run_mincross()` on the fully expanded graph. Net regression on the corpus subset; retained for experimentation. | `gvpy/engines/layout/dot/mincross.py:185` |
+| `GVPY_SKELETON_ITER_ORDER` | `dfs` | `bfs` | Skeleton-iteration order during build_ranks. C uses DFS; BFS is an experimental alternative. | `gvpy/engines/layout/dot/rank.py:1221` |
+| `GVPY_C_WIDTH_OVERRIDE` | unset | `<path>` | D7 validation hook — load per-node widths from a `GV_DUMP_WIDTHS=1` instrumented C dot run; override `Lnode.width`/`height` before Phase 3. | `gvpy/engines/layout/dot/dot_layout.py:1531` |
+| `GVPY_RANK_OVERRIDE` | unset | `<path>` | Read a JSON file mapping `node_name → rank` and override the computed ranks. Diagnostic for rank-phase divergences. | `gvpy/engines/layout/dot/mincross.py:115` |
+| `GVPY_RANK_OVERRIDE_SKIP_MINCROSS` | unset | `1` | Used with `GVPY_RANK_OVERRIDE` — additionally skip mincross so the override ranks reach position-phase verbatim. | `gvpy/engines/layout/dot/mincross.py:117` |
+| `GVPY_ORTHO_V2` | unset | `1` | (deprecated alias) — historical opt-in for the `lib/ortho/` port; orthogonal routing is now default-on, kept for back-compat. | `gvpy/engines/layout/ortho/__init__.py:6` |
+
+### Diagnostic trace channels
+
+Set to `1` to emit `[TRACE …]` lines on stderr.  Useful for
+debugging or comparing against C `dot` runs with matching
+`GV_TRACE=…` channels.
+
+| Variable | Description | Used in |
+|---|---|---|
+| `GVPY_TRACE_NEATO` | Per-iteration neato/common force-pass + edge-routing + adjust + voronoi traces. | `gvpy/engines/layout/neato/*.py`, `common/*.py` |
+| `GVPY_TRACE_FDP` | fdp force iterations + cluster discovery + deriveGraph recursion. | `gvpy/engines/layout/fdp/*.py` |
+| `GVPY_TRACE_SFDP` | sfdp multilevel coarsening + spring-electrical descent + post-process iterations. | `gvpy/engines/layout/sfdp/*.py` |
+| `GVPY_TRACE_TWOPI` | twopi radial layout phase trace. | `gvpy/engines/layout/twopi/circle.py:73` |
+| `GVPY_TRACE_KEEPOUT` | Per-edge `[TRACE keepout]` lines for §3f keepout aux-edges (matches C `position.c:keepout_othernodes` when both sides are instrumented). | `gvpy/engines/layout/dot/position.py:666` |
+| `GVPY_TRACE_AUX_SECTIONS` | `[AUX SECTIONS]` summary line at end of `ns_x_position` showing per-section aux-edge counts. | `gvpy/engines/layout/dot/position.py:799` |
+| `GVPY_DUMP_AUX_MINLENS` | `[DUMP aux_minlen]` per-edge minlen + weight dump for diffing against C's `GV_DUMP_AUX_MINLENS=1` output. | `gvpy/engines/layout/dot/position.py:845` |
+| `GVPY_CHECKPATH_WARN` | Warn when an edge's box chain violates the routing-channel-width invariant. | `gvpy/engines/layout/dot/routespl.py:77` |
+| `GVPY_PQCHECK` | Run priority-queue invariant checks inside the orthogonal routing solver. Slow; debug-only. | `gvpy/engines/layout/ortho/fpq.py:35` |
+
+### External tooling
+
+| Variable | Default | Description | Used in |
+|---|---|---|---|
+| `GVPY_DOT_EXE` | local CLion-built `dot.exe` | Override the C-side `dot.exe` path that `tools/visual_audit.py` compares against. Set to e.g. `c:/tools/graphviz/bin/dot.exe` for libexpat-enabled HTML rendering. | `porting_scripts/visual_audit.py:48` |
+| `GV_FILE_PATH` | unset | Standard Graphviz convention — colon/semicolon-separated list of directories searched for `<IMG SRC>` paths in HTML labels. | `gvpy/grammar/html_label.py:131` |
+
 ## Quick Start
 
 ### Install
