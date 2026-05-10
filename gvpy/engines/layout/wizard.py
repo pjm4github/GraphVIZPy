@@ -466,8 +466,8 @@ class LayoutWizard(QMainWindow):
         # Right: parameter tabs
         param_scroll = QScrollArea()
         param_scroll.setWidgetResizable(True)
-        param_scroll.setMinimumWidth(250)
-        param_scroll.setMaximumWidth(360)
+        param_scroll.setMinimumWidth(280)
+        param_scroll.setMaximumWidth(420)
 
         param_container = QWidget()
         param_vlayout = QVBoxLayout(param_container)
@@ -490,11 +490,11 @@ class LayoutWizard(QMainWindow):
         engine_row.addWidget(self._engine_combo, stretch=1)
         param_vlayout.addLayout(engine_row)
 
-        # Output Options panel
-        out_group = QGroupBox("Output Options")
-        out_layout = QFormLayout()
-        out_layout.setContentsMargins(4, 6, 4, 4)
-        out_layout.setSpacing(3)
+        # ── Output Options tab ──
+        out_widget = QWidget()
+        out_layout = QFormLayout(out_widget)
+        out_layout.setContentsMargins(8, 8, 8, 8)
+        out_layout.setSpacing(4)
 
         self._out_format = QComboBox()
         self._out_format.addItems([
@@ -560,8 +560,12 @@ class LayoutWizard(QMainWindow):
         self._out_max_svg.setMaximumHeight(22)
         out_layout.addRow("Max SVG KB:", self._out_max_svg)
 
-        out_group.setLayout(out_layout)
-        param_vlayout.addWidget(out_group)
+        # Wrap the output form in a QScrollArea so longer panels
+        # don't squash the tab.  ``setWidgetResizable=True`` lets
+        # the inner widget grow to fill the tab pane.
+        out_scroll = QScrollArea()
+        out_scroll.setWidgetResizable(True)
+        out_scroll.setWidget(out_widget)
 
         # Connect output option changes
         self._out_format.currentTextChanged.connect(self._update_command)
@@ -573,17 +577,11 @@ class LayoutWizard(QMainWindow):
         self._out_invert_y.stateChanged.connect(self._update_command)
         self._out_bundle.stateChanged.connect(self._update_command)
 
-        # ── Engine Switches (GVPY_*) ──
-        sw_group = QGroupBox("Engine Switches (GVPY_*)")
-        sw_group.setToolTip(
-            "Runtime gates that select C-aligned vs. legacy "
-            "implementations or enable opt-in dot-engine "
-            "experiments.  See README.md > Environment variables "
-            "for details.  Toggling here sets / unsets the env "
-            "var for the next layout run.")
-        sw_layout = QFormLayout()
-        sw_layout.setContentsMargins(4, 6, 4, 4)
-        sw_layout.setSpacing(3)
+        # ── Engine Switches (GVPY_*) tab ──
+        sw_widget = QWidget()
+        sw_layout = QFormLayout(sw_widget)
+        sw_layout.setContentsMargins(8, 8, 8, 8)
+        sw_layout.setSpacing(4)
         self._switch_widgets: dict[str, QComboBox] = {}
         self._switch_engines: dict[str, set] = {}
         for env_var, default, options, label, engines, tooltip in _ENGINE_SWITCHES:
@@ -596,18 +594,15 @@ class LayoutWizard(QMainWindow):
             sw_layout.addRow(f"{label}:", combo)
             self._switch_widgets[env_var] = combo
             self._switch_engines[env_var] = engines
-        sw_group.setLayout(sw_layout)
-        param_vlayout.addWidget(sw_group)
+        sw_scroll = QScrollArea()
+        sw_scroll.setWidgetResizable(True)
+        sw_scroll.setWidget(sw_widget)
 
-        # ── Trace Channels (GVPY_TRACE_*) ──
-        tr_group = QGroupBox("Trace Channels (GVPY_TRACE_*)")
-        tr_group.setToolTip(
-            "Set to 1 to emit [TRACE …] lines on stderr.  "
-            "Useful for diff'ing against C dot runs with matching "
-            "GV_TRACE=… channels.")
-        tr_layout = QFormLayout()
-        tr_layout.setContentsMargins(4, 6, 4, 4)
-        tr_layout.setSpacing(3)
+        # ── Trace Channels (GVPY_TRACE_*) tab ──
+        tr_widget = QWidget()
+        tr_layout = QFormLayout(tr_widget)
+        tr_layout.setContentsMargins(8, 8, 8, 8)
+        tr_layout.setSpacing(4)
         self._trace_widgets: dict[str, QCheckBox] = {}
         for env_var, label, tooltip in _TRACE_CHANNELS:
             cb = QCheckBox()
@@ -615,10 +610,17 @@ class LayoutWizard(QMainWindow):
             cb.stateChanged.connect(self._update_command)
             tr_layout.addRow(f"{label}:", cb)
             self._trace_widgets[env_var] = cb
-        tr_group.setLayout(tr_layout)
-        param_vlayout.addWidget(tr_group)
+        tr_scroll = QScrollArea()
+        tr_scroll.setWidgetResizable(True)
+        tr_scroll.setWidget(tr_widget)
 
-        # Tabbed attribute panels
+        # ── Single tab widget housing every config panel ──
+        # Order: command-line knobs first (Output / Switches /
+        # Traces), then attribute browser tabs (Graph / Node /
+        # Edge).  Switching tabs is cheaper than scrolling
+        # through three stacked group boxes plus three
+        # attribute panels — the right pane stays at one
+        # screenful.
         tabs = QTabWidget()
         tabs.setTabPosition(QTabWidget.TabPosition.North)
         tabs.setStyleSheet("""
@@ -647,6 +649,9 @@ class LayoutWizard(QMainWindow):
             }
         """)
 
+        tabs.addTab(out_scroll, "Output")
+        tabs.addTab(sw_scroll, "Switches")
+        tabs.addTab(tr_scroll, "Traces")
         tabs.addTab(self._build_attr_panel("graph", _GRAPH_ORDER), "Graph")
         tabs.addTab(self._build_attr_panel("node", _NODE_ORDER), "Node")
         tabs.addTab(self._build_attr_panel("edge", _EDGE_ORDER), "Edge")
@@ -655,7 +660,7 @@ class LayoutWizard(QMainWindow):
         param_scroll.setWidget(param_container)
         splitter.addWidget(param_scroll)
 
-        splitter.setSizes([380, 500, 320])
+        splitter.setSizes([380, 500, 380])
         main_layout.addWidget(splitter, stretch=1)
 
         # Bottom bar — editable command line with Reset and Run
