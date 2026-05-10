@@ -1,11 +1,31 @@
 """
 Interactive layout wizard — test any layout engine with a live preview.
 
-Three-pane GUI: DOT source editor, SVG preview, and parameter controls.
-Launched via ``python dot.py --ui`` or ``python gvcli.py --ui``.
+Three-pane GUI: DOT source editor, SVG/PNG preview, and parameter
+controls.  Launched via ``python dot.py --ui`` or
+``python gvcli.py --ui``.
+
+The right-hand parameter pane has four stacked groups:
+
+1. **Output Options** — ``-T format``, ``-o file``, ``-O auto``,
+   ``-v verbose``, ``-n no-layout``, ``-s scale``, ``-y invert-y``,
+   ``--bundle``.
+2. **Engine Switches** — runtime ``GVPY_*`` gates that select the
+   C-aligned vs. legacy implementations (SFDP/FDP/CIRCO dispatch,
+   plus opt-in dot-engine experiments like ``GVPY_CLUSTER_CARVE``).
+   Toggling these here sets / unsets the environment variable for
+   the next layout run.
+3. **Trace Channels** — ``GVPY_TRACE_*`` checkboxes that emit
+   ``[TRACE …]`` lines on stderr.
+4. **Attribute tabs** — Graph / Node / Edge attributes from
+   ``layout_features._ATTR_TABLE`` filtered by per-engine support.
+
+The README "Environment variables" section documents every gate
+in detail.
 """
 from __future__ import annotations
 
+import os
 import sys
 import logging
 from pathlib import Path
@@ -83,6 +103,87 @@ _SKIP_ATTRS = {
     "layerselect", "layersep", "layout", "samplepoints", "shapefile",
     "sortv", "layer",
 }
+
+# ── Runtime engine switches (GVPY_*) ──────────────────────
+#
+# Each entry: (env_var, default, options, label, applies_to_engines, tooltip)
+# When the value matches ``default``, we remove the env var entirely
+# so we don't poison child processes.  ``applies_to_engines`` is the
+# set of engine names whose output is affected — used to dim
+# unrelated controls (cosmetic; the env var is still honoured if
+# set manually outside the wizard).
+
+_ENGINE_SWITCHES: list[tuple] = [
+    ("GVPY_SFDP_DERIVE_GRAPH", "1", ["1", "0"],
+     "sfdp deriveGraph", {"sfdp"},
+     "1 = cluster-aware via fdp's deriveGraph (default).  "
+     "0 = treat clusters as a flat graph."),
+    ("GVPY_SFDP_MULTILEVEL", "c", ["c", "legacy"],
+     "sfdp multilevel", {"sfdp"},
+     "c = Galerkin coarsening (Multilevel.c port, default).  "
+     "legacy = greedy heaviest-edge matching."),
+    ("GVPY_SFDP_SPRING_ELECTRICAL", "c", ["c", "legacy"],
+     "sfdp force solver", {"sfdp"},
+     "c = ported FR with adaptive cooling (default).  "
+     "legacy = homegrown FR + Barnes-Hut."),
+    ("GVPY_SFDP_POST_PROCESS", "c", ["c", "legacy"],
+     "sfdp smoothing", {"sfdp"},
+     "c = stress majorization smoothing (default).  "
+     "legacy = skip smoothing entirely."),
+    ("GVPY_FDP_DERIVE_GRAPH", "1", ["1", "0"],
+     "fdp deriveGraph", {"fdp"},
+     "1 = cluster recursion + xlayout overlap (default).  "
+     "0 = simple flat layout."),
+    ("GVPY_CIRCO_BLOCKTREE", "c", ["c", "legacy"],
+     "circo blocktree", {"circo"},
+     "c = Tarjan articulation-point DFS (blocktree.c port, default).  "
+     "legacy = bridge-finding."),
+    ("GVPY_CIRCO_BLOCKPATH", "c", ["c", "legacy"],
+     "circo blockpath", {"circo"},
+     "c = spanning tree + longest path + crossings reduction "
+     "(blockpath.c port, default).  legacy = FR-style approximation."),
+    ("GVPY_CIRCO_CIRCPOS", "c", ["c", "legacy"],
+     "circo circpos", {"circo"},
+     "c = rotation math + positionChildren (circpos.c port, default).  "
+     "legacy = uniform-angle approximation."),
+    ("GVPY_ORTHO_LEGACY", "0", ["0", "1"],
+     "ortho legacy router", {"dot"},
+     "0 = use new lib/ortho/ port for splines=ortho (default).  "
+     "1 = fall back to legacy Z-router."),
+    ("GVPY_CLUSTER_CARVE", "0", ["0", "1"],
+     "dot D6 corridor-carve (opt-in)", {"dot"},
+     "1 = enable rank_box_gapped corridor carve for non-member "
+     "clusters.  -3 corpus crossings net, ~9 triangulation "
+     "failures on 2796.dot."),
+    ("GVPY_ROOT_HIERARCHY", "0", ["0", "1"],
+     "dot D5 root hierarchy (opt-in)", {"dot"},
+     "1 = add 196 missing sec3d aux-edges (root.ln→cluster.ln, "
+     "cluster.rn→root.rn).  Topologically matches C; audit "
+     "metric regresses pending HTML-table sizing fix."),
+    ("GVPY_FLAT_LABEL_CONSTRAINTS", "0", ["0", "1"],
+     "dot Phase A.1 flat-label (opt-in)", {"dot"},
+     "1 = enable Phase A.1 flat-edge label constraints with "
+     "canreach() cycle guard.  Wins 1474/1879/2620 (-10), "
+     "regresses 2470/2796 (+21)."),
+]
+
+_TRACE_CHANNELS: list[tuple[str, str, str]] = [
+    ("GVPY_TRACE_NEATO", "neato / common",
+     "Per-iteration neato force pass + edge routing + adjust + voronoi."),
+    ("GVPY_TRACE_FDP", "fdp",
+     "fdp force iterations + cluster discovery + deriveGraph recursion."),
+    ("GVPY_TRACE_SFDP", "sfdp",
+     "sfdp multilevel coarsening + spring-electrical descent + post-process."),
+    ("GVPY_TRACE_TWOPI", "twopi",
+     "twopi radial layout phase trace."),
+    ("GVPY_TRACE_KEEPOUT", "dot keepout",
+     "Per-edge [TRACE keepout] lines for §3f keepout aux-edges "
+     "(diff against C position.c::keepout_othernodes)."),
+    ("GVPY_TRACE_AUX_SECTIONS", "dot aux sections",
+     "[AUX SECTIONS] summary line at end of ns_x_position with "
+     "per-section aux-edge counts."),
+]
+
 
 # Order within each scope — common attrs first
 _GRAPH_ORDER = [
@@ -294,6 +395,7 @@ class LayoutWizard(QMainWindow):
         self._build_menu()
         self._build_ui()
         self._update_feature_visibility()
+        self._update_switch_visibility()
         self._update_command()
 
         if initial_file:
@@ -395,8 +497,20 @@ class LayoutWizard(QMainWindow):
         out_layout.setSpacing(3)
 
         self._out_format = QComboBox()
-        self._out_format.addItems(["svg", "json", "dot", "json0", "gxl"])
-        self._out_format.setToolTip("Output format (-T)")
+        self._out_format.addItems([
+            "svg", "png", "json", "dot", "json0", "gxl",
+            "plain", "plain-ext",
+        ])
+        self._out_format.setToolTip(
+            "Output format (-T).\n"
+            "svg/png: rendered image.\n"
+            "json: layout result dict (default).\n"
+            "json0: structural-only JSON (no layout).\n"
+            "dot: DOT with embedded pos= coordinates.\n"
+            "gxl: Graph eXchange Language XML.\n"
+            "plain / plain-ext: canonical Graphviz plain text "
+            "(graph/node/edge/stop lines)."
+        )
         self._out_format.setMaximumHeight(24)
         out_layout.addRow("-T format:", self._out_format)
 
@@ -458,6 +572,51 @@ class LayoutWizard(QMainWindow):
         self._out_scale.valueChanged.connect(self._update_command)
         self._out_invert_y.stateChanged.connect(self._update_command)
         self._out_bundle.stateChanged.connect(self._update_command)
+
+        # ── Engine Switches (GVPY_*) ──
+        sw_group = QGroupBox("Engine Switches (GVPY_*)")
+        sw_group.setToolTip(
+            "Runtime gates that select C-aligned vs. legacy "
+            "implementations or enable opt-in dot-engine "
+            "experiments.  See README.md > Environment variables "
+            "for details.  Toggling here sets / unsets the env "
+            "var for the next layout run.")
+        sw_layout = QFormLayout()
+        sw_layout.setContentsMargins(4, 6, 4, 4)
+        sw_layout.setSpacing(3)
+        self._switch_widgets: dict[str, QComboBox] = {}
+        self._switch_engines: dict[str, set] = {}
+        for env_var, default, options, label, engines, tooltip in _ENGINE_SWITCHES:
+            combo = QComboBox()
+            combo.addItems(options)
+            combo.setCurrentText(default)
+            combo.setToolTip(f"{env_var}\n{tooltip}")
+            combo.setMaximumHeight(22)
+            combo.currentTextChanged.connect(self._update_command)
+            sw_layout.addRow(f"{label}:", combo)
+            self._switch_widgets[env_var] = combo
+            self._switch_engines[env_var] = engines
+        sw_group.setLayout(sw_layout)
+        param_vlayout.addWidget(sw_group)
+
+        # ── Trace Channels (GVPY_TRACE_*) ──
+        tr_group = QGroupBox("Trace Channels (GVPY_TRACE_*)")
+        tr_group.setToolTip(
+            "Set to 1 to emit [TRACE …] lines on stderr.  "
+            "Useful for diff'ing against C dot runs with matching "
+            "GV_TRACE=… channels.")
+        tr_layout = QFormLayout()
+        tr_layout.setContentsMargins(4, 6, 4, 4)
+        tr_layout.setSpacing(3)
+        self._trace_widgets: dict[str, QCheckBox] = {}
+        for env_var, label, tooltip in _TRACE_CHANNELS:
+            cb = QCheckBox()
+            cb.setToolTip(f"{env_var}\n{tooltip}")
+            cb.stateChanged.connect(self._update_command)
+            tr_layout.addRow(f"{label}:", cb)
+            self._trace_widgets[env_var] = cb
+        tr_group.setLayout(tr_layout)
+        param_vlayout.addWidget(tr_group)
 
         # Tabbed attribute panels
         tabs = QTabWidget()
@@ -570,7 +729,24 @@ class LayoutWizard(QMainWindow):
         self._engine_name = self._engine_combo.itemData(index)
         self.setWindowTitle(f"GraphvizPy — Layout Wizard [{self._engine_name}]")
         self._update_feature_visibility()
+        self._update_switch_visibility()
         self._update_command()
+
+    def _update_switch_visibility(self):
+        """Dim engine switches that don't apply to the selected engine.
+
+        The env var is still honoured if set manually, but the
+        UI dims unrelated controls so the user knows they're a
+        no-op for the current engine.
+        """
+        for env_var, engines in self._switch_engines.items():
+            widget = self._switch_widgets.get(env_var)
+            if widget is None:
+                continue
+            applicable = (
+                self._engine_name in engines if engines else True
+            )
+            widget.setEnabled(applicable)
 
     def _update_feature_visibility(self):
         """Enable/disable controls and set tooltips per engine.
@@ -670,7 +846,27 @@ class LayoutWizard(QMainWindow):
             parts.append("--bundle")
 
         parts.extend(g_flags + n_flags + e_flags)
-        self._cmd_line.setText(" ".join(parts))
+
+        # Engine switches and trace channels render as
+        # ``ENV_VAR=value`` prefixes so the user can copy-paste
+        # the line into a shell.  Defaults are omitted to keep
+        # the line short.
+        env_prefix = []
+        for env_var, default, _opts, _label, _engines, _tip in _ENGINE_SWITCHES:
+            widget = self._switch_widgets.get(env_var)
+            if widget is None or not widget.isEnabled():
+                continue
+            val = widget.currentText()
+            if val != default:
+                env_prefix.append(f"{env_var}={val}")
+        for env_var, _label, _tip in _TRACE_CHANNELS:
+            cb = self._trace_widgets.get(env_var)
+            if cb is None:
+                continue
+            if cb.isChecked():
+                env_prefix.append(f"{env_var}=1")
+
+        self._cmd_line.setText(" ".join(env_prefix + parts))
 
     def _update_command(self):
         """Rebuild command line when a control panel widget changes."""
@@ -702,12 +898,20 @@ class LayoutWizard(QMainWindow):
         except ValueError:
             tokens = text.split()
 
-        # Extract known flags
+        # Extract known flags + ``ENV_VAR=value`` prefixes.
         cmd_flags: dict[str, str] = {}
         cmd_bool: set[str] = set()
+        cmd_envs: dict[str, str] = {}
         i = 0
         while i < len(tokens):
             tok = tokens[i]
+            # ENV_VAR=value prefix (must come before -K / file
+            # tokens but we accept it anywhere for forgiveness).
+            if "=" in tok and tok.startswith("GVPY_") and not tok.startswith(("-G", "-N", "-E")):
+                k, v = tok.split("=", 1)
+                cmd_envs[k] = v
+                i += 1
+                continue
             if tok.startswith("-T") and len(tok) > 2:
                 cmd_flags["T"] = tok[2:]
             elif tok.startswith("-K") and len(tok) > 2:
@@ -801,6 +1005,29 @@ class LayoutWizard(QMainWindow):
                         changed_widgets.append(widget)
                     break
 
+        # Sync engine-switch combos (GVPY_*).  Vars not present
+        # on the cmd line revert to their default.
+        for env_var, default, _opts, _label, _engines, _tip in _ENGINE_SWITCHES:
+            widget = self._switch_widgets.get(env_var)
+            if widget is None:
+                continue
+            new_val = cmd_envs.get(env_var, default)
+            if widget.currentText() != new_val:
+                idx = widget.findText(new_val)
+                if idx >= 0:
+                    widget.setCurrentIndex(idx)
+                    changed_widgets.append(widget)
+
+        # Sync trace-channel checkboxes.
+        for env_var, _label, _tip in _TRACE_CHANNELS:
+            cb = self._trace_widgets.get(env_var)
+            if cb is None:
+                continue
+            new_checked = cmd_envs.get(env_var, "") == "1"
+            if cb.isChecked() != new_checked:
+                cb.setChecked(new_checked)
+                changed_widgets.append(cb)
+
         # Flash changed widgets
         if changed_widgets:
             self._flash_widgets(changed_widgets)
@@ -868,12 +1095,62 @@ class LayoutWizard(QMainWindow):
             self.statusBar().showMessage("No DOT source to layout.")
             return
 
+        # Apply runtime env-var switches before layout — and
+        # restore the previous state afterward so the wizard
+        # doesn't pollute its own process env between runs.
+        prev_env = self._apply_env_switches()
         # Show wait cursor while running layout
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             self._do_run_layout(source)
         finally:
             QApplication.restoreOverrideCursor()
+            self._restore_env(prev_env)
+
+    def _apply_env_switches(self) -> dict[str, str | None]:
+        """Set ``os.environ`` from the Engine Switches and Trace
+        Channels panels.  Returns a dict capturing the previous
+        values (or ``None`` if the var was unset) so
+        :meth:`_restore_env` can roll back after the layout run.
+
+        Switches at their default value are *removed* from the
+        environment rather than re-set to the default — this way
+        the wizard doesn't leak ``GVPY_*=`` flags to child
+        processes that introspect ``os.environ``.
+        """
+        prev: dict[str, str | None] = {}
+        # Engine dispatch + experimental gates.
+        for env_var, default, _options, _label, _engines, _tip in _ENGINE_SWITCHES:
+            widget = self._switch_widgets.get(env_var)
+            if widget is None:
+                continue
+            prev[env_var] = os.environ.get(env_var)
+            val = widget.currentText()
+            if val == default:
+                os.environ.pop(env_var, None)
+            else:
+                os.environ[env_var] = val
+        # Trace channels.
+        for env_var, _label, _tip in _TRACE_CHANNELS:
+            cb = self._trace_widgets.get(env_var)
+            if cb is None:
+                continue
+            prev[env_var] = os.environ.get(env_var)
+            if cb.isChecked():
+                os.environ[env_var] = "1"
+            else:
+                os.environ.pop(env_var, None)
+        return prev
+
+    @staticmethod
+    def _restore_env(prev: dict[str, str | None]) -> None:
+        """Roll back ``os.environ`` to the state captured by
+        :meth:`_apply_env_switches`."""
+        for env_var, prev_val in prev.items():
+            if prev_val is None:
+                os.environ.pop(env_var, None)
+            else:
+                os.environ[env_var] = prev_val
 
     def _status(self, msg: str, pct: int = -1):
         """Update status bar with message and optional progress percentage."""
@@ -969,11 +1246,23 @@ class LayoutWizard(QMainWindow):
 
         self._status(f"[{self._engine_name}] Rendering output...", 75)
 
-        # Render to selected format
+        # Render to selected format.  ``output_text`` is ``str``
+        # for text formats; PNG returns ``bytes`` (a ``bytes``
+        # value is written via ``write_bytes`` instead of
+        # ``write_text``).
         fmt = self._out_format.currentText()
         import json
+        output_text: str | bytes
         if fmt == "svg":
             output_text = render_svg(result)
+        elif fmt == "png":
+            from gvpy.render.png_renderer import render_png
+            try:
+                dpi = float(graph.get_graph_attr("dpi") or
+                            graph.get_graph_attr("resolution") or "72")
+            except (TypeError, ValueError):
+                dpi = 72.0
+            output_text = render_png(result, dpi=dpi)
         elif fmt == "dot":
             from gvpy.grammar.gv_writer import write_gv
             output_text = write_gv(graph)
@@ -983,26 +1272,39 @@ class LayoutWizard(QMainWindow):
         elif fmt == "gxl":
             from gvpy.render.gxl_io import write_gxl
             output_text = write_gxl(graph)
+        elif fmt in ("plain", "plain-ext"):
+            from gvpy.render.plain_renderer import render_plain
+            output_text = render_plain(result)
         else:
             output_text = json.dumps(result, indent=2)
 
         self._last_svg = output_text if fmt == "svg" else ""
         self._last_output = output_text
 
+        # File-write helper that picks bytes vs. text mode.
+        def _write_output(path: Path, payload):
+            if isinstance(payload, bytes):
+                path.write_bytes(payload)
+            else:
+                path.write_text(payload, encoding="utf-8")
+
         # Write to file if -o is set
         out_file = self._out_file.text().strip()
         if out_file:
             self._status(f"[{self._engine_name}] Writing to {out_file}...", 85)
             from pathlib import Path
-            Path(out_file).write_text(output_text, encoding="utf-8")
+            _write_output(Path(out_file), output_text)
 
         # Auto-name if -O
         if self._out_auto.isChecked() and self._current_file:
             from pathlib import Path
-            ext = {"svg": ".svg", "json": ".json", "dot": ".gv",
-                   "json0": ".json", "gxl": ".gxl"}.get(fmt, f".{fmt}")
+            ext = {
+                "svg": ".svg", "png": ".png", "json": ".json",
+                "dot": ".gv", "json0": ".json", "gxl": ".gxl",
+                "plain": ".txt", "plain-ext": ".txt",
+            }.get(fmt, f".{fmt}")
             auto_path = Path(self._current_file).with_suffix(ext)
-            auto_path.write_text(output_text, encoding="utf-8")
+            _write_output(auto_path, output_text)
             self._status(f"[{self._engine_name}] Written to {auto_path}", 90)
 
         # SVG preview
@@ -1032,6 +1334,21 @@ class LayoutWizard(QMainWindow):
             self._status(
                 f"[{self._engine_name}] Done ({t_total:.1f}s) — "
                 f"{n} nodes, {e} edges, {c} clusters — {svg_kb} KB SVG"
+                f"{' → ' + out_file if out_file else ''}", 100)
+        elif fmt == "png":
+            # PNG can't be displayed by QSvgWidget.  Render the
+            # SVG as a fallback for the preview pane and report
+            # the PNG size in the status bar.
+            png_kb = len(output_text) // 1024
+            preview_svg = render_svg(result)
+            svg_bytes = QByteArray(preview_svg.encode("utf-8"))
+            self._svg_widget.load(svg_bytes)
+            self._svg_widget.updateGeometry()
+            self._svg_widget.repaint()
+            self._status(
+                f"[{self._engine_name}] Done ({t_total:.1f}s) — "
+                f"{n} nodes, {e} edges, {c} clusters — "
+                f"{png_kb} KB PNG (preview: SVG-equivalent)"
                 f"{' → ' + out_file if out_file else ''}", 100)
         else:
             self._status(
