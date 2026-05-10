@@ -27,20 +27,25 @@ _gv_reader = None
 _gv_writer = None
 _svg_renderer = None
 _png_renderer = None
+_plain_renderer = None
 _json_io = None
 _gxl_io = None
 
 
 def _ensure_imports():
     """Lazy-load format modules on first use."""
-    global _gv_reader, _gv_writer, _svg_renderer, _png_renderer, _json_io, _gxl_io
+    global _gv_reader, _gv_writer, _svg_renderer, _png_renderer
+    global _plain_renderer, _json_io, _gxl_io
     if _gv_reader is None:
         from gvpy.grammar import gv_reader, gv_writer
-        from gvpy.render import svg_renderer, json_io, gxl_io, png_renderer
+        from gvpy.render import (
+            svg_renderer, json_io, gxl_io, png_renderer, plain_renderer,
+        )
         _gv_reader = gv_reader
         _gv_writer = gv_writer
         _svg_renderer = svg_renderer
         _png_renderer = png_renderer
+        _plain_renderer = plain_renderer
         _json_io = json_io
         _gxl_io = gxl_io
 
@@ -73,7 +78,7 @@ def _detect_engine_from_argv0() -> str:
 
 _FORMAT_EXT = {
     "json": ".json", "svg": ".svg", "png": ".png", "dot": ".gv",
-    "json0": ".json", "gxl": ".gxl",
+    "json0": ".json", "gxl": ".gxl", "plain": ".txt", "plain-ext": ".txt",
 }
 
 
@@ -180,6 +185,15 @@ def layout_and_render(graph, fmt, engine_name="dot",
         return _gv_writer.write_gv(graph)
     elif fmt == "gxl":
         return _gxl_io.write_gxl(graph)
+    elif fmt in ("plain", "plain-ext"):
+        # Graphviz canonical plain text format (-Tplain).  See
+        # https://graphviz.org/docs/outputs/plain/ — the format
+        # was previously delivered as JSON for ``-Tplain``,
+        # which broke pipelines expecting the line-based text
+        # format.  ``plain-ext`` is the same format with edge
+        # head/tail port info appended; we don't track ports
+        # in the result dict yet, so it's an alias of ``plain``.
+        return _plain_renderer.render_plain(result)
     else:
         return json.dumps(result, indent=2)
 
@@ -361,7 +375,10 @@ DOT file examples:
     )
     p.add_argument(
         "-T", dest="format", default="json", metavar="FORMAT",
-        help="Output format: json (default), svg, png, dot, json0, gxl",
+        help=(
+            "Output format: json (default), svg, png, dot, "
+            "json0, gxl, plain, plain-ext"
+        ),
     )
     p.add_argument(
         "-o", dest="output", default=None, metavar="FILE",
