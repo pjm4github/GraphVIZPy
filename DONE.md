@@ -5,6 +5,113 @@ short.  Ordered newest → oldest.
 
 ---
 
+## TODO reorganization — archive §2 research log + close engine arc — 2026-05-09
+
+Compacted ``TODO.md`` from ~1650 lines to ~250.  All 9 layout
+engines are C-aligned (DONE §4.D / §4.N / §4.T / §4.F /
+§4.S-* / §4.O / §4.P / §4.C) and the ``-Tplain`` renderer is
+shipped (commit ``02a2d0a``).  Re-prioritised the §1 divergence
+list with explicit "defer until a pictosync use-case surfaces"
+annotations.
+
+### §2.5.12–21 archive — D5/D7 alignment research log (2026-05-06 → 2026-05-07)
+
+Multi-day deep-dive into the +94 spatial-cluster-cross
+delta on 1879.dot.  Final understanding (the one that
+matters going forward):
+
+1. **Mincross & build_ranks are bit-aligned with C.**
+   §2.5.1–7 closed every layer of the rank-construction
+   path; skel mode promoted to default 2026-04-30.  1879's
+   crossings come from coord placement / spline routing,
+   not mincross.
+
+2. **Keepout structure matches C 100%.**  §2.5.12 added
+   matching ``[TRACE keepout]`` probes — Py and C generate
+   the same 186 aux-edges (92 L / 94 R) with identical
+   (cluster, rank, side, src, dst) tuples.
+
+3. **D7 (font metrics) controls keepout *minlens* but not
+   final positions.**  §2.5.13 showed: Py with C-widths
+   override → keepout minlens become bit-perfect (186/186
+   match), but the spatial-cross count *doubles* (62→144).
+   D7 is necessary, not sufficient.
+
+4. **Aux-graph topology gap localised to sec3d (root
+   hierarchy edges).**  §2.5.14–15: Py's NS gets 196 fewer
+   constraint edges than C's because Python skipped the
+   ``parent is None → root graph`` case in section 3d.
+   §2.5.16 landed a gated fix
+   (``GVPY_ROOT_HIERARCHY=1``) that closes the topology
+   gap, but the audit metric still regresses (1879 62→118)
+   because:
+
+5. **Per-edge minlen drift across sec3a/sec3d/sec3e.**
+   §2.5.17 found a Py-only ``_rc_floor=8`` knob that
+   inflated every cluster-boundary edge by 8pt.  Plus Py
+   missed C's TB-cluster label-width edges in
+   ``sec3c_eff``.  Both fixed gated.
+
+6. **D7 LUT port shipped.**  §2.5.18 ported
+   ``lib/common/textspan_lut.c`` verbatim to
+   ``gvpy/engines/layout/font_metrics_lut.py`` (11 font
+   families × 4 variants × 128 widths).  Per-glyph widths
+   now match C within 0.01pt.  But on 1879 the dominant
+   drift source is *HTML-table sizing*
+   (``<TABLE>``/``<TR>``/``<TD>`` cell math in
+   ``html_label.py``), not glyph widths.  ~33pt mean / 150pt
+   max NODE width drift remains.
+
+7. **HTML-table residual analysis blocked on libexpat
+   build.**  §2.5.21: instrumenting C's ``size_html_cell``
+   requires a libexpat-enabled local build.  CLion's
+   build dir lacks libexpat; CLAUDE.md forbids reconfiguring
+   it.  Could build a sibling cmake dir with msys64's
+   ``libexpat.a``, or translate ``htmltable.c`` line-by-line
+   into Python and diff.  Both ~30-60 min.  Deferred — D5
+   sprawl on 1879 is a single-file polish issue, not
+   blocking.
+
+**Final state**: 1879's spatial-cross count remains +94 vs
+C, but the *structural* constraint generation is at parity
+when the gates fire.  All instrumentation
+(``GV_TRACE=position``, ``GV_DUMP_AUX_MINLENS``,
+``GV_DUMP_WIDTHS``, ``GVPY_ROOT_HIERARCHY``,
+``GVPY_C_WIDTH_OVERRIDE``, etc.) stays in tree for future
+regressions.  The detailed §2.5.12–21 instrumentation
+findings are preserved in git history at commit
+``edee1e3^`` (the TODO.md before this reorganization).
+
+### Engine arc complete (2026-05-09)
+
+All 9 layout engines C-aligned end-to-end:
+
+| engine | tests | DONE entry |
+|---|---:|---|
+| dot | 1141 | §1.5 series + various |
+| neato | 54 | §4.N |
+| twopi | 24 | §4.T |
+| fdp | 43 | §4.F + §4.F-clusters + §4.F-derivegraph |
+| sfdp | 50 | §4.S-derivegraph + §4.S-multilevel + §4.S-spring-electrical + §4.S-post-process |
+| osage | 29 | §4.O |
+| patchwork | 28 | §4.P |
+| circo | 56 | §4.C-blocktree + §4.C-full |
+| ortho | 18+12+18+4+4+12 | (early port via lib/ortho/) |
+
+Total: 1307 passing, 4 skipped, 1 deselected.
+
+### §7.x — `-Tplain` renderer — 2026-05-09
+
+``gvcli.py -Tplain`` now emits the canonical Graphviz plain
+text format (``graph SCALE WIDTH HEIGHT`` /
+``node NAME X Y W H LABEL STYLE SHAPE COLOR FILLCOLOR`` /
+``edge TAIL HEAD N x1 y1 ... STYLE COLOR`` / ``stop``,
+inches, math-y).  Module: ``gvpy/render/plain_renderer.py``
+(~190 LOC).  16 new tests.  Commit ``02a2d0a``.  JSON
+output stays available under ``-Tjson`` / ``-Tjson0``.
+
+---
+
 ## §4.C-full — Circo blockpath.c + circpos.c port (closes circo) — 2026-05-09
 
 Completes the circo port started in §4.C-blocktree.  Both
