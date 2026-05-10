@@ -155,10 +155,28 @@ def _draw_node(ctx: _Ctx, node: dict):
     if "invis" in style:
         return
 
-    fill_c = _parse_color(node.get("fillcolor") or node.get("color") or "white")
-    stroke_c = _parse_color(node.get("color") or "black")
-    if node.get("fillcolor"):
-        stroke_c = _parse_color(node.get("color") or "black")
+    # Graphviz fill/stroke convention (mirrors svg_renderer's
+    # ``_node_attrs``):
+    # - ``fillcolor`` set → fill = fillcolor.
+    # - ``style=filled`` only → fill = color (with #d3d3d3 fallback).
+    # - Neither → fill = "none" (transparent).  Earlier versions
+    #   defaulted to white, which (a) made unfilled nodes
+    #   obscure cluster backgrounds and (b) interpreted
+    #   ``color=red`` (stroke-only) as a red fill.
+    fillcolor = node.get("fillcolor", "")
+    color = node.get("color", "")
+    if fillcolor:
+        fill_c = _parse_color(fillcolor)
+    elif "filled" in style:
+        fill_c = _parse_color(color or "#d3d3d3")
+    else:
+        # Transparent — let parent (cluster) show through.  Pass
+        # ``None`` to Pillow rather than an alpha-zero color:
+        # ``draw.rectangle(fill=(0,0,0,0), outline=…)`` actually
+        # paints transparent pixels, *erasing* the cluster
+        # color beneath.  ``fill=None`` skips the fill paint.
+        fill_c = None
+    stroke_c = _parse_color(color or "black")
     try:
         pw = max(1, int(float(node.get("penwidth", "1"))))
     except ValueError:
